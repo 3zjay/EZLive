@@ -141,6 +141,7 @@ export interface StreamSettings {
   rtmpsUrl: string;
   streamKey: string;
   whipUrl: string;
+  relayUrl?: string;
   targetResolution: '1080p60' | '1080p30' | '720p60' | '720p30';
   overlayUrl: string;
   usePostMessageBridge: boolean;

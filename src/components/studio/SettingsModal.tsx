@@ -691,6 +691,25 @@ const FacebookDestinationManager: React.FC<{
         )}
       </div>
 
+      {/* Streaming Relay Server configuration for Mobile PWA */}
+      <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="text-amber-400 font-bold">☁️ Mobile Cloud Relay:</span>
+          <span className="text-slate-400 text-[10px]">Pipes tablet/phone camera to Facebook Live</span>
+        </div>
+        <input
+          type="text"
+          placeholder="https://ezlive-relay.onrender.com"
+          value={localSettings.relayUrl || 'https://ezlive-relay.onrender.com'}
+          onChange={(e) => {
+            const url = e.target.value.trim();
+            setLocalSettings((prev) => ({ ...prev, relayUrl: url }));
+            try { localStorage.setItem('hc_relay_url', url); } catch {}
+          }}
+          className="bg-slate-900 border border-slate-700 rounded px-2.5 py-1 text-slate-200 font-mono text-[10px] w-60 focus:border-amber-500 focus:outline-none"
+        />
+      </div>
+
       {/* Optional Meta App ID override */}
       <div className="flex items-center justify-between px-1 text-[11px] text-slate-500">
         <span>Meta App Configuration:</span>

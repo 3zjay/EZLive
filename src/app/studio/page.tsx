@@ -56,6 +56,7 @@ const DEFAULT_SETTINGS: StreamSettings = {
   rtmpsUrl: 'rtmps://live-api-s.facebook.com:443/rtmp/',
   streamKey: '',
   whipUrl: 'https://relay.hooptimes.live/whip',
+  relayUrl: 'https://ezlive-relay.onrender.com',
   targetResolution: '1080p60',
   overlayUrl: 'https://scoreboard.hoopculture.ca',
   usePostMessageBridge: true,
@@ -123,6 +124,84 @@ export default function StudioPage() {
   // Engine references
   const compositorRef = useRef<VideoCompositor | null>(null);
   const recorderRef = useRef<BroadcastRecorder | null>(null);
+  const streamingSocketRef = useRef<WebSocket | null>(null);
+  const streamingRecorderRef = useRef<MediaRecorder | null>(null);
+
+  const startRelayPipeline = (targetRtmps: string, targetKey: string) => {
+    try {
+      const relayUrl = settings.relayUrl || (typeof window !== 'undefined' ? localStorage.getItem('hc_relay_url') || '' : '') || 'https://ezlive-relay.onrender.com';
+      const compositeStream = compositorRef.current?.getCompositeStream(mediaStreamRef.current);
+
+      if (!compositeStream) {
+        console.warn('Composite stream not ready for relay streaming');
+        return;
+      }
+
+      const cleanRelay = relayUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').replace(/\/$/, '');
+      const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${wsProtocol}//${cleanRelay}/live?rtmpsUrl=${encodeURIComponent(targetRtmps)}&streamKey=${encodeURIComponent(targetKey)}`;
+
+      const ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+      streamingSocketRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('📡 Connected to EZLive Cloud Relay! Streaming canvas to Facebook Live...');
+        try {
+          const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/webm;codecs=h264')
+            ? 'video/webm;codecs=h264'
+            : typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+            ? 'video/webm;codecs=vp8'
+            : 'video/webm';
+
+          const rec = new MediaRecorder(compositeStream, {
+            mimeType: mime,
+            videoBitsPerSecond: 3500000,
+            audioBitsPerSecond: 128000,
+          });
+
+          rec.ondataavailable = async (e) => {
+            if (e.data && e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+              const buf = await e.data.arrayBuffer();
+              ws.send(buf);
+            }
+          };
+
+          rec.start(500); // 500ms chunk interval
+          streamingRecorderRef.current = rec;
+        } catch (recErr) {
+          console.error('Failed to start MediaRecorder for streaming relay:', recErr);
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.warn('Streaming Relay note:', e);
+      };
+
+      ws.onclose = () => {
+        console.log('Streaming Relay connection closed');
+      };
+    } catch (err) {
+      console.error('startRelayPipeline error:', err);
+    }
+  };
+
+  const stopRelayPipeline = () => {
+    if (streamingRecorderRef.current) {
+      try {
+        if (streamingRecorderRef.current.state !== 'inactive') {
+          streamingRecorderRef.current.stop();
+        }
+      } catch (e) {}
+      streamingRecorderRef.current = null;
+    }
+    if (streamingSocketRef.current) {
+      try {
+        streamingSocketRef.current.close();
+      } catch (e) {}
+      streamingSocketRef.current = null;
+    }
+  };
   const bridgeRef = useRef<OverlayBridge | null>(null);
 
   // Streams
@@ -902,6 +981,7 @@ export default function StudioPage() {
           console.warn('Facebook live end error:', e);
         }
       }
+      stopRelayPipeline();
       setIsStreaming(false);
       setSettings((prev) => ({
         ...prev,
@@ -920,6 +1000,7 @@ export default function StudioPage() {
           alert('Please enter your Facebook Group Stream Key or link your Facebook account in Settings.');
           return;
         }
+        startRelayPipeline(settings.rtmpsUrl, key);
         setIsStreaming(true);
         return;
       }
@@ -976,6 +1057,9 @@ export default function StudioPage() {
             : prev.fbSettings,
         }));
 
+        const liveRtmps = data.secure_stream_url || settings.rtmpsUrl;
+        const liveKey = data.stream_key || settings.streamKey;
+        startRelayPipeline(liveRtmps, liveKey);
         setIsStreaming(true);
       } catch (err: any) {
         console.error('Failed to initiate Facebook Live:', err);
