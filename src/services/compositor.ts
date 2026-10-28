@@ -15,7 +15,7 @@ export class VideoCompositor {
   private videoElement: HTMLVideoElement | null = null;
   private screenShareElement: HTMLVideoElement | null = null;
   private animationFrameId: number | null = null;
-  private targetFps: number = 30; // 30 FPS standard broadcast (eliminates wasted frames)
+  private targetFps: number = 60; // 60 FPS sports broadcast default
   private width: number = 1920;
   private height: number = 1080;
 

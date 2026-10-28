@@ -30,6 +30,7 @@ interface GoLiveModalProps {
     youtubeKey: string;
     bandwidthPreset: StreamBandwidthPreset;
     bitrateKbps: number;
+    fps: number;
   }) => void;
 }
 
@@ -38,45 +39,50 @@ const QUALITY_PRESETS: {
   name: string;
   badge: string;
   resolution: string;
+  fps: number;
   bitrateKbps: number;
   description: string;
   dataUsage: string;
 }[] = [
   {
-    id: 'eco_720',
-    name: 'Eco / Gym Wi-Fi',
-    badge: '1.5 Mbps',
-    resolution: '720p @ 30fps',
-    bitrateKbps: 1500,
-    description: 'Lowest data usage & battery drain. Best for weak gym Wi-Fi or basement cellular.',
-    dataUsage: '~0.7 GB / hour',
-  },
-  {
-    id: 'balanced_720',
-    name: 'Balanced HD',
-    badge: '2.5 Mbps',
-    resolution: '720p @ 30fps',
-    bitrateKbps: 2500,
-    description: 'Recommended for mobile phones/tablets & Render Free tier. Crisp, smooth, zero buffering.',
-    dataUsage: '~1.1 GB / hour',
-  },
-  {
     id: 'high_1080',
-    name: 'High Definition',
-    badge: '4.0 Mbps',
-    resolution: '1080p @ 30fps',
-    bitrateKbps: 4000,
-    description: 'Sharp 1080p for stable 5G cellular or gym fiber connections.',
-    dataUsage: '~1.8 GB / hour',
+    name: '🏀 Sports 60 FPS HD',
+    badge: '1080p @ 60 FPS',
+    resolution: '1080p @ 60fps • 4.5 Mbps',
+    fps: 60,
+    bitrateKbps: 4500,
+    description: 'Recommended for Basketball. Silky-smooth 60fps fast-break motion, ball tracking, and crisp scoreboard.',
+    dataUsage: '~2.0 GB / hour',
   },
   {
     id: 'pro_1080_60',
-    name: 'Pro Broadcast',
-    badge: '6.0 Mbps',
-    resolution: '1080p @ 60fps',
+    name: '⚡ Pro 60 FPS Ultra',
+    badge: '1080p @ 60 FPS',
+    resolution: '1080p @ 60fps • 6.0 Mbps',
+    fps: 60,
     bitrateKbps: 6000,
-    description: 'Full 60fps broadcast motion. High upload bandwidth required.',
+    description: 'Maximum broadcast fidelity for high-speed fiber internet and premium championship games.',
     dataUsage: '~2.7 GB / hour',
+  },
+  {
+    id: 'balanced_720',
+    name: '⚡ Balanced 60 FPS',
+    badge: '720p @ 60 FPS',
+    resolution: '720p @ 60fps • 3.0 Mbps',
+    fps: 60,
+    bitrateKbps: 3000,
+    description: 'Smooth 60 FPS sports motion optimized for mobile Wi-Fi & LTE. Zero buffering.',
+    dataUsage: '~1.3 GB / hour',
+  },
+  {
+    id: 'eco_720',
+    name: '🌿 Eco / Low Bandwidth',
+    badge: '720p @ 30 FPS',
+    resolution: '720p @ 30fps • 1.8 Mbps',
+    fps: 30,
+    bitrateKbps: 1800,
+    description: 'Fallback mode for weak gym basement cellular or crowded gym Wi-Fi.',
+    dataUsage: '~0.8 GB / hour',
   },
 ];
 
@@ -119,9 +125,9 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   const [ytKey, setYtKey] = useState(initialYtKey);
   const [showYtKey, setShowYtKey] = useState(false);
 
-  // Bandwidth & Quality
+  // Bandwidth & Quality (defaults to 60 FPS sports HD)
   const [qualityPreset, setQualityPreset] = useState<StreamBandwidthPreset>(
-    settings.bandwidthPreset || 'balanced_720'
+    settings.bandwidthPreset || 'high_1080'
   );
 
   // Cloud Relay Health Telemetry (render awake check)
@@ -194,6 +200,7 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       youtubeKey: ytKey.trim(),
       bandwidthPreset: qualityPreset,
       bitrateKbps: selectedPresetObj.bitrateKbps,
+      fps: selectedPresetObj.fps,
     });
   };
 

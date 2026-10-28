@@ -139,6 +139,7 @@ export default function StudioPage() {
           facebookKey?: string;
           youtubeKey?: string;
           bitrateKbps?: number;
+          fps?: number;
         }
       | string,
     fallbackKey?: string
@@ -147,7 +148,8 @@ export default function StudioPage() {
       let fbKey = '';
       let ytKey = '';
       let targetRtmps = settings.rtmpsUrl;
-      let bitrateKbps = 2500;
+      let bitrateKbps = 4500;
+      let streamFps = 60; // 60 FPS sports broadcast default
 
       if (typeof options === 'string') {
         targetRtmps = options;
@@ -156,7 +158,8 @@ export default function StudioPage() {
         targetRtmps = options.targetRtmps || settings.rtmpsUrl;
         fbKey = options.facebookKey || options.targetKey || '';
         ytKey = options.youtubeKey || '';
-        bitrateKbps = options.bitrateKbps || 2500;
+        bitrateKbps = options.bitrateKbps || 4500;
+        streamFps = options.fps || (bitrateKbps <= 1800 ? 30 : 60);
       }
 
       const relayUrl =
@@ -192,7 +195,6 @@ export default function StudioPage() {
         }
       }
 
-      const streamFps = bitrateKbps >= 6000 ? 60 : 30;
       if (compositorRef.current) {
         compositorRef.current.setTargetFps(streamFps);
       }
@@ -1160,6 +1162,7 @@ export default function StudioPage() {
     youtubeKey: string;
     bandwidthPreset: StreamBandwidthPreset;
     bitrateKbps: number;
+    fps: number;
   }) => {
     setIsGoLiveModalOpen(false);
 
@@ -1196,6 +1199,7 @@ export default function StudioPage() {
       facebookKey: config.facebookEnabled ? config.facebookKey : '',
       youtubeKey: config.youtubeEnabled ? config.youtubeKey : '',
       bitrateKbps: config.bitrateKbps,
+      fps: config.fps,
     });
 
     setIsStreaming(true);
