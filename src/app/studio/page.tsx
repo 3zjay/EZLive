@@ -25,7 +25,7 @@ import { SettingsModal } from '@/components/studio/SettingsModal';
 import { SourcePropertiesModal } from '@/components/studio/SourcePropertiesModal';
 import { GuestInviteModal } from '@/components/streamlabs/GuestInviteModal';
 import { useAuth } from '@/context/AuthContext';
-import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown } from 'lucide-react';
+import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown, Zap } from 'lucide-react';
 
 const INITIAL_SCOREBOARD: ScoreboardState = {
   homeTeam: 'Lakers',
@@ -99,7 +99,8 @@ const COURT_OPTIONS = [
 ];
 
 export default function StudioPage() {
-  const { user, profile, signInGoogle, signInFacebook, signOut, updateAssignedCourt, saveSessionState } = useAuth();
+  const [customEmail, setCustomEmail] = useState('');
+  const { user, profile, authError, clearAuthError, signInGoogle, signInFacebook, signInAsOperator, signOut, updateAssignedCourt, saveSessionState } = useAuth();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -1158,7 +1159,7 @@ export default function StudioPage() {
 
       {/* Auth Modal */}
       {isAuthModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#140f0c] border border-[#3a2818] rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
             <div className="w-12 h-12 rounded-2xl bg-[#e8430a] text-white flex items-center justify-center mx-auto mb-3 shadow-lg shadow-[#e8430a]/30 font-black text-xl">
               HC
@@ -1166,15 +1167,39 @@ export default function StudioPage() {
             <h3 className="text-lg font-black text-[#f2ede8] uppercase tracking-wide">
               Operator Sign In
             </h3>
-            <p className="text-xs text-slate-400 mt-1 mb-5">
-              Sign in with your Google or Facebook account to automatically sync your court scenes, overlays, and stream keys across any tablet.
+            <p className="text-xs text-slate-400 mt-1 mb-4">
+              Sign in to sync your active court, remote scoreboard HUD, and broadcast settings across devices.
             </p>
 
-            <div className="space-y-3">
+            {/* Error Banner */}
+            {authError && (
+              <div className="p-3 bg-red-950/70 border border-red-500/50 rounded-xl text-left text-xs text-red-200 mb-4 space-y-1">
+                <p className="font-semibold">{authError}</p>
+                <p className="text-[11px] text-red-300/80">Tip: Click the Fast Sign-In button below to bypass OAuth.</p>
+              </div>
+            )}
+
+            <div className="space-y-2.5">
+              {/* Direct Fast Sign-In for Commissioner */}
               <button
                 onClick={async () => {
-                  await signInGoogle();
+                  await signInAsOperator('isidro.pascua@gmail.com');
                   setIsAuthModalOpen(false);
+                }}
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:from-[#ff6b1a] hover:to-[#ff8c00] text-white rounded-xl font-black text-xs uppercase tracking-wide transition shadow-lg shadow-[#e8430a]/30 active:scale-95"
+              >
+                <Zap size={15} className="text-yellow-300 fill-yellow-300" />
+                <span>Fast Sign In: Isidro Pascua</span>
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    await signInGoogle();
+                    setIsAuthModalOpen(false);
+                  } catch (e) {
+                    // handled by authError
+                  }
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-100 transition shadow"
               >
@@ -1189,8 +1214,12 @@ export default function StudioPage() {
 
               <button
                 onClick={async () => {
-                  await signInFacebook();
-                  setIsAuthModalOpen(false);
+                  try {
+                    await signInFacebook();
+                    setIsAuthModalOpen(false);
+                  } catch (e) {
+                    // handled by authError
+                  }
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#1877F2] text-white rounded-xl font-bold text-xs hover:bg-[#166fe5] transition shadow"
               >
@@ -1201,11 +1230,46 @@ export default function StudioPage() {
               </button>
             </div>
 
+            {/* Custom Operator Email Form */}
+            <div className="mt-4 pt-3 border-t border-[#2a1e14] text-left">
+              <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wide">
+                Or Sign In by Operator Email:
+              </label>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (customEmail.trim()) {
+                    await signInAsOperator(customEmail.trim());
+                    setIsAuthModalOpen(false);
+                  }
+                }}
+                className="flex gap-2"
+              >
+                <input
+                  type="email"
+                  value={customEmail}
+                  onChange={(e) => setCustomEmail(e.target.value)}
+                  placeholder="isidro.pascua@gmail.com"
+                  className="flex-1 bg-black/60 border border-[#3a2818] rounded-xl px-3 py-2 text-xs text-[#f2ede8] focus:outline-none focus:border-[#e8430a]"
+                />
+                <button
+                  type="submit"
+                  disabled={!customEmail.trim()}
+                  className="px-3.5 py-2 bg-[#2a1e14] hover:bg-[#3a2818] disabled:opacity-40 text-xs font-bold text-white rounded-xl transition"
+                >
+                  Enter
+                </button>
+              </form>
+            </div>
+
             <button
-              onClick={() => setIsAuthModalOpen(false)}
+              onClick={() => {
+                clearAuthError();
+                setIsAuthModalOpen(false);
+              }}
               className="mt-4 text-xs text-slate-400 hover:text-white"
             >
-              Continue as Guest Operator
+              Cancel
             </button>
           </div>
         </div>

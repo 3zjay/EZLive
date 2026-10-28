@@ -20,13 +20,12 @@ import { Scene, ScoreboardState, StreamSettings } from '@/types/broadcast';
 import { BrandKit } from '@/types/streamlabs';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyDo02QXvyeTSPIcAGXBP4YHUyS_0TsyxHk',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'ez-photolab.firebaseapp.com',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'ez-photolab',
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'ez-photolab.firebasestorage.app',
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '118400666368',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:118400666368:web:c3e2190df8545f5b43c1e5',
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || 'G-H75DXTC20B',
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyCYw1Wg2YMdd3M6GRlA-dThBhjaYG7bys8',
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || 'hoop-culture-scoreboard.firebaseapp.com',
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'hoop-culture-scoreboard',
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'hoop-culture-scoreboard.firebasestorage.app',
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '953830619002',
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:953830619002:web:e154a9c5118e7a0105c8c3',
 };
 
 // Initialize Firebase once
@@ -96,29 +95,35 @@ export async function logoutUser(): Promise<void> {
  * Ensure user document exists in Firestore and sync metadata
  */
 export async function syncUserRecord(user: User, assignedCourt: string = 'Court 1 - Main Gymnasium'): Promise<UserSessionProfile> {
-  const userRef = doc(db, 'ezlive_operators', user.uid);
-  const snap = await getDoc(userRef);
+  const localProfile: UserSessionProfile = {
+    uid: user.uid,
+    displayName: user.displayName || 'Court Operator',
+    email: user.email || '',
+    photoURL: user.photoURL || '',
+    role: 'operator',
+    assignedCourt,
+    activeGym: 'Hoop Culture Arena',
+    lastLogin: Date.now(),
+  };
 
-  if (!snap.exists()) {
-    const initialProfile: UserSessionProfile = {
-      uid: user.uid,
-      displayName: user.displayName || 'Court Operator',
-      email: user.email || '',
-      photoURL: user.photoURL || '',
-      role: 'operator',
-      assignedCourt,
-      activeGym: 'Hoop Culture Arena',
-      lastLogin: serverTimestamp(),
-    };
-    await setDoc(userRef, initialProfile);
-    return initialProfile;
-  } else {
-    await updateDoc(userRef, {
-      lastLogin: serverTimestamp(),
-      displayName: user.displayName || snap.data()?.displayName || 'Court Operator',
-      photoURL: user.photoURL || snap.data()?.photoURL || '',
-    });
-    return snap.data() as UserSessionProfile;
+  try {
+    const userRef = doc(db, 'ezlive_operators', user.uid);
+    const snap = await getDoc(userRef);
+
+    if (!snap.exists()) {
+      await setDoc(userRef, { ...localProfile, lastLogin: serverTimestamp() });
+      return localProfile;
+    } else {
+      await updateDoc(userRef, {
+        lastLogin: serverTimestamp(),
+        displayName: user.displayName || snap.data()?.displayName || 'Court Operator',
+        photoURL: user.photoURL || snap.data()?.photoURL || '',
+      });
+      return snap.data() as UserSessionProfile;
+    }
+  } catch (err) {
+    console.warn('Firestore user record sync skipped (using local operator profile):', err);
+    return localProfile;
   }
 }
 
