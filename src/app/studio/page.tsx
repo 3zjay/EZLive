@@ -1057,7 +1057,7 @@ export default function StudioPage() {
             : prev.fbSettings,
         }));
 
-        const liveRtmps = data.secure_stream_url || settings.rtmpsUrl;
+        const liveRtmps = data.secure_stream_url ? 'rtmps://live-api-s.facebook.com:443/rtmp/' : settings.rtmpsUrl;
         const liveKey = data.stream_key || settings.streamKey;
         startRelayPipeline(liveRtmps, liveKey);
         setIsStreaming(true);

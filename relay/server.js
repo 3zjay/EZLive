@@ -43,8 +43,16 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
-  const cleanRtmpsUrl = rtmpsUrl.endsWith('/') ? rtmpsUrl : `${rtmpsUrl}/`;
-  const destinationUrl = `${cleanRtmpsUrl}${streamKey}`;
+  let destinationUrl = '';
+  // Avoid duplicating stream key if rtmpsUrl already contains it (e.g. from Facebook secure_stream_url)
+  if (rtmpsUrl && rtmpsUrl.includes('/rtmp/') && rtmpsUrl.split('/rtmp/')[1]?.length > 5) {
+    destinationUrl = rtmpsUrl;
+  } else if (streamKey) {
+    const cleanBase = rtmpsUrl.endsWith('/') ? rtmpsUrl : `${rtmpsUrl}/`;
+    destinationUrl = `${cleanBase}${streamKey}`;
+  } else {
+    destinationUrl = rtmpsUrl;
+  }
 
   console.log(`📡 Ingesting live stream from mobile client & forwarding to: ${cleanRtmpsUrl}[REDACTED]`);
 
@@ -52,6 +60,8 @@ wss.on('connection', (ws, req) => {
   const ffmpegArgs = [
     '-re',
     '-i', 'pipe:0',
+    '-f', 'lavfi',
+    '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
     // Video configuration
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
@@ -62,10 +72,12 @@ wss.on('connection', (ws, req) => {
     '-pix_fmt', 'yuv420p',
     '-g', '60', // Keyframe every 2 seconds at 30fps (Required by Facebook Live)
     '-r', '30',
-    // Audio configuration
+    // Audio configuration: use input audio if present, fallback to silent source
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
     // Output FLV to Facebook RTMPS
     '-f', 'flv',
     destinationUrl,

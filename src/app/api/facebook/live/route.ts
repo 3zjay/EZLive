@@ -81,6 +81,7 @@ export async function POST(req: NextRequest) {
         title: title || 'Hoop Culture Live Broadcast',
         description: description || 'Streamed live via EZLive Broadcast Studio',
         status: 'LIVE_NOW',
+        auto_go_live: 'true',
         stream_type: 'REGULAR',
       });
 
