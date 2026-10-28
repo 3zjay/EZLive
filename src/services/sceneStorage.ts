@@ -1,14 +1,14 @@
 import { Scene } from '@/types/broadcast';
 
-const STORAGE_KEY = 'ezlive_scenes_v2';
+const STORAGE_KEY = 'ezlive_scenes_v3';
 
 export const DEFAULT_OBS_SCENES: Scene[] = [
   {
-    id: 'scene-game-nbc',
-    name: '1. Game ? NBC Pro Bug',
+    id: 'scene-game-nba2',
+    name: '1. Game — Main NBA Scorebug 2 (/nbaoverlay2)',
     sources: [
       {
-        id: 'src-cam-nbc',
+        id: 'src-cam-nba2',
         name: 'Court Camera',
         type: 'camera',
         visible: true,
@@ -23,25 +23,25 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
         facingMode: 'environment',
       },
       {
-        id: 'src-sb-nbc',
-        name: 'NBC Broadcast Scorebug (/nbc)',
+        id: 'src-sb-nba2',
+        name: 'Main NBA Scorebug 2 (/nbaoverlay2)',
         type: 'scoreboard',
         visible: true,
         locked: false,
-        x: 440,
-        y: 40,
-        width: 1040,
-        height: 116,
+        x: 658,
+        y: 934,
+        width: 604,
+        height: 106,
         opacity: 1,
         zIndex: 2,
-        theme: 'nbc',
+        theme: 'nbaoverlay2',
         scale: 1,
       },
     ],
   },
   {
     id: 'scene-game-fullscreen',
-    name: '2. Game ? Fullscreen Lower Third',
+    name: '2. Game — Fullscreen Lower Third',
     sources: [
       {
         id: 'src-cam-fullscreen',
@@ -77,7 +77,7 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
   },
   {
     id: 'scene-game-classic',
-    name: '3. Game ? Classic NBA Bug',
+    name: '3. Game — Classic NBA Bug',
     sources: [
       {
         id: 'src-cam-classic',
@@ -112,11 +112,11 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
     ],
   },
   {
-    id: 'scene-game-neon',
-    name: '4. Game ? Compact Neon Bug',
+    id: 'scene-game-nbc',
+    name: '4. Game — NBC Pro Broadcast Bug',
     sources: [
       {
-        id: 'src-cam-neon',
+        id: 'src-cam-nbc',
         name: 'Court Camera',
         type: 'camera',
         visible: true,
@@ -131,25 +131,25 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
         facingMode: 'environment',
       },
       {
-        id: 'src-sb-neon',
-        name: 'Compact Neon Bug (/nbaoverlay2)',
+        id: 'src-sb-nbc',
+        name: 'NBC Broadcast Scorebug (/nbc)',
         type: 'scoreboard',
         visible: true,
         locked: false,
-        x: 50,
+        x: 440,
         y: 40,
-        width: 480,
-        height: 90,
+        width: 1040,
+        height: 116,
         opacity: 1,
         zIndex: 2,
-        theme: 'nba_neon',
+        theme: 'nbc',
         scale: 1,
       },
     ],
   },
   {
     id: 'scene-custom-overlay',
-    name: '2. Custom Vercel URL Overlay',
+    name: '5. Custom Vercel URL Overlay',
     sources: [
       {
         id: 'src-cam-overlay',
@@ -172,7 +172,7 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
         type: 'browser_url',
         visible: true,
         locked: false,
-        url: '/scoreboard',
+        url: 'https://scoreboard.hoopculture.ca/nbaoverlay2?user=isidro.pascua%40gmail.com',
         x: 0,
         y: 0,
         width: 1920,
@@ -185,7 +185,7 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
   },
   {
     id: 'scene-intro',
-    name: '3. Pregame Intro',
+    name: '6. Pregame Intro',
     sources: [
       {
         id: 'src-bg-intro',
@@ -347,7 +347,7 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
   },
   {
     id: 'scene-halftime',
-    name: '5. Halftime Intermission',
+    name: '7. Halftime Intermission',
     sources: [
       {
         id: 'src-bg-halftime',

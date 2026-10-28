@@ -171,15 +171,15 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setLocalSource({ ...localSource, theme: 'nbc', width: 1040, height: 116, x: (1920 - 1040) / 2, y: 40 })}
+                  onClick={() => setLocalSource({ ...localSource, theme: 'nbaoverlay2', width: 604, height: 106, x: 658, y: 934 })}
                   className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
-                    localSource.theme === 'nbc'
-                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                    localSource.theme === 'nbaoverlay2' || localSource.theme === 'nba_neon'
+                      ? 'border-emerald-500 bg-emerald-950/40 text-white'
                       : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <span className="font-extrabold text-xs text-orange-400">1. NBC Pro Broadcast Bug</span>
-                  <span className="text-[10px] text-slate-400">Official /nbc segmented bug with team colors, logo crests & shot clock</span>
+                  <span className="font-extrabold text-xs text-emerald-400">★ 1. NBA Scorebug 2 (/nbaoverlay2)</span>
+                  <span className="text-[10px] text-slate-400">Official Hoop Culture bottom pill with dual logos, Teko font & fouls</span>
                 </button>
 
                 <button
@@ -210,15 +210,15 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setLocalSource({ ...localSource, theme: 'nba_neon', width: 480, height: 90, x: 50, y: 40 })}
+                  onClick={() => setLocalSource({ ...localSource, theme: 'nbc', width: 1040, height: 116, x: (1920 - 1040) / 2, y: 40 })}
                   className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
-                    localSource.theme === 'nba_neon'
+                    localSource.theme === 'nbc'
                       ? 'border-orange-500 bg-orange-950/40 text-white'
                       : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <span className="font-extrabold text-xs text-purple-400">4. Compact Neon Bug</span>
-                  <span className="text-[10px] text-slate-400">Minimalist corner scorebug (/nbaoverlay2) with neon dots</span>
+                  <span className="font-extrabold text-xs text-orange-400">4. NBC Pro Broadcast Bug</span>
+                  <span className="text-[10px] text-slate-400">Segmented top bug (/nbc) with team colors & shot clock</span>
                 </button>
               </div>
 

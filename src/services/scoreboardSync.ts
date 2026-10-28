@@ -105,8 +105,8 @@ export function normalizeScoreboardState(raw: any, syncSource: ScoreboardState['
     // Extra styling attributes from HoopCultureScoreboard
     homeColor: raw.homeColor || '#f5c842',
     awayColor: raw.awayColor || '#c8102e',
-    homeLogo: raw.homeLogoThumb || raw.homeLogo || null,
-    awayLogo: raw.awayLogoThumb || raw.awayLogo || null,
+    homeLogo: raw.homeLogo || raw.homeLogoThumb || null,
+    awayLogo: raw.awayLogo || raw.awayLogoThumb || null,
     homeAbbr: raw.homeAbbr || raw.homeTeam || 'HOME',
     awayAbbr: raw.awayAbbr || raw.awayTeam || 'AWAY',
     quarter: Number(raw.quarter ?? raw.period) || 1,

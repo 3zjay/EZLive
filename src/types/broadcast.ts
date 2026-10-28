@@ -80,10 +80,11 @@ export interface TextSource extends BaseSource {
 }
 
 export type ScoreboardTheme =
-  | 'nbc'            // Theme 1: NBC / NBA Pro Broadcast Bug (/nbc)
-  | 'nba_classic'    // Theme 2: Classic NBA Scorebug (/nbaoverlay)
-  | 'nba_neon'       // Theme 3: Compact Neon Bug (/nbaoverlay2)
-  | 'fullscreen_bar' // Theme 4: Full-Width Lower Third Bar (/fullscreen)
+  | 'nbaoverlay2'    // Primary Theme: Main NBA Scorebug 2 (/nbaoverlay2)
+  | 'nbc'            // NBC / NBA Pro Broadcast Bug (/nbc)
+  | 'nba_classic'    // Classic NBA Scorebug (/nbaoverlay)
+  | 'nba_neon'       // Compact Neon Bug (alias for nbaoverlay2)
+  | 'fullscreen_bar' // Full-Width Lower Third Bar (/fullscreen)
   | 'espn'           // Legacy fallback
   | 'hooptimes'      // Legacy fallback
   | 'minimal';       // Legacy fallback

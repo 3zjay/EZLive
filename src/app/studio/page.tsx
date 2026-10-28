@@ -28,21 +28,28 @@ import { useAuth } from '@/context/AuthContext';
 import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown, Zap } from 'lucide-react';
 
 const INITIAL_SCOREBOARD: ScoreboardState = {
-  homeTeam: 'Lakers',
-  awayTeam: 'Warriors',
-  homeScore: 84,
-  awayScore: 82,
+  homeTeam: "RICKY D'S",
+  awayTeam: 'HARINA',
+  homeScore: 65,
+  awayScore: 69,
   period: 4,
-  gameClock: '02:45',
+  quarter: 4,
+  gameClock: '10:00',
+  gameSeconds: 600,
   isClockRunning: false,
-  shotClock: 24,
-  homeFouls: 4,
-  awayFouls: 3,
+  shotClock: 15,
+  shotSeconds: 15,
+  homeFouls: 0,
+  awayFouls: 0,
   homeTimeouts: 2,
-  awayTimeouts: 3,
+  awayTimeouts: 2,
+  homeColor: '#ffc800',
+  awayColor: '#b4283c',
+  homeAbbr: "RICKY D'S",
+  awayAbbr: 'HARINA',
   bannerText: 'HOOP CULTURE BASKETBALL LEAGUE • LIVE COURT BROADCAST',
   sponsorName: 'HOOP CULTURE MEDIA',
-  possession: 'home',
+  possession: 'none',
 };
 
 const DEFAULT_SETTINGS: StreamSettings = {

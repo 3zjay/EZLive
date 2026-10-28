@@ -374,11 +374,12 @@ export class VideoCompositor {
 
     const sbSource = source as ScoreboardSource;
     switch (sbSource.theme) {
+      case 'nbaoverlay2':
+      case 'nba_neon':
+        this.drawNbaOverlay2Theme(sbSource);
+        break;
       case 'fullscreen_bar':
         this.drawFullscreenBarTheme(sbSource);
-        break;
-      case 'nba_neon':
-        this.drawNbaNeonTheme(sbSource);
         break;
       case 'nba_classic':
         this.drawNbaClassicTheme(sbSource);
@@ -388,6 +389,14 @@ export class VideoCompositor {
         this.drawNbcTheme(sbSource);
         break;
     }
+  }
+
+  private darkenColor(hex: string, pct = 0.5): string {
+    if (!hex || hex[0] !== '#' || hex.length < 7) return '#111111';
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgb(${Math.round(r * pct)}, ${Math.round(g * pct)}, ${Math.round(b * pct)})`;
   }
 
   private getOrLoadImage(url?: string | null): HTMLImageElement | null {
@@ -693,67 +702,231 @@ export class VideoCompositor {
     ctx.restore();
   }
 
-  // ?? THEME 3: Compact Neon Bug 2 (/nbaoverlay2) ?????????????????????????????
-  private drawNbaNeonTheme(source: ScoreboardSource) {
+  // --- THEME 1 / MAIN OVERLAY: NBA Scorebug 2 (/nbaoverlay2) ---
+  // Exact 1:1 pixel-perfect replica of https://scoreboard.hoopculture.ca/nbaoverlay2
+  private drawNbaOverlay2Theme(source: ScoreboardSource) {
     const { ctx } = this;
     const sb = this.scoreboard;
     const scale = source.scale || 1;
-    const barWidth = source.width || 480 * scale;
-    const barHeight = source.height || 90 * scale;
-    const barX = source.x;
-    const barY = source.y;
-    const radius = 8 * scale;
+
+    // Height in CSS is 5.5vw. On 1920 width, 1vw = 19.2px -> 5.5vw = ~106px
+    const barHeight = Math.round((source.height || 106) * scale);
+    const radius = Math.round(10 * scale);
+
+    const homeColor = sb.homeColor || '#f5c842';
+    const awayColor = sb.awayColor || '#b4283c';
+
+    // Segment widths proportional to basketball-nbaoverlay2.html
+    const logoW = Math.round(116 * scale);
+    const scoreW = Math.round(96 * scale);
+    const infoW = Math.round(180 * scale);
+    const totalW = logoW + scoreW + logoW + scoreW + infoW; // ~604px
+
+    // Placement: centered horizontally by default, bottom margin 38px (bottom: 2vw in CSS)
+    const barX = source.x !== undefined ? source.x : Math.round((this.width - totalW) / 2);
+    const barY = source.y !== undefined ? source.y : Math.round(this.height - barHeight - (38 * scale));
 
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 16 * scale;
 
-    ctx.fillStyle = 'rgba(8, 10, 16, 0.96)';
-    this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
+    // 1. Box Shadow (0 0.4vw 2.5vw rgba(0,0,0,0.85))
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+    ctx.shadowBlur = Math.round(25 * scale);
+    ctx.shadowOffsetY = Math.round(8 * scale);
+
+    // Rounded Pill Base
+    ctx.beginPath();
+    this.roundRect(ctx, barX, barY, totalW, barHeight, radius);
+    ctx.fillStyle = '#16202e';
     ctx.fill();
     ctx.shadowColor = 'transparent';
 
-    ctx.strokeStyle = 'rgba(255, 107, 26, 0.4)';
-    ctx.lineWidth = 1.5 * scale;
-    this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
-    ctx.stroke();
+    // Clip to rounded pill container
+    ctx.save();
+    ctx.beginPath();
+    this.roundRect(ctx, barX, barY, totalW, barHeight, radius);
+    ctx.clip();
 
-    const colW = barWidth / 3;
+    let curX = barX;
 
-    // Home
+    // --- SEGMENT 1: HOME LOGO (darkened home color) ---
+    const hDarkBg = this.darkenColor(homeColor, 0.35);
+    ctx.fillStyle = hDarkBg;
+    ctx.fillRect(curX, barY, logoW, barHeight);
+
+    // Right border with homeColor accent (0.18vw solid ${homeColor}88)
+    ctx.fillStyle = homeColor + '88';
+    ctx.fillRect(curX + logoW - Math.round(3.5 * scale), barY, Math.round(3.5 * scale), barHeight);
+
+    // Home Logo Image
+    const homeLogoImg = this.getOrLoadImage(sb.homeLogo);
+    if (homeLogoImg && homeLogoImg.complete && homeLogoImg.naturalWidth > 0) {
+      const maxDim = Math.round(102 * scale);
+      const aspect = homeLogoImg.naturalWidth / homeLogoImg.naturalHeight;
+      let drawW = maxDim;
+      let drawH = maxDim;
+      if (aspect > 1) {
+        drawH = maxDim / aspect;
+      } else {
+        drawW = maxDim * aspect;
+      }
+      const imgX = curX + (logoW - drawW) / 2;
+      const imgY = barY + (barHeight - drawH) / 2;
+      ctx.drawImage(homeLogoImg, imgX, imgY, drawW, drawH);
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.font = `700 ${Math.round(10 * scale)}px 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LOGO', curX + logoW / 2, barY + barHeight / 2);
+    }
+    curX += logoW;
+
+    // --- SEGMENT 2: HOME SCORE BLOCK (homeColor background) ---
+    ctx.fillStyle = homeColor;
+    ctx.fillRect(curX, barY, scoreW, barHeight);
+
+    // Possession Dot (0.4vw dot with white glow)
+    if (sb.possession === 'home') {
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 6 * scale;
+      ctx.beginPath();
+      ctx.arc(curX + (12 * scale), barY + (20 * scale), 4 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+    }
+
+    // Score Number (Teko 700 bold, 3.6vw = 69px)
     ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(22 * scale)}px sans-serif`;
+    ctx.font = `700 ${Math.round(69 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(sb.homeTeam.slice(0, 4).toUpperCase(), barX + colW / 2, barY + barHeight * 0.42);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`${sb.homeScore}`, curX + scoreW / 2, barY + Math.round(barHeight * 0.70));
 
-    ctx.fillStyle = '#ff8c42';
-    ctx.font = `900 ${Math.round(34 * scale)}px monospace`;
-    ctx.fillText(`${sb.homeScore}`, barX + colW / 2, barY + barHeight * 0.84);
+    // Fouls Label (0.62vw = 12px, font-weight 800)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.font = `800 ${Math.round(12 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`FOULS: ${sb.homeFouls || 0}`, curX + scoreW / 2, barY + Math.round(barHeight * 0.88));
+    curX += scoreW;
 
-    // Center Clock & Shot
-    const cX = barX + colW;
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = `bold ${Math.round(13 * scale)}px sans-serif`;
-    ctx.fillText(`Q${sb.period} ? SHOT ${sb.shotClock}`, cX + colW / 2, barY + barHeight * 0.40);
+    // --- SEGMENT 3: CENTER DIVIDER / AWAY LOGO (darkened away color) ---
+    const aDarkBg = this.darkenColor(awayColor, 0.35);
+    ctx.fillStyle = aDarkBg;
+    ctx.fillRect(curX, barY, logoW, barHeight);
 
-    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
-    ctx.font = `900 ${Math.round(28 * scale)}px monospace`;
-    ctx.fillText(sb.gameClock, cX + colW / 2, barY + barHeight * 0.82);
+    // Left and Right Borders with awayColor accent (0.18vw solid ${awayColor}88)
+    ctx.fillStyle = awayColor + '88';
+    ctx.fillRect(curX, barY, Math.round(3.5 * scale), barHeight);
+    ctx.fillRect(curX + logoW - Math.round(3.5 * scale), barY, Math.round(3.5 * scale), barHeight);
 
-    // Away
-    const aX = cX + colW;
+    // Away Logo Image
+    const awayLogoImg = this.getOrLoadImage(sb.awayLogo);
+    if (awayLogoImg && awayLogoImg.complete && awayLogoImg.naturalWidth > 0) {
+      const maxDim = Math.round(102 * scale);
+      const aspect = awayLogoImg.naturalWidth / awayLogoImg.naturalHeight;
+      let drawW = maxDim;
+      let drawH = maxDim;
+      if (aspect > 1) {
+        drawH = maxDim / aspect;
+      } else {
+        drawW = maxDim * aspect;
+      }
+      const imgX = curX + (logoW - drawW) / 2;
+      const imgY = barY + (barHeight - drawH) / 2;
+      ctx.drawImage(awayLogoImg, imgX, imgY, drawW, drawH);
+    } else {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.font = `700 ${Math.round(10 * scale)}px 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LOGO', curX + logoW / 2, barY + barHeight / 2);
+    }
+    curX += logoW;
+
+    // --- SEGMENT 4: AWAY SCORE BLOCK (awayColor background) ---
+    ctx.fillStyle = awayColor;
+    ctx.fillRect(curX, barY, scoreW, barHeight);
+
+    // Possession Dot (0.4vw dot with white glow)
+    if (sb.possession === 'away') {
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 6 * scale;
+      ctx.beginPath();
+      ctx.arc(curX + scoreW - (12 * scale), barY + (20 * scale), 4 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+    }
+
+    // Score Number (Teko 700 bold, 3.6vw = 69px)
     ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(22 * scale)}px sans-serif`;
-    ctx.fillText(sb.awayTeam.slice(0, 4).toUpperCase(), aX + colW / 2, barY + barHeight * 0.42);
+    ctx.font = `700 ${Math.round(69 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`${sb.awayScore}`, curX + scoreW / 2, barY + Math.round(barHeight * 0.70));
 
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = `900 ${Math.round(34 * scale)}px monospace`;
-    ctx.fillText(`${sb.awayScore}`, aX + colW / 2, barY + barHeight * 0.84);
+    // Fouls Label (0.62vw = 12px, font-weight 800)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.font = `800 ${Math.round(12 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`FOULS: ${sb.awayFouls || 0}`, curX + scoreW / 2, barY + Math.round(barHeight * 0.88));
+    curX += scoreW;
 
-    ctx.restore();
+    // --- SEGMENT 5: RIGHT INFO SEGMENT (#16202e) ---
+    ctx.fillStyle = '#16202e';
+    ctx.fillRect(curX, barY, infoW, barHeight);
+
+    const PERIODS = ['1ST', '2ND', '3RD', '4TH', 'OT', '2OT'];
+    const pIdx = (sb.quarter ?? sb.period) - 1;
+    const periodText = pIdx >= 0 && pIdx < PERIODS.length ? PERIODS[pIdx] : (sb.period > 0 ? `Q${sb.period}` : '1ST');
+
+    // Left sub-column: Period & Clock (stacked vertically, exact basketball-nbaoverlay2 layout)
+    const pX = curX + Math.round(25 * scale);
+
+    // Period Text (italic bold Barlow Condensed 900, 1.45vw = 28px)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `italic 900 ${Math.round(28 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(periodText, pX, barY + Math.round(barHeight * 0.42));
+
+    // Game Clock (Teko 700 tabular-nums, 2.3vw = 44px, directly underneath period)
+    ctx.fillStyle = (sb.gameSeconds !== undefined && sb.gameSeconds <= 30) ? '#ff5f5f' : '#ffffff';
+    ctx.font = `700 ${Math.round(44 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(sb.gameClock, pX, barY + Math.round(barHeight * 0.86));
+
+    // Vertical Divider Line (60% height, centered)
+    const divX = curX + Math.round(112 * scale);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+    ctx.fillRect(divX, barY + Math.round(barHeight * 0.20), 1, Math.round(barHeight * 0.60));
+
+    // Right sub-column: Shot Clock
+    const sX = curX + Math.round(146 * scale);
+
+    // SHOT Label (0.45vw = 9px, letter-spacing, uppercase)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.30)';
+    ctx.font = `800 ${Math.round(9 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('SHOT', sX, barY + Math.round(barHeight * 0.34));
+
+    // SHOT Number (Teko 700 tabular-nums, 2.9vw = 56px)
+    const shotSec = sb.shotSeconds !== undefined ? sb.shotSeconds : sb.shotClock;
+    ctx.fillStyle = shotSec <= 5 ? '#e84040' : '#f5c842';
+    ctx.font = `700 ${Math.round(56 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
+    ctx.fillText(`${shotSec}`, sX, barY + Math.round(barHeight * 0.86));
+
+    ctx.restore(); // restore clipping
+    ctx.restore(); // restore outer canvas state
   }
 
-  // ?? THEME 4: Full-Width Lower Third Bar (/fullscreen) ??????????????????????
+  // Backward compatibility alias
+  private drawNbaNeonTheme(source: ScoreboardSource) {
+    this.drawNbaOverlay2Theme(source);
+  }
+
+
   private drawFullscreenBarTheme(source: ScoreboardSource) {
     const { ctx } = this;
     const sb = this.scoreboard;
@@ -936,16 +1109,38 @@ export class VideoCompositor {
   private drawBrowserSourcePlaceholder(source: Source) {
     if (source.type !== 'browser_url') return;
     if (source.syncDataBridge) {
-      let theme: any = 'nbc';
+      let theme: any = 'nbaoverlay2';
       const u = (source.url || '').toLowerCase();
-      if (u.includes('fullscreen') || u.includes('overlay')) {
+      if (u.includes('nbaoverlay2')) {
+        theme = 'nbaoverlay2';
+      } else if (u.includes('fullscreen')) {
         theme = 'fullscreen_bar';
-      } else if (u.includes('nbaoverlay2')) {
-        theme = 'nba_neon';
       } else if (u.includes('nbaoverlay')) {
         theme = 'nba_classic';
       } else if (u.includes('nbc')) {
         theme = 'nbc';
+      }
+
+      let width = 604;
+      let height = 106;
+      let x = Math.round((this.width - width) / 2);
+      let y = Math.round(this.height - height - 38);
+
+      if (theme === 'fullscreen_bar') {
+        width = 1920;
+        height = 124;
+        x = 0;
+        y = 1080 - 124;
+      } else if (theme === 'nbc') {
+        width = 1040;
+        height = 116;
+        x = Math.round((this.width - width) / 2);
+        y = 40;
+      } else if (theme === 'nba_classic') {
+        width = 880;
+        height = 100;
+        x = Math.round((this.width - width) / 2);
+        y = 40;
       }
 
       const mockScoreboardSource: Source = {
@@ -954,10 +1149,10 @@ export class VideoCompositor {
         type: 'scoreboard',
         visible: true,
         locked: true,
-        x: source.x + (source.width - (theme === 'fullscreen_bar' ? 1920 : 1040)) / 2,
-        y: theme === 'fullscreen_bar' ? 1080 - 124 : source.y + 40,
-        width: theme === 'fullscreen_bar' ? 1920 : 1040,
-        height: theme === 'fullscreen_bar' ? 124 : 116,
+        x,
+        y,
+        width,
+        height,
         opacity: 1,
         zIndex: source.zIndex,
         theme,

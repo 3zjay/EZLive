@@ -38,7 +38,7 @@ export default function RootLayout({
         <meta name="apple-touch-fullscreen" content="yes" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&family=Teko:wght@600;700&display=swap" rel="stylesheet" />
       </head>
       <body className="min-h-screen w-full flex flex-col bg-[#080605] text-[#f2ede8]">
         <AuthProvider>
