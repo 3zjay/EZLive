@@ -69,9 +69,9 @@ export async function POST(req: NextRequest) {
         token = pageAccessToken || userAccessToken;
       }
 
-      if (!endpointId || !token) {
+      if (endpointId === 'page-hoopculture' || !endpointId || !token) {
         return NextResponse.json(
-          { error: `Missing ${targetType} ID or access token to create live video` },
+          { error: 'Invalid destination selected. Please select a valid Facebook Page or Group in Settings.' },
           { status: 400 }
         );
       }

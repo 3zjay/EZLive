@@ -71,8 +71,8 @@ const DEFAULT_SETTINGS: StreamSettings = {
     selectedGroupName: '',
     groupStreamKey: '',
     userToken: '',
-    selectedPageId: 'page-hoopculture',
-    selectedPageName: 'Hoop Culture Live',
+    selectedPageId: '',
+    selectedPageName: '',
     selectedPageToken: '',
     broadcastTitle: 'Hoop Culture Championship - Court 1',
     broadcastDescription: 'Streaming live directly from EZLiveStudio by HoopCulture',
@@ -229,6 +229,23 @@ export default function StudioPage() {
     mimeType: '',
   });
   const [isStreaming, setIsStreaming] = useState(false);
+
+  // Clean up any stale dummy IDs from previous sessions
+  useEffect(() => {
+    setSettings((prev) => {
+      if (prev.fbSettings?.selectedPageId === 'page-hoopculture') {
+        return {
+          ...prev,
+          fbSettings: {
+            ...prev.fbSettings,
+            selectedPageId: '',
+            selectedPageName: '',
+          },
+        };
+      }
+      return prev;
+    });
+  }, []);
 
   // Auto-pair Scoreboard & Overlays with logged-in user email or assigned court
   useEffect(() => {
@@ -910,11 +927,17 @@ export default function StudioPage() {
       // Case 2: Auto-connect to Facebook Group, Page, or Timeline via Graph API
       try {
         const targetType = fb?.destinationType || 'group';
-        const targetId = targetType === 'group' ? fb?.selectedGroupId : fb?.selectedPageId;
+        const targetId = targetType === 'group' ? fb?.selectedGroupId : targetType === 'page' ? fb?.selectedPageId : 'me';
 
         if (targetType === 'group' && !fb?.selectedGroupId) {
           setIsSettingsOpen(true);
-          alert('Please select a Facebook Group in Settings, or use "Group Stream Key" mode.');
+          alert('Please select your target Facebook Group in Settings, or switch to "Group Stream Key" mode.');
+          return;
+        }
+
+        if (targetType === 'page' && (!fb?.selectedPageId || fb.selectedPageId === 'page-hoopculture')) {
+          setIsSettingsOpen(true);
+          alert('Please select your Facebook Page in Settings.');
           return;
         }
 

@@ -549,7 +549,7 @@ const FacebookDestinationManager: React.FC<{
       const pageData = await pageRes.json();
       if (pageData.pages) {
         setPages(pageData.pages);
-        if (pageData.pages.length > 0 && !fb.selectedPageId) {
+        if (pageData.pages.length > 0 && (!fb.selectedPageId || fb.selectedPageId === 'page-hoopculture')) {
           setLocalSettings((prev) => ({
             ...prev,
             fbSettings: {
@@ -825,6 +825,7 @@ const FacebookDestinationManager: React.FC<{
                 }}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-semibold focus:outline-none focus:border-indigo-500"
               >
+                <option value="" disabled>-- Select a Facebook Group --</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
                     👥 {g.name} {g.administrator ? '(Admin)' : ''}
@@ -871,6 +872,7 @@ const FacebookDestinationManager: React.FC<{
                 }}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-semibold focus:outline-none focus:border-indigo-500"
               >
+                <option value="" disabled>-- Select a Facebook Page --</option>
                 {pages.map((p) => (
                   <option key={p.id} value={p.id}>
                     📄 {p.name} {p.category ? `(${p.category})` : ''}
