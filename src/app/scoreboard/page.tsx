@@ -58,8 +58,8 @@ export default function ScoreboardOverlayPage() {
     const interval = setInterval(() => {
       setScoreboard((prev) => {
         const parts = prev.gameClock.split(':');
-        let mins = parseInt(parts[0], 10) || 0;
-        let secs = parseInt(parts[1], 10) || 0;
+        const mins = parseInt(parts[0], 10) || 0;
+        const secs = parseInt(parts[1], 10) || 0;
 
         let totalSecs = mins * 60 + secs;
         if (totalSecs <= 0) {

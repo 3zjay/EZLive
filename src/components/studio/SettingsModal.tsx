@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Camera, Mic, Link as LinkIcon, Radio, ShieldAlert, Check, HelpCircle } from 'lucide-react';
+import { X, Camera, Link as LinkIcon, Radio, ShieldAlert, Check, HelpCircle } from 'lucide-react';
 import { StreamSettings } from '@/types/broadcast';
 
 interface SettingsModalProps {

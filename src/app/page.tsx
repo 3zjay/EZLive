@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { VideoCompositor } from '@/services/compositor';
 import { BroadcastRecorder, RecordingState } from '@/services/recorder';
 import { OverlayBridge } from '@/services/overlayBridge';
-import { SceneConfig, SceneType, ScoreboardState, StreamSettings } from '@/types/broadcast';
+import { SceneConfig, ScoreboardState, StreamSettings } from '@/types/broadcast';
 import { TopBar } from '@/components/studio/TopBar';
 import { PreviewStage } from '@/components/studio/PreviewStage';
 import { SceneSwitcher } from '@/components/studio/SceneSwitcher';
@@ -127,7 +127,6 @@ export default function BroadcastStudioPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState(true);
   const [showIframePreview, setShowIframePreview] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
 
   // Broadcast & Recording
   const [recordingState, setRecordingState] = useState<RecordingState>({
@@ -179,6 +178,39 @@ export default function BroadcastStudioPage() {
       bridge.destroy();
       comp.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Helper to setup Audio VU Meter
+  const setupAudioMeter = useCallback((stream: MediaStream) => {
+    try {
+      if (stream.getAudioTracks().length === 0) return;
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      audioContextRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      if (audioLevelInterval.current) clearInterval(audioLevelInterval.current);
+      audioLevelInterval.current = setInterval(() => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
+      }, 100);
+    } catch (e) {
+      console.warn('Audio meter setup warning:', e);
+    }
   }, []);
 
   // 2. Camera & Microphone Initialization
@@ -251,41 +283,14 @@ export default function BroadcastStudioPage() {
         console.error('Video only access also failed:', videoOnlyErr);
       }
     }
-  }, [settings.targetResolution]);
+  }, [settings.targetResolution, setupAudioMeter]);
 
-  const setupAudioMeter = (stream: MediaStream) => {
-    try {
-      if (stream.getAudioTracks().length === 0) return;
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioCtx();
-      audioContextRef.current = audioCtx;
-
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-      if (audioLevelInterval.current) clearInterval(audioLevelInterval.current);
-      audioLevelInterval.current = setInterval(() => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(dataArray);
-        let sum = 0;
-        for (let i = 0; i < dataArray.length; i++) {
-          sum += dataArray[i];
-        }
-        const avg = sum / dataArray.length;
-        setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
-      }, 100);
-    } catch (e) {
-      console.warn('Audio meter setup warning:', e);
-    }
-  };
-
+  const hasInitiatedCamera = useRef(false);
   useEffect(() => {
-    startCamera(facingMode);
+    if (!hasInitiatedCamera.current) {
+      hasInitiatedCamera.current = true;
+      startCamera(facingMode);
+    }
     return () => {
       if (audioLevelInterval.current) clearInterval(audioLevelInterval.current);
       if (mediaStreamRef.current) {
@@ -328,8 +333,8 @@ export default function BroadcastStudioPage() {
     const interval = setInterval(() => {
       setScoreboard((prev) => {
         const parts = prev.gameClock.split(':');
-        let mins = parseInt(parts[0], 10) || 0;
-        let secs = parseInt(parts[1], 10) || 0;
+        const mins = parseInt(parts[0], 10) || 0;
+        const secs = parseInt(parts[1], 10) || 0;
         let total = mins * 60 + secs;
         if (total <= 0) {
           const ended = { ...prev, isClockRunning: false, gameClock: '00:00' };
@@ -415,7 +420,7 @@ export default function BroadcastStudioPage() {
           overlayUrl={settings.overlayUrl}
           showIframePreview={showIframePreview}
           onToggleIframePreview={() => setShowIframePreview(!showIframePreview)}
-          onRefreshIframe={() => setIframeKey((k) => k + 1)}
+          onRefreshIframe={() => {}}
         />
 
         {/* Live Scoreboard Operator Controller (Right Side on Tablet) */}

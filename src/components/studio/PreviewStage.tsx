@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Maximize2, Minimize2, Grid, Eye, RefreshCw, ExternalLink } from 'lucide-react';
+import { Maximize2, Minimize2, Grid, Eye, RefreshCw } from 'lucide-react';
 import { SceneConfig } from '@/types/broadcast';
 
 interface PreviewStageProps {

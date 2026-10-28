@@ -87,16 +87,23 @@ export class VideoCompositor {
 
   public getCompositeStream(micStream: MediaStream | null): MediaStream {
     // Capture stream from canvas at desired FPS
-    const canvasStream = (this.canvas as any).captureStream
-      ? this.canvas.captureStream(this.targetFps)
-      : (this.canvas as any).mozCaptureStream(this.targetFps);
+    const canvasWithCapture = this.canvas as HTMLCanvasElement & {
+      captureStream?(fps?: number): MediaStream;
+      mozCaptureStream?(fps?: number): MediaStream;
+    };
+
+    const canvasStream = canvasWithCapture.captureStream
+      ? canvasWithCapture.captureStream(this.targetFps)
+      : canvasWithCapture.mozCaptureStream
+        ? canvasWithCapture.mozCaptureStream(this.targetFps)
+        : new MediaStream();
 
     const videoTrack = canvasStream.getVideoTracks()[0];
 
     // If microphone audio is available, mix it into the stream
     if (micStream && micStream.getAudioTracks().length > 0) {
       try {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         this.audioContext = new AudioCtx();
         this.audioSourceNode = this.audioContext.createMediaStreamSource(micStream);
         this.audioDestinationNode = this.audioContext.createMediaStreamDestination();

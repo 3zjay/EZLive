@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Camera, Mic, Radio, Circle, Settings, Download, Volume2, Video } from 'lucide-react';
+import { Camera, Mic, Radio, Circle, Settings, Download, Video } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 
 interface TopBarProps {
