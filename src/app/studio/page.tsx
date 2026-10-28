@@ -126,6 +126,18 @@ export default function StudioPage() {
   const recorderRef = useRef<BroadcastRecorder | null>(null);
   const streamingSocketRef = useRef<WebSocket | null>(null);
   const streamingRecorderRef = useRef<MediaRecorder | null>(null);
+  const isStreamingRef = useRef(false);
+
+  // Relay Telemetry State (bytes sent & live status)
+  const [relayStats, setRelayStats] = useState<{
+    connected: boolean;
+    mbSent: string;
+    status: 'idle' | 'connecting' | 'streaming' | 'error';
+  }>({
+    connected: false,
+    mbSent: '0.00',
+    status: 'idle',
+  });
 
   const startRelayPipeline = (targetRtmps: string, targetKey: string) => {
     try {
@@ -137,6 +149,8 @@ export default function StudioPage() {
         return;
       }
 
+      setRelayStats({ connected: false, mbSent: '0.00', status: 'connecting' });
+
       const cleanRelay = relayUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').replace(/\/$/, '');
       const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${cleanRelay}/live?rtmpsUrl=${encodeURIComponent(targetRtmps)}&streamKey=${encodeURIComponent(targetKey)}`;
@@ -147,6 +161,8 @@ export default function StudioPage() {
 
       ws.onopen = () => {
         console.log('📡 Connected to EZLive Cloud Relay! Streaming canvas to Facebook Live...');
+        setRelayStats((prev) => ({ ...prev, connected: true, status: 'streaming' }));
+
         try {
           let mime = 'video/webm';
           if (typeof MediaRecorder !== 'undefined') {
@@ -163,7 +179,7 @@ export default function StudioPage() {
 
           const rec = new MediaRecorder(compositeStream, {
             mimeType: mime,
-            videoBitsPerSecond: 3500000,
+            videoBitsPerSecond: 3000000,
             audioBitsPerSecond: 128000,
           });
 
@@ -178,22 +194,54 @@ export default function StudioPage() {
           streamingRecorderRef.current = rec;
         } catch (recErr) {
           console.error('Failed to start MediaRecorder for streaming relay:', recErr);
+          setRelayStats((prev) => ({ ...prev, status: 'error' }));
         }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'HEARTBEAT') {
+            setRelayStats({
+              connected: true,
+              mbSent: msg.mbReceived || '0.00',
+              status: 'streaming',
+            });
+          } else if (msg.type === 'STATUS') {
+            console.log('Relay status:', msg.message);
+          } else if (msg.type === 'FFMPEG_ERROR') {
+            console.warn('Relay warning from FFmpeg:', msg.message);
+          } else if (msg.type === 'FFMPEG_EXIT') {
+            console.error('Relay FFmpeg exit:', msg);
+            if (msg.code !== 0 && isStreamingRef.current) {
+              alert(`Stream interrupted (FFmpeg code ${msg.code}):\n${msg.message}\n\nPlease check Facebook Live Producer or Stream Key.`);
+              stopRelayPipeline();
+              setIsStreaming(false);
+              isStreamingRef.current = false;
+            }
+          }
+        } catch {}
       };
 
       ws.onerror = (e) => {
         console.warn('Streaming Relay note:', e);
+        setRelayStats((prev) => ({ ...prev, status: 'error' }));
       };
 
-      ws.onclose = () => {
-        console.log('Streaming Relay connection closed');
+      ws.onclose = (e) => {
+        console.log('Streaming Relay connection closed:', e.code, e.reason);
+        if (isStreamingRef.current) {
+          setRelayStats((prev) => ({ ...prev, connected: false, status: 'idle' }));
+        }
       };
     } catch (err) {
       console.error('startRelayPipeline error:', err);
+      setRelayStats((prev) => ({ ...prev, status: 'error' }));
     }
   };
 
   const stopRelayPipeline = () => {
+    isStreamingRef.current = false;
     if (streamingRecorderRef.current) {
       try {
         if (streamingRecorderRef.current.state !== 'inactive') {
@@ -208,6 +256,7 @@ export default function StudioPage() {
       } catch (e) {}
       streamingSocketRef.current = null;
     }
+    setRelayStats({ connected: false, mbSent: '0.00', status: 'idle' });
   };
   const bridgeRef = useRef<OverlayBridge | null>(null);
 
@@ -218,12 +267,32 @@ export default function StudioPage() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioLevelInterval = useRef<NodeJS.Timeout | null>(null);
 
-  // State: Core OBS & Streamlabs
+  // State: Core OBS & Streamlabs (persisted in browser storage)
   const [scenes, setScenes] = useState<Scene[]>(() => SceneStorage.loadScenes() || DEFAULT_OBS_SCENES);
   const [activeSceneId, setActiveSceneId] = useState<string>(() => scenes[0]?.id || 'scene-game');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardState>(INITIAL_SCOREBOARD);
-  const [settings, setSettings] = useState<StreamSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<StreamSettings>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('ezlive_settings_v1');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          return { ...DEFAULT_SETTINGS, ...parsed };
+        }
+      } catch {}
+    }
+    return DEFAULT_SETTINGS;
+  });
+
+  const handleSaveSettings = (newSettings: StreamSettings) => {
+    setSettings(newSettings);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('ezlive_settings_v1', JSON.stringify(newSettings));
+      } catch {}
+    }
+  };
 
   // Streamlabs Add-ons
   const [stageLayout, setStageLayout] = useState<StageLayout>('solo');
@@ -527,6 +596,7 @@ export default function StudioPage() {
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       if (audioLevelInterval.current) clearInterval(audioLevelInterval.current);
+      let lastLevel = 0;
       audioLevelInterval.current = setInterval(() => {
         if (!analyserRef.current) return;
         analyserRef.current.getByteFrequencyData(dataArray);
@@ -535,8 +605,13 @@ export default function StudioPage() {
           sum += dataArray[i];
         }
         const avg = sum / dataArray.length;
-        setAudioLevel(Math.min(100, Math.round((avg / 128) * 100)));
-      }, 100);
+        const newLevel = Math.min(100, Math.round((avg / 128) * 100));
+        // Throttled delta update prevents 10Hz React DOM layout thrashing and canvas flickering
+        if (Math.abs(newLevel - lastLevel) >= 12 || (newLevel === 0 && lastLevel > 0)) {
+          lastLevel = newLevel;
+          setAudioLevel(newLevel);
+        }
+      }, 300);
     } catch (e) {
       console.warn('Audio meter setup warning:', e);
     }
@@ -990,10 +1065,12 @@ export default function StudioPage() {
       }
       stopRelayPipeline();
       setIsStreaming(false);
-      setSettings((prev) => ({
-        ...prev,
-        fbSettings: prev.fbSettings ? { ...prev.fbSettings, activeLiveVideoId: undefined } : prev.fbSettings,
-      }));
+      isStreamingRef.current = false;
+      const updatedEnd: StreamSettings = {
+        ...settings,
+        fbSettings: settings.fbSettings ? { ...settings.fbSettings, activeLiveVideoId: undefined } : settings.fbSettings,
+      };
+      handleSaveSettings(updatedEnd);
     } else {
       // Starting stream
       const fb = settings.fbSettings;
@@ -1009,6 +1086,7 @@ export default function StudioPage() {
         }
         startRelayPipeline(settings.rtmpsUrl, key);
         setIsStreaming(true);
+        isStreamingRef.current = true;
         return;
       }
 
@@ -1051,26 +1129,28 @@ export default function StudioPage() {
           return;
         }
 
-        setSettings((prev) => ({
-          ...prev,
-          rtmpsUrl: data.secure_stream_url || prev.rtmpsUrl,
-          streamKey: data.stream_key || prev.streamKey,
-          fbSettings: prev.fbSettings
+        const updatedStart: StreamSettings = {
+          ...settings,
+          rtmpsUrl: data.secure_stream_url || settings.rtmpsUrl,
+          streamKey: data.stream_key || settings.streamKey,
+          fbSettings: settings.fbSettings
             ? {
-                ...prev.fbSettings,
+                ...settings.fbSettings,
                 activeLiveVideoId: data.id,
                 permalinkUrl: data.permalink_url,
               }
-            : prev.fbSettings,
-        }));
+            : settings.fbSettings,
+        };
+        handleSaveSettings(updatedStart);
 
-        const liveRtmps = data.secure_stream_url ? 'rtmps://live-api-s.facebook.com:443/rtmp/' : settings.rtmpsUrl;
+        const liveRtmps = data.secure_stream_url || settings.rtmpsUrl;
         const liveKey = data.stream_key || settings.streamKey;
         startRelayPipeline(liveRtmps, liveKey);
         setIsStreaming(true);
+        isStreamingRef.current = true;
       } catch (err: any) {
         console.error('Failed to initiate Facebook Live:', err);
-        setIsStreaming(true);
+        alert(`Failed to start Facebook Live: ${err?.message || err}`);
       }
     }
   };
@@ -1122,6 +1202,7 @@ export default function StudioPage() {
         isScreenSharing={isScreenSharing}
         fps={fps}
         destinations={destinations}
+        relayStats={relayStats}
         onToggleRecording={handleToggleRecording}
         onDownloadRecording={handleDownloadRecording}
         onToggleStreaming={handleToggleStreaming}
@@ -1282,7 +1363,7 @@ export default function StudioPage() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        onSaveSettings={setSettings}
+        onSaveSettings={handleSaveSettings}
         videoDevices={videoDevices}
         audioDevices={audioDevices}
         selectedVideoDeviceId={selectedVideoDeviceId}

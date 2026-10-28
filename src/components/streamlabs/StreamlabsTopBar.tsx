@@ -52,6 +52,7 @@ interface StreamlabsTopBarProps {
   assignedCourt?: string;
   onUpdateAssignedCourt?: (court: string) => void;
   courtOptions?: string[];
+  relayStats?: { connected: boolean; mbSent: string; status: string };
 }
 
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
@@ -62,6 +63,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   isScreenSharing,
   fps,
   destinations,
+  relayStats,
   onToggleRecording,
   onDownloadRecording,
   onToggleStreaming,
@@ -295,14 +297,20 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
         {/* GO LIVE BUTTON */}
         <button
           onClick={onToggleStreaming}
-          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-black tracking-wide transition shadow-lg active:scale-95 ${
+          className={`flex items-center gap-1.5 px-3 sm:px-4 py-1.5 rounded-lg text-xs font-black tracking-wide transition shadow-lg active:scale-95 ${
             isStreaming
               ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse shadow-rose-950/60'
               : 'bg-gradient-to-r from-[#ff6b1a] to-[#e8430a] hover:from-[#ff8533] hover:to-[#ff5714] text-white shadow-[#e8430a]/30'
           }`}
         >
           <Radio size={13} />
-          <span>{isStreaming ? 'END LIVE' : 'GO LIVE'}</span>
+          <span>
+            {isStreaming
+              ? relayStats && parseFloat(relayStats.mbSent) > 0
+                ? `LIVE • ${relayStats.mbSent} MB`
+                : 'END LIVE'
+              : 'GO LIVE'}
+          </span>
         </button>
 
         {/* Operator Profile / Login Button */}

@@ -135,7 +135,16 @@ export class VideoCompositor {
     }
   }
 
-  public getCompositeStream(micStream: MediaStream | null): MediaStream {
+  public getCompositeStream(micStream?: MediaStream | null): MediaStream {
+    // If previous compositeStream tracks are still active and have audio, reuse
+    if (this.compositeStream) {
+      const vTrack = this.compositeStream.getVideoTracks()[0];
+      const aTrack = this.compositeStream.getAudioTracks()[0];
+      if (vTrack && vTrack.readyState === 'live' && aTrack && aTrack.readyState === 'live') {
+        return this.compositeStream;
+      }
+    }
+
     const canvasWithCapture = this.canvas as HTMLCanvasElement & {
       captureStream?(fps?: number): MediaStream;
       mozCaptureStream?(fps?: number): MediaStream;
@@ -148,28 +157,36 @@ export class VideoCompositor {
         : new MediaStream();
 
     const videoTrack = canvasStream.getVideoTracks()[0];
+    const tracks: MediaStreamTrack[] = [videoTrack];
 
     if (micStream && micStream.getAudioTracks().length > 0) {
+      // Direct track addition avoids AudioContext suspension on mobile iOS Safari / Android Chrome
+      tracks.push(micStream.getAudioTracks()[0]);
+    } else {
+      // Generate synthetic silent audio track so MediaRecorder and Facebook Live RTMP always have audio
       try {
         const AudioCtx =
           window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        this.audioContext = new AudioCtx();
-        this.audioSourceNode = this.audioContext.createMediaStreamSource(micStream);
-        this.audioDestinationNode = this.audioContext.createMediaStreamDestination();
-        this.audioSourceNode.connect(this.audioDestinationNode);
-
-        const mixedAudioTrack = this.audioDestinationNode.stream.getAudioTracks()[0];
-        this.compositeStream = new MediaStream([videoTrack, mixedAudioTrack]);
+        const ctx = new AudioCtx();
+        ctx.resume().catch(() => {});
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0; // complete silence
+        osc.connect(gain);
+        const dest = ctx.createMediaStreamDestination();
+        gain.connect(dest);
+        osc.start();
+        const silentTrack = dest.stream.getAudioTracks()[0];
+        if (silentTrack) {
+          tracks.push(silentTrack);
+        }
       } catch (err) {
-        console.warn('AudioContext mixing error, falling back to direct track addition:', err);
-        const micAudioTrack = micStream.getAudioTracks()[0];
-        this.compositeStream = new MediaStream([videoTrack, micAudioTrack]);
+        console.warn('AudioContext silent fallback error:', err);
       }
-    } else {
-      this.compositeStream = new MediaStream([videoTrack]);
     }
 
+    this.compositeStream = new MediaStream(tracks);
     return this.compositeStream;
   }
 
@@ -275,7 +292,11 @@ export class VideoCompositor {
     if (source.type !== 'camera') return;
     const { ctx } = this;
 
-    if (!this.videoElement || this.videoElement.readyState < 2) {
+    const hasCameraFeed =
+      this.videoElement &&
+      (this.videoElement.videoWidth > 0 || this.videoElement.readyState >= 2);
+
+    if (!this.videoElement || !hasCameraFeed) {
       ctx.fillStyle = '#090d16';
       ctx.fillRect(source.x, source.y, source.width, source.height);
       ctx.fillStyle = '#334155';

@@ -13,7 +13,7 @@ interface PreviewStageProps {
   onUpdateSourceTransform: (id: string, update: { x: number; y: number; width: number; height: number }) => void;
 }
 
-export const PreviewStage: React.FC<PreviewStageProps> = ({
+const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   canvasRef,
   videoRef,
   activeScene,
@@ -147,7 +147,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
       className="relative flex-1 bg-black flex items-center justify-center overflow-hidden select-none"
       onClick={() => onSelectSource(null)}
     >
-      {/* Hidden Source Video Element (keeps decoding frames actively on iOS Safari WebKit) */}
+      {/* Hidden Source Video Element (keeps decoding frames actively on Android Blink / iOS Safari WebKit) */}
       <video
         ref={videoRef}
         playsInline
@@ -155,13 +155,13 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
         autoPlay
         style={{
           position: 'absolute',
-          width: '1px',
-          height: '1px',
-          opacity: 0.001,
+          width: '100%',
+          height: '100%',
+          opacity: 0.0001,
           pointerEvents: 'none',
           top: 0,
           left: 0,
-          zIndex: -50,
+          zIndex: 0,
         }}
       />
 
@@ -181,8 +181,12 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
         />
 
         {/* Live Browser Source (Vercel URL Overlays) Layered on Stage */}
+        {/* Only mount DOM iframe if source is NOT already composited on canvas via syncDataBridge */}
         {sources
-          .filter((s): s is Extract<Source, { type: 'browser_url' }> => s.type === 'browser_url' && s.visible)
+          .filter(
+            (s): s is Extract<Source, { type: 'browser_url' }> =>
+              s.type === 'browser_url' && s.visible && !s.syncDataBridge
+          )
           .map((source) => (
             <div
               key={source.id}
@@ -312,3 +316,5 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
     </div>
   );
 };
+
+export const PreviewStage = React.memo(PreviewStageComponent);

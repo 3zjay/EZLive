@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install official ffmpeg
-RUN apk add --no-cache ffmpeg
+# Install official ffmpeg and ca-certificates for RTMPS TLS
+RUN apk add --no-cache ffmpeg ca-certificates
 
 WORKDIR /app
 
