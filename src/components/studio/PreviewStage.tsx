@@ -180,26 +180,21 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           className="w-full h-full object-contain pointer-events-none" style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
         />
 
-        {/* Live Browser Source (Vercel URL Overlays) Layered on Stage */}
-        {/* Only mount DOM iframe if source is NOT already composited on canvas via syncDataBridge */}
+        {/* Official Hoop Culture Scoreboard Overlays Layered on Stage */}
         {sources
           .filter(
             (s): s is Extract<Source, { type: 'browser_url' }> =>
-              s.type === 'browser_url' && s.visible && !s.syncDataBridge
+              s.type === 'browser_url' && s.visible
           )
           .map((source) => (
             <div
               key={source.id}
-              className="absolute pointer-events-none"
+              className="absolute pointer-events-none inset-0 w-full h-full"
               style={{
-                left: toPercent(source.x, 1920),
-                top: toPercent(source.y, 1080),
-                width: toPercent(source.width, 1920),
-                height: toPercent(source.height, 1080),
                 opacity: source.opacity,
                 zIndex: source.zIndex + 10,
-                transform: "translateZ(0)",
-                backfaceVisibility: "hidden",
+                transform: 'translateZ(0)',
+                backfaceVisibility: 'hidden',
               }}
             >
               <iframe

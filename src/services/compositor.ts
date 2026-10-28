@@ -3,7 +3,15 @@ import { BrandKit, ChatMessage, NewsTickerConfig, StageLayout, StreamlabsBanner 
 
 export class VideoCompositor {
   private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
+  private previewCtx: CanvasRenderingContext2D;
+  private streamCanvas: HTMLCanvasElement;
+  private streamCtx: CanvasRenderingContext2D;
+  private activeCtx: CanvasRenderingContext2D;
+
+  private get ctx(): CanvasRenderingContext2D {
+    return this.activeCtx;
+  }
+
   private videoElement: HTMLVideoElement | null = null;
   private screenShareElement: HTMLVideoElement | null = null;
   private animationFrameId: number | null = null;
@@ -25,12 +33,12 @@ export class VideoCompositor {
   private audioDestinationNode: MediaStreamAudioDestinationNode | null = null;
   private compositeStream: MediaStream | null = null;
 
-  // Streamlabs Features
+  // Streamlabs Features (clean defaults, no demo text)
   public layout: StageLayout = 'solo';
   public highlightedChat: ChatMessage | null = null;
   public tickerConfig: NewsTickerConfig = {
-    enabled: true,
-    text: '🏀 HOOP TIMES BASKETBALL LEAGUE • CHAMPIONSHIP FINALS • STREAMING LIVE TO FACEBOOK • SHARE THE STREAM WITH FAMILY & FRIENDS!',
+    enabled: false,
+    text: '',
     speed: 120, // px per second
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
     textColor: '#f8fafc',
@@ -38,11 +46,11 @@ export class VideoCompositor {
   };
   public activeBanner: StreamlabsBanner | null = null;
   public brandKit: BrandKit = {
-    logoUrl: '/icon.svg',
+    logoUrl: '',
     logoPosition: 'top-right',
     logoWidth: 180,
     logoHeight: 60,
-    primaryColor: '#0284c7',
+    primaryColor: '#e8430a',
     accentColor: '#f59e0b',
     backgroundType: 'dark',
   };
@@ -74,7 +82,19 @@ export class VideoCompositor {
     if (!context) {
       throw new Error('Failed to obtain 2D rendering context from canvas');
     }
-    this.ctx = context;
+    this.previewCtx = context;
+    this.activeCtx = context;
+
+    // Dedicated offscreen canvas for broadcasting stream to Facebook Live (includes Scoreboard HUD)
+    this.streamCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : ({} as HTMLCanvasElement);
+    if (typeof this.streamCanvas.getContext === 'function') {
+      this.streamCanvas.width = this.width;
+      this.streamCanvas.height = this.height;
+      this.streamCtx = this.streamCanvas.getContext('2d', { alpha: false })!;
+    } else {
+      this.streamCtx = context;
+    }
+
     this.currentScene = initialScene;
     this.scoreboard = initialScoreboard;
   }
@@ -145,7 +165,8 @@ export class VideoCompositor {
       }
     }
 
-    const canvasWithCapture = this.canvas as HTMLCanvasElement & {
+    const targetCanvas = this.streamCanvas || this.canvas;
+    const canvasWithCapture = targetCanvas as HTMLCanvasElement & {
       captureStream?(fps?: number): MediaStream;
       mozCaptureStream?(fps?: number): MediaStream;
     };
@@ -207,6 +228,18 @@ export class VideoCompositor {
       }
     }
 
+    // 1. Render Preview Stage (phone screen: camera + overlays via DOM iframe, NO canvas duplicate)
+    this.activeCtx = this.previewCtx;
+    this.renderStage(false, timestamp);
+
+    // 2. Render Broadcast Stream Stage (off-screen canvas captured for Facebook Live: camera + synced HUD)
+    if (this.streamCtx && this.streamCtx !== this.previewCtx) {
+      this.activeCtx = this.streamCtx;
+      this.renderStage(true, timestamp);
+    }
+  }
+
+  private renderStage(isStream: boolean, timestamp: number) {
     const { ctx, width, height } = this;
 
     // 1. Base Stage Background
@@ -217,7 +250,7 @@ export class VideoCompositor {
     if (this.isTransitioning && this.previousScene) {
       ctx.save();
       ctx.globalAlpha = 1 - this.transitionAlpha;
-      this.renderSceneSources(this.previousScene);
+      this.renderSceneSources(this.previousScene, isStream);
       ctx.restore();
     }
 
@@ -226,7 +259,7 @@ export class VideoCompositor {
     if (this.isTransitioning) {
       ctx.globalAlpha = this.transitionAlpha;
     }
-    this.renderSceneSources(this.currentScene);
+    this.renderSceneSources(this.currentScene, isStream);
     ctx.restore();
 
     // 4. Streamlabs Overlay Layer: Active Banners
@@ -250,15 +283,15 @@ export class VideoCompositor {
     }
   }
 
-  private renderSceneSources(scene: Scene) {
+  private renderSceneSources(scene: Scene, isStream: boolean) {
     const sorted = [...scene.sources].sort((a, b) => a.zIndex - b.zIndex);
     for (const source of sorted) {
       if (!source.visible) continue;
-      this.renderSource(source);
+      this.renderSource(source, isStream);
     }
   }
 
-  private renderSource(source: Source) {
+  private renderSource(source: Source, isStream: boolean) {
     const { ctx } = this;
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, source.opacity ?? 1));
@@ -280,7 +313,9 @@ export class VideoCompositor {
         this.drawColorSolidSource(source);
         break;
       case 'browser_url':
-        this.drawBrowserSourcePlaceholder(source);
+        if (isStream) {
+          this.drawBrowserSourcePlaceholder(source);
+        }
         break;
     }
 

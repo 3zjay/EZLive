@@ -28,27 +28,27 @@ import { useAuth } from '@/context/AuthContext';
 import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown, Zap } from 'lucide-react';
 
 const INITIAL_SCOREBOARD: ScoreboardState = {
-  homeTeam: "RICKY D'S",
-  awayTeam: 'HARINA',
-  homeScore: 65,
-  awayScore: 69,
-  period: 4,
-  quarter: 4,
+  homeTeam: 'HOME',
+  awayTeam: 'AWAY',
+  homeScore: 0,
+  awayScore: 0,
+  period: 1,
+  quarter: 1,
   gameClock: '10:00',
   gameSeconds: 600,
   isClockRunning: false,
-  shotClock: 15,
-  shotSeconds: 15,
+  shotClock: 24,
+  shotSeconds: 24,
   homeFouls: 0,
   awayFouls: 0,
   homeTimeouts: 2,
   awayTimeouts: 2,
-  homeColor: '#ffc800',
-  awayColor: '#b4283c',
-  homeAbbr: "RICKY D'S",
-  awayAbbr: 'HARINA',
-  bannerText: 'HOOP CULTURE BASKETBALL LEAGUE • LIVE COURT BROADCAST',
-  sponsorName: 'HOOP CULTURE MEDIA',
+  homeColor: '#1a4fa0',
+  awayColor: '#c8102e',
+  homeAbbr: 'HOME',
+  awayAbbr: 'AWAY',
+  bannerText: '',
+  sponsorName: '',
   possession: 'none',
 };
 
@@ -75,32 +75,18 @@ const DEFAULT_SETTINGS: StreamSettings = {
     selectedPageId: '',
     selectedPageName: '',
     selectedPageToken: '',
-    broadcastTitle: 'Hoop Culture Championship - Court 1',
+    broadcastTitle: 'Hoop Culture Live Broadcast',
     broadcastDescription: 'Streaming live directly from EZLiveStudio by HoopCulture',
   },
 };
 
 const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
   {
-    id: 'msg-1',
-    sender: 'Coach Dave',
-    platform: 'facebook',
-    message: 'Defense is locking it down in the 4th! Let’s go! 🔥',
+    id: 'msg-welcome',
+    sender: 'EZLive Studio',
+    platform: 'studio',
+    message: 'Broadcast studio ready. Facebook live comments will appear here.',
     timestamp: 'Just now',
-  },
-  {
-    id: 'msg-2',
-    sender: 'HoopFan24',
-    platform: 'youtube',
-    message: 'Marcus with the clutch three-pointer! Unbelievable shot! 🏀',
-    timestamp: '1m ago',
-  },
-  {
-    id: 'msg-3',
-    sender: 'Sarah Jenkins',
-    platform: 'facebook',
-    message: 'Crisp 1080p stream from Court 1 today! Amazing production quality.',
-    timestamp: '2m ago',
   },
 ];
 
@@ -544,7 +530,7 @@ export default function StudioPage() {
     recorderRef.current = rec;
 
     const bridge = new OverlayBridge();
-    const unsubscribe = bridge.subscribe((update) => {
+    const unsubscribeBridge = bridge.subscribe((update) => {
       setScoreboard((prev) => {
         const next = { ...prev, ...update };
         comp.updateScoreboard(next);
@@ -552,6 +538,12 @@ export default function StudioPage() {
       });
     });
     bridgeRef.current = bridge;
+
+    // Connect real-time Firebase RTDB listener from Hoop Culture Scoreboard
+    const unsubscribeScoreboard = scoreboardSync.subscribe((liveState) => {
+      setScoreboard(liveState);
+      comp.updateScoreboard(liveState);
+    });
 
     const fpsInterval = setInterval(() => {
       if (compositorRef.current) {
@@ -561,7 +553,8 @@ export default function StudioPage() {
 
     return () => {
       clearInterval(fpsInterval);
-      unsubscribe();
+      unsubscribeBridge();
+      unsubscribeScoreboard();
       bridge.destroy();
       comp.stop();
     };
@@ -1394,7 +1387,7 @@ export default function StudioPage() {
           }
         }}
         onResetScenes={() => {
-          const defaults = SceneStorage.resetToDefaults();
+          const defaults = SceneStorage.resetToDefaultScenes();
           updateScenes(defaults);
           handleSelectScene(defaults[0].id);
         }}
