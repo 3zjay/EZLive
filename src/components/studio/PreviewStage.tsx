@@ -31,7 +31,8 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
   const [dragHandle, setDragHandle] = useState<string | null>(null);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number; startW: number; startH: number } | null>(null);
 
-  const selectedSource = activeScene.sources.find((s) => s.id === selectedSourceId);
+  const sources = activeScene?.sources || [];
+  const selectedSource = sources.find((s) => s.id === selectedSourceId);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -171,7 +172,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
         />
 
         {/* Live Browser Source (Vercel URL Overlays) Layered on Stage */}
-        {activeScene.sources
+        {sources
           .filter((s): s is Extract<Source, { type: 'browser_url' }> => s.type === 'browser_url' && s.visible)
           .map((source) => (
             <div

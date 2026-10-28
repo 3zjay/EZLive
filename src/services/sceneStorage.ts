@@ -345,7 +345,7 @@ export class SceneStorage {
       const data = localStorage.getItem(STORAGE_KEY);
       if (data) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0].sources)) {
           return parsed;
         }
       }

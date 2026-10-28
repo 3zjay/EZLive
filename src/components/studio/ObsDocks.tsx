@@ -69,7 +69,7 @@ export const ObsDocks: React.FC<ObsDocksProps> = ({
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) || scenes[0];
   // Sort sources reversed by zIndex for display so topmost layer is at top of list (standard OBS behavior)
-  const displaySources = activeScene ? [...activeScene.sources].sort((a, b) => b.zIndex - a.zIndex) : [];
+  const displaySources = activeScene?.sources ? [...activeScene.sources].sort((a, b) => b.zIndex - a.zIndex) : [];
 
   const getSourceIcon = (type: SourceType) => {
     switch (type) {
@@ -143,7 +143,7 @@ export const ObsDocks: React.FC<ObsDocksProps> = ({
                   </div>
                 )}
                 <span className={`text-[10px] ${isActive ? 'text-red-200' : 'text-slate-500'}`}>
-                  {scene.sources.length} src
+                  {scene.sources?.length ?? 0} src
                 </span>
               </div>
             );
