@@ -6,6 +6,7 @@ import {
   Radio,
   Circle,
   Settings,
+  RotateCcw,
   Download,
   UserPlus,
   Monitor,
@@ -100,14 +101,17 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
 
   // Destination status badge text
   const getDestinationBadge = () => {
-    if (destinations.facebook.enabled) {
-      if (destinations.facebook.destinationType === 'group') {
-        return `👥 FB: ${destinations.facebook.groupName || 'Group'}`;
-      }
-      if (destinations.facebook.destinationType === 'page') {
-        return `📄 FB: ${destinations.facebook.pageName || 'Page'}`;
-      }
-      return 'FB Live';
+    if (destinations.facebook.pageName) {
+      return `📄 FB: ${destinations.facebook.pageName}`;
+    }
+    if (destinations.facebook.groupName) {
+      return `👥 FB: ${destinations.facebook.groupName}`;
+    }
+    if (destinations.facebook.destinationType === 'page') {
+      return '📄 FB Page';
+    }
+    if (destinations.facebook.destinationType === 'group') {
+      return '👥 FB Group';
     }
     return 'Direct Output';
   };
@@ -137,7 +141,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
 
         {/* Court Dropdown Selector */}
         {assignedCourt && onUpdateAssignedCourt && (
-          <div className="relative hidden sm:block">
+          <div className="relative hidden md:block">
             <button
               onClick={() => setIsCourtDropdownOpen(!isCourtDropdownOpen)}
               className="flex items-center gap-1.5 bg-[#140f0c] hover:bg-[#1f1712] border border-[#ff6b1a]/30 text-[#ff6b1a] px-2.5 py-1 rounded-lg text-xs font-bold transition shadow-sm"
@@ -195,15 +199,15 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
             <span className={`relative inline-flex rounded-full h-2 w-2 ${isScoreboardConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
           </span>
           <Activity size={12} className={isScoreboardConnected ? 'text-emerald-400' : 'text-amber-400'} />
-          <span className="font-mono text-[10px] truncate max-w-[150px]">
-            {isScoreboardConnected ? (scoreboardSyncUser || 'Scoreboard Live') : 'Pair Scoreboard'}
+          <span className="font-mono text-[10px] truncate max-w-[85px] sm:max-w-[130px]">
+            {isScoreboardConnected ? (scoreboardSyncUser ? scoreboardSyncUser.split('@')[0] : 'Scoreboard Live') : 'Pair Scoreboard'}
           </span>
         </button>
 
         {/* Invite Guest (WebRTC Co-Host) */}
         <button
           onClick={onOpenGuestInvite}
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1 bg-[#140f0c] hover:bg-[#1f1712] text-slate-200 border border-[#2a1e14] rounded-lg text-xs font-bold transition shadow-sm"
+          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 bg-[#140f0c] hover:bg-[#1f1712] text-slate-200 border border-[#2a1e14] rounded-lg text-xs font-bold transition shadow-sm"
           title="Invite Guest / Sideline Reporter via WebRTC"
         >
           <UserPlus size={13} className="text-sky-400" />
@@ -213,7 +217,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
         {/* Screen Share */}
         <button
           onClick={onToggleScreenShare}
-          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border shadow-sm ${
+          className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition border shadow-sm ${
             isScreenSharing
               ? 'bg-sky-600 border-sky-400 text-white'
               : 'bg-[#140f0c] hover:bg-[#1f1712] border-[#2a1e14] text-slate-200'
@@ -224,14 +228,15 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
           <span>{isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
         </button>
 
-        {/* Flip Camera */}
+        {/* Flip Camera (Prominent for Mobile / Tablet Court Operators) */}
         {hasCamera && (
           <button
             onClick={onFlipCamera}
-            className="p-1.5 bg-[#140f0c] hover:bg-[#1f1712] border border-[#2a1e14] rounded-lg text-slate-300 hover:text-white transition"
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#140f0c] hover:bg-[#1f1712] border border-[#ff6b1a]/40 text-[#ff6b1a] rounded-lg text-xs font-bold transition shadow-sm active:scale-95"
             title="Flip Camera (Front / Rear Court)"
           >
-            <Video size={13} />
+            <RotateCcw size={12} className="text-[#ff6b1a]" />
+            <span className="text-[11px]">Flip</span>
           </button>
         )}
 

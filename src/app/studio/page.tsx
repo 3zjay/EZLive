@@ -1204,7 +1204,13 @@ export default function StudioPage() {
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {scenes.map((sc) => {
               const isActive = sc.id === activeSceneId;
-              const shortName = sc.name.includes('—') ? sc.name.split('—')[1].trim() : sc.name;
+              let shortName = sc.name;
+              if (sc.name.includes('Scorebug 2') || sc.id.includes('nba2')) shortName = '🏀 Scorebug 2';
+              else if (sc.name.includes('Lower Third')) shortName = 'Lower Third';
+              else if (sc.name.includes('Classic')) shortName = 'Classic NBA';
+              else if (sc.name.includes('NBC')) shortName = 'NBC Pro';
+              else if (sc.name.includes('Court') || sc.name.includes('Camera')) shortName = 'Court Only';
+              else if (sc.name.includes('—')) shortName = sc.name.split('—')[1].trim().replace(/Overlay/gi, '').trim();
               return (
                 <button
                   key={sc.id}
