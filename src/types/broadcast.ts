@@ -93,6 +93,17 @@ export interface Scene {
 // Transition settings
 export type TransitionType = 'cut' | 'fade';
 
+export interface FacebookLiveSettings {
+  mode: 'auto' | 'manual';
+  userToken: string;
+  selectedPageId: string;
+  selectedPageName: string;
+  selectedPageToken: string;
+  broadcastTitle: string;
+  broadcastDescription: string;
+  activeLiveVideoId?: string;
+}
+
 export interface StreamSettings {
   rtmpsUrl: string;
   streamKey: string;
@@ -102,6 +113,7 @@ export interface StreamSettings {
   usePostMessageBridge: boolean;
   transitionType: TransitionType;
   transitionDurationMs: number;
+  fbSettings?: FacebookLiveSettings;
 }
 
 export interface AudioMeterData {

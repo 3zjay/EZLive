@@ -6,7 +6,6 @@ import {
   Camera,
   Link as LinkIcon,
   Radio,
-  ShieldAlert,
   Check,
   HelpCircle,
   FolderArchive,
@@ -271,49 +270,208 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* TAB 3: Facebook Live */}
           {activeTab === 'facebook' && (
             <div className="space-y-4">
-              <div className="bg-amber-950/30 border border-amber-800/50 p-3.5 rounded-xl flex items-start gap-2.5 text-amber-300 text-xs">
-                <ShieldAlert size={18} className="shrink-0 mt-0.5 text-amber-400" />
-                <div>
-                  <div className="font-bold mb-0.5">Facebook Live RTMPS Ingestion Notice</div>
+              {/* Connection Mode Toggle */}
+              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLocalSettings({
+                      ...localSettings,
+                      fbSettings: {
+                        ...(localSettings.fbSettings || {
+                          userToken: '',
+                          selectedPageId: 'page-hooptimes',
+                          selectedPageName: 'Hoop Times Live',
+                          selectedPageToken: '',
+                          broadcastTitle: 'Live Basketball Game - Hoop Times',
+                          broadcastDescription: 'Streaming live from gym court',
+                        }),
+                        mode: 'auto',
+                      },
+                    })
+                  }
+                  className={`flex-1 py-2 text-center rounded-lg font-bold text-xs transition ${
+                    (localSettings.fbSettings?.mode ?? 'auto') === 'auto'
+                      ? 'bg-indigo-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  ⚡ Streamlabs Auto-Connect (Pages API)
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setLocalSettings({
+                      ...localSettings,
+                      fbSettings: {
+                        ...(localSettings.fbSettings || {
+                          userToken: '',
+                          selectedPageId: '',
+                          selectedPageName: '',
+                          selectedPageToken: '',
+                          broadcastTitle: '',
+                          broadcastDescription: '',
+                        }),
+                        mode: 'manual',
+                      },
+                    })
+                  }
+                  className={`flex-1 py-2 text-center rounded-lg font-bold text-xs transition ${
+                    localSettings.fbSettings?.mode === 'manual'
+                      ? 'bg-slate-800 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Manual Stream Key
+                </button>
+              </div>
+
+              {/* STREAMLABS AUTO-CONNECT VIEW */}
+              {(localSettings.fbSettings?.mode ?? 'auto') === 'auto' ? (
+                <div className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <div>
+                      <div className="font-extrabold text-white text-xs">Facebook Page Destination</div>
+                      <div className="text-[10px] text-slate-400">Stream directly to your basketball league Facebook Page</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700/60 text-emerald-400 text-[10px] font-bold">
+                      Connected
+                    </span>
+                  </div>
+
                   <div>
-                    Mobile browsers cannot open direct TCP RTMPS sockets due to sandbox security. The stream is sent via WebRTC (WHIP) to a lightweight cloud relay which forwards RTMPS to Facebook.
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1 uppercase">
+                      Select Facebook Page
+                    </label>
+                    <select
+                      value={localSettings.fbSettings?.selectedPageId || 'page-hooptimes'}
+                      onChange={(e) => {
+                        const pageId = e.target.value;
+                        const pageName = e.target.options[e.target.selectedIndex].text;
+                        setLocalSettings({
+                          ...localSettings,
+                          fbSettings: {
+                            ...(localSettings.fbSettings || {
+                              mode: 'auto',
+                              userToken: '',
+                              selectedPageToken: '',
+                              broadcastTitle: '',
+                              broadcastDescription: '',
+                            }),
+                            mode: 'auto',
+                            selectedPageId: pageId,
+                            selectedPageName: pageName,
+                          },
+                        });
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 text-xs font-semibold focus:outline-none focus:border-sky-500"
+                    >
+                      <option value="page-hooptimes">🏀 Hoop Times Live Broadcasts (Primary Page)</option>
+                      <option value="page-youth-league">🏆 Hoop Times Youth Basketball Academy</option>
+                      <option value="page-court1">📍 Gym Court 1 - Main Showcase</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1 uppercase">
+                      Broadcast Title (Appears on Facebook Feed)
+                    </label>
+                    <input
+                      type="text"
+                      value={localSettings.fbSettings?.broadcastTitle || 'Hoop Times Live: Finals Showcase'}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          fbSettings: {
+                            ...(localSettings.fbSettings || {
+                              mode: 'auto',
+                              userToken: '',
+                              selectedPageId: 'page-hooptimes',
+                              selectedPageName: 'Hoop Times Live',
+                              selectedPageToken: '',
+                              broadcastDescription: '',
+                            }),
+                            mode: 'auto',
+                            broadcastTitle: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 text-xs focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 mb-1 uppercase">
+                      Broadcast Description
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={localSettings.fbSettings?.broadcastDescription || 'Live basketball coverage streaming directly from our tablet broadcast studio.'}
+                      onChange={(e) =>
+                        setLocalSettings({
+                          ...localSettings,
+                          fbSettings: {
+                            ...(localSettings.fbSettings || {
+                              mode: 'auto',
+                              userToken: '',
+                              selectedPageId: 'page-hooptimes',
+                              selectedPageName: 'Hoop Times Live',
+                              selectedPageToken: '',
+                              broadcastTitle: '',
+                            }),
+                            mode: 'auto',
+                            broadcastDescription: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 text-xs focus:outline-none focus:border-sky-500 resize-none"
+                    />
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between">
+                    <span className="text-[10px] text-sky-400 font-medium">
+                      ✓ When you tap &quot;Go Live&quot;, EZ Studio automatically creates the Meta live event and grabs the ingest URL.
+                    </span>
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* MANUAL STREAM KEY VIEW */
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
+                      Facebook RTMPS Ingest URL
+                    </label>
+                    <input
+                      type="text"
+                      value={localSettings.rtmpsUrl}
+                      onChange={(e) => setLocalSettings({ ...localSettings, rtmpsUrl: e.target.value })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
-                  Facebook RTMPS Ingest URL
-                </label>
-                <input
-                  type="text"
-                  value={localSettings.rtmpsUrl}
-                  onChange={(e) => setLocalSettings({ ...localSettings, rtmpsUrl: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
-                  Facebook Stream Key
-                </label>
-                <div className="relative">
-                  <input
-                    type={showStreamKey ? 'text' : 'password'}
-                    value={localSettings.streamKey}
-                    onChange={(e) => setLocalSettings({ ...localSettings, streamKey: e.target.value })}
-                    placeholder="FB-12345678-xxxx-xxxx"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500 pr-16"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowStreamKey(!showStreamKey)}
-                    className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800"
-                  >
-                    {showStreamKey ? 'Hide' : 'Show'}
-                  </button>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
+                      Facebook Stream Key
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showStreamKey ? 'text' : 'password'}
+                        value={localSettings.streamKey}
+                        onChange={(e) => setLocalSettings({ ...localSettings, streamKey: e.target.value })}
+                        placeholder="FB-12345678-xxxx-xxxx"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500 pr-16"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowStreamKey(!showStreamKey)}
+                        className="absolute right-2.5 top-2.5 text-[11px] font-bold text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800"
+                      >
+                        {showStreamKey ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">

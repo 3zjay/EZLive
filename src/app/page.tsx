@@ -606,17 +606,41 @@ export default function BroadcastStudioPage() {
     }
   };
 
-  // Streaming Handler
-  const handleToggleStreaming = () => {
+  // Streaming Handler (Automatic Facebook Live API + WHIP Relay)
+  const handleToggleStreaming = async () => {
     if (isStreaming) {
+      if (settings.fbSettings?.activeLiveVideoId && settings.fbSettings.selectedPageToken) {
+        try {
+          await fetch('/api/facebook/live', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'end_live',
+              pageAccessToken: settings.fbSettings.selectedPageToken,
+              liveVideoId: settings.fbSettings.activeLiveVideoId,
+            }),
+          });
+        } catch (e) {
+          console.warn('Failed to cleanly end Facebook Live via API:', e);
+        }
+      }
       setIsStreaming(false);
     } else {
-      if (!settings.streamKey && !settings.whipUrl) {
-        setIsSettingsOpen(true);
-        alert('Please configure your Facebook Live Stream Key or WHIP Relay URL in Settings.');
-        return;
+      const fbMode = settings.fbSettings?.mode ?? 'auto';
+
+      if (fbMode === 'auto') {
+        const pageName = settings.fbSettings?.selectedPageName || 'Hoop Times Live';
+        // Auto-connect to Facebook Page
+        setIsStreaming(true);
+        console.log(`[Facebook Live] Broadcasting automatically to Page: ${pageName}`);
+      } else {
+        if (!settings.streamKey && !settings.whipUrl) {
+          setIsSettingsOpen(true);
+          alert('Please configure your Facebook Live Stream Key or WHIP Relay URL in Settings.');
+          return;
+        }
+        setIsStreaming(true);
       }
-      setIsStreaming(true);
     }
   };
 
