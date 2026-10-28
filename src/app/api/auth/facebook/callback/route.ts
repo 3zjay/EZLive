@@ -10,9 +10,10 @@ export async function GET(req: NextRequest) {
   const appId =
     customAppId ||
     process.env.FACEBOOK_APP_ID ||
-    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ||
+    '1519191979811970';
 
-  const appSecret = process.env.FACEBOOK_APP_SECRET;
+  const appSecret = process.env.FACEBOOK_APP_SECRET || 'acc72325d5ac75f52fdb617ca2623033';
 
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
   const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');

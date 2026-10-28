@@ -7,7 +7,8 @@ export async function GET(req: NextRequest) {
   const appId =
     customAppId ||
     process.env.FACEBOOK_APP_ID ||
-    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+    process.env.NEXT_PUBLIC_FACEBOOK_APP_ID ||
+    '1519191979811970';
 
   if (!appId) {
     return NextResponse.json(

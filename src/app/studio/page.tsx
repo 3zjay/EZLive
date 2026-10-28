@@ -66,6 +66,7 @@ const DEFAULT_SETTINGS: StreamSettings = {
   fbSettings: {
     mode: 'manual',
     destinationType: 'stream_key',
+    appId: '1519191979811970',
     selectedGroupId: '',
     selectedGroupName: '',
     groupStreamKey: '',
