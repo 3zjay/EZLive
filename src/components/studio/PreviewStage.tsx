@@ -186,7 +186,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
           .map((source) => (
             <div
               key={source.id}
-              className="absolute pointer-events-auto"
+              className="absolute pointer-events-none"
               style={{
                 left: toPercent(source.x, 1920),
                 top: toPercent(source.y, 1080),
@@ -195,14 +195,10 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
                 opacity: source.opacity,
                 zIndex: source.zIndex + 10,
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectSource(source.id);
-              }}
             >
               <iframe
                 src={source.url}
-                className="w-full h-full border-0 bg-transparent"
+                className="w-full h-full border-0 bg-transparent pointer-events-none"
                 title={source.name}
                 allow="camera; microphone"
               />

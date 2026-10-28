@@ -121,34 +121,132 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
           {/* BROWSER URL SOURCE */}
           {localSource.type === 'browser_url' && (
             <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
-              <div className="font-bold text-sky-400 uppercase text-[11px]">Browser Source Settings</div>
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sky-400 uppercase text-[11px]">Official Scoreboard Overlay Presets</span>
+                <span className="text-[10px] text-slate-400 font-mono">scoreboard.hoopculture.ca</span>
+              </div>
+
+              {/* 1-Click Official Overlay Presets */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
+                      name: 'NBA Scorebug 2 Overlay (/nbaoverlay2)',
+                      url: `https://scoreboard.hoopculture.ca/nbaoverlay2?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.url?.includes('/nbaoverlay2')
+                      ? 'border-emerald-500 bg-emerald-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-emerald-400">★ 1. NBA Scorebug 2</span>
+                  <span className="text-[10px] text-slate-400">Main bottom pill (/nbaoverlay2) synced via login</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
+                      name: 'Fullscreen Lower Third Overlay (/fullscreen)',
+                      url: `https://scoreboard.hoopculture.ca/fullscreen?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.url?.includes('/fullscreen')
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-amber-400">2. Full-Width Lower Third</span>
+                  <span className="text-[10px] text-slate-400">Full 1920px bottom bar (/fullscreen)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
+                      name: 'Classic NBA Overlay (/nbaoverlay)',
+                      url: `https://scoreboard.hoopculture.ca/nbaoverlay?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.url?.includes('/nbaoverlay?')
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-sky-400">3. Classic NBA Scorebug</span>
+                  <span className="text-[10px] text-slate-400">Top split bug (/nbaoverlay)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
+                      name: 'NBC Pro Broadcast Overlay (/nbc)',
+                      url: `https://scoreboard.hoopculture.ca/nbc?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.url?.includes('/nbc')
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-orange-400">4. NBC Pro Broadcast Bug</span>
+                  <span className="text-[10px] text-slate-400">Segmented top bug (/nbc)</span>
+                </button>
+              </div>
+
               <div>
-                <label className="block font-bold text-slate-400 mb-1">Overlay Webpage URL</label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={localSource.url}
-                    onChange={(e) => setLocalSource({ ...localSource, url: e.target.value })}
-                    placeholder="https://your-scoreboard.vercel.app/overlay"
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-sky-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setLocalSource({ ...localSource, url: '/scoreboard' })}
-                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl border border-slate-700 text-[11px]"
-                  >
-                    Demo URL
-                  </button>
-                </div>
+                <label className="block font-bold text-slate-400 mb-1">Active Overlay URL (Linked via Login)</label>
+                <input
+                  type="url"
+                  value={localSource.url}
+                  onChange={(e) => setLocalSource({ ...localSource, url: e.target.value })}
+                  placeholder="https://scoreboard.hoopculture.ca/nbaoverlay2?user=..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-sky-500"
+                />
                 <p className="text-[10px] text-slate-500 mt-1">
-                  Enter your Vercel scoreboard, tournament bracket, or web graphic URL.
+                  Streams live scores, team logos, and timers directly from scoreboard.hoopculture.ca via your login.
                 </p>
               </div>
 
               <div className="flex items-center justify-between pt-1">
                 <div>
-                  <div className="font-bold text-slate-200">PostMessage Video Sync</div>
-                  <div className="text-[10px] text-slate-400">Syncs scores into the Canvas compositor output</div>
+                  <div className="font-bold text-slate-200">Broadcast Canvas Sync Bridge</div>
+                  <div className="text-[10px] text-slate-400">Automatically composites score state onto live recording and RTMP stream</div>
                 </div>
                 <input
                   type="checkbox"

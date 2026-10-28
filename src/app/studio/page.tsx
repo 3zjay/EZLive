@@ -225,15 +225,53 @@ export default function StudioPage() {
   });
   const [isStreaming, setIsStreaming] = useState(false);
 
-  // Auto-pair Scoreboard with logged-in Google email or assigned court
+  // Auto-pair Scoreboard & Overlays with logged-in user email or assigned court
   useEffect(() => {
-    const emailOrCourt = user?.email || settings.scoreboardSessionUser || profile?.assignedCourt || 'isidro.pascua@gmail.com';
+    let savedEmail = '';
+    try {
+      savedEmail = localStorage.getItem('hc_session_user') || '';
+    } catch {}
+    const emailOrCourt = user?.email || savedEmail || settings.scoreboardSessionUser || profile?.assignedCourt || 'isidro.pascua@gmail.com';
     if (emailOrCourt) {
       scoreboardSync.setSessionUser(emailOrCourt);
       setSettings((prev) => ({
         ...prev,
         scoreboardSessionUser: prev.scoreboardSessionUser || emailOrCourt,
       }));
+
+      // Automatically sync any Hoop Culture browser overlay sources with the active login email!
+      setScenes((prevScenes) => {
+        let changed = false;
+        const updatedScenes = prevScenes.map((scene) => {
+          let sceneChanged = false;
+          const updatedSources = scene.sources.map((source) => {
+            if (source.type === 'browser_url' && source.url && source.url.includes('scoreboard.hoopculture.ca')) {
+              try {
+                const urlObj = new URL(source.url);
+                if (urlObj.searchParams.get('user') !== emailOrCourt) {
+                  urlObj.searchParams.set('user', emailOrCourt);
+                  sceneChanged = true;
+                  return { ...source, url: urlObj.toString() };
+                }
+              } catch {
+                // If relative or invalid URL format
+              }
+            }
+            return source;
+          });
+          if (sceneChanged) {
+            changed = true;
+            return { ...scene, sources: updatedSources };
+          }
+          return scene;
+        });
+
+        if (changed) {
+          SceneStorage.saveScenes(updatedScenes);
+          return updatedScenes;
+        }
+        return prevScenes;
+      });
     }
   }, [user?.email, profile?.assignedCourt, settings.scoreboardSessionUser]);
 
@@ -614,9 +652,10 @@ export default function StudioPage() {
         };
         break;
       case 'browser_url':
+        const activeEmail = user?.email || settings.scoreboardSessionUser || 'isidro.pascua@gmail.com';
         newSource = {
           id,
-          name: 'Web Overlay',
+          name: 'Hoop Culture Overlay',
           type: 'browser_url',
           x: 0,
           y: 0,
@@ -625,8 +664,9 @@ export default function StudioPage() {
           opacity: 1,
           zIndex: newZ,
           visible: true,
-          locked: false,
-          url: 'https://scoreboard.hoopculture.ca',
+          locked: true,
+          url: `https://scoreboard.hoopculture.ca/nbaoverlay2?user=${encodeURIComponent(activeEmail)}`,
+          syncDataBridge: true,
         };
         break;
       case 'text':
