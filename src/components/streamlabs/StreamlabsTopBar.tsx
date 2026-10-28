@@ -53,23 +53,25 @@ interface StreamlabsTopBarProps {
   onUpdateAssignedCourt?: (court: string) => void;
   courtOptions?: string[];
   relayStats?: { connected: boolean; mbSent: string; status: string };
+  destinationsSummary?: string;
 }
 
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   hasCamera,
+  hasAudio,
   audioLevel,
   recordingState,
   isStreaming,
   isScreenSharing,
   fps,
   destinations,
-  relayStats,
   onToggleRecording,
   onDownloadRecording,
   onToggleStreaming,
   onToggleScreenShare,
   onOpenSettings,
   onOpenGuestInvite,
+  facingMode,
   onFlipCamera,
   isSidebarOpen,
   onToggleSidebar,
@@ -87,6 +89,8 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
     'Court 3 — Showcase Arena',
     'Court 4 — Training Court',
   ],
+  relayStats,
+  destinationsSummary,
 }) => {
   const [isCourtDropdownOpen, setIsCourtDropdownOpen] = useState(false);
 
@@ -307,8 +311,8 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
           <span>
             {isStreaming
               ? relayStats && parseFloat(relayStats.mbSent) > 0
-                ? `LIVE • ${relayStats.mbSent} MB`
-                : 'END LIVE'
+                ? `LIVE • ${destinationsSummary ? `${destinationsSummary} • ` : ''}${relayStats.mbSent} MB`
+                : `END LIVE (${destinationsSummary || 'LIVE'})`
               : 'GO LIVE'}
           </span>
         </button>

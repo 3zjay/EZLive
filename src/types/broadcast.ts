@@ -137,6 +137,14 @@ export interface FacebookLiveSettings {
   permalinkUrl?: string;
 }
 
+export interface YouTubeLiveSettings {
+  enabled: boolean;
+  streamKey: string;
+  rtmpUrl?: string; // Default 'rtmp://a.rtmp.youtube.com/live2/'
+}
+
+export type StreamBandwidthPreset = 'eco_720' | 'balanced_720' | 'high_1080' | 'pro_1080_60';
+
 export interface StreamSettings {
   rtmpsUrl: string;
   streamKey: string;
@@ -148,6 +156,10 @@ export interface StreamSettings {
   transitionType: TransitionType;
   transitionDurationMs: number;
   fbSettings?: FacebookLiveSettings;
+  ytSettings?: YouTubeLiveSettings;
+  bandwidthPreset?: StreamBandwidthPreset;
+  broadcastTitle?: string;
+  broadcastDescription?: string;
   // Scoreboard Sync Preferences
   scoreboardSessionUser?: string;
   scoreboardSyncMode?: 'auto' | 'firebase_rtdb' | 'local_sse' | 'broadcast_channel' | 'manual';

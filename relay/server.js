@@ -69,52 +69,101 @@ wss.on('connection', (ws, req) => {
   addLog('⚡ New incoming client connection for live streaming');
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+  
+  // Destination 1: Facebook Live
+  const fbKey = url.searchParams.get('fbKey') || url.searchParams.get('streamKey');
   const rtmpsUrl = url.searchParams.get('rtmpsUrl') || 'rtmps://live-api-s.facebook.com:443/rtmp/';
-  const streamKey = url.searchParams.get('streamKey');
 
-  if (!streamKey) {
-    addLog('❌ Connection rejected: Missing streamKey parameter');
+  // Destination 2: YouTube Live
+  const ytKey = url.searchParams.get('ytKey') || url.searchParams.get('youtubeKey');
+  const ytRtmpUrl = url.searchParams.get('ytRtmpUrl') || 'rtmp://a.rtmp.youtube.com/live2/';
+
+  // Bandwidth & Transcoding Control
+  const bitrateKbps = parseInt(url.searchParams.get('bitrate'), 10) || 2500;
+  const maxrateKbps = Math.round(bitrateKbps * 1.25);
+  const bufsizeKbps = Math.round(bitrateKbps * 2);
+  const preset = url.searchParams.get('preset') || 'ultrafast'; // 'ultrafast' drastically saves CPU on Render Free tier
+
+  const destinations = [];
+
+  if (fbKey) {
+    let fbDest = '';
+    if (rtmpsUrl.includes('/rtmp/') && rtmpsUrl.split('/rtmp/')[1]?.length > 5) {
+      fbDest = rtmpsUrl;
+    } else {
+      const cleanBase = rtmpsUrl.endsWith('/') ? rtmpsUrl : `${rtmpsUrl}/`;
+      fbDest = `${cleanBase}${fbKey}`;
+    }
+    const maskedFb = fbKey.length > 8 ? `${fbKey.slice(0, 4)}...${fbKey.slice(-4)}` : '***';
+    destinations.push({ name: 'Facebook Live', url: fbDest, maskedKey: maskedFb });
+  }
+
+  if (ytKey) {
+    let ytDest = '';
+    if (ytRtmpUrl.includes('/live2/') && ytRtmpUrl.split('/live2/')[1]?.length > 5) {
+      ytDest = ytRtmpUrl;
+    } else {
+      const cleanBase = ytRtmpUrl.endsWith('/') ? ytRtmpUrl : `${ytRtmpUrl}/`;
+      ytDest = `${cleanBase}${ytKey}`;
+    }
+    const maskedYt = ytKey.length > 8 ? `${ytKey.slice(0, 4)}...${ytKey.slice(-4)}` : '***';
+    destinations.push({ name: 'YouTube Live', url: ytDest, maskedKey: maskedYt });
+  }
+
+  if (destinations.length === 0) {
+    addLog('❌ Connection rejected: No streaming destination configured (missing streamKey/fbKey/ytKey)');
     ws.close(1008, 'Missing streamKey');
     return;
   }
 
-  let destinationUrl = '';
-  // Avoid duplicating stream key if rtmpsUrl already contains it (e.g. from Facebook secure_stream_url)
-  if (rtmpsUrl && rtmpsUrl.includes('/rtmp/') && rtmpsUrl.split('/rtmp/')[1]?.length > 5) {
-    destinationUrl = rtmpsUrl;
-  } else if (streamKey) {
-    const cleanBase = rtmpsUrl.endsWith('/') ? rtmpsUrl : `${rtmpsUrl}/`;
-    destinationUrl = `${cleanBase}${streamKey}`;
-  } else {
-    destinationUrl = rtmpsUrl;
-  }
+  const destinationSummary = destinations.map((d) => `${d.name} (${d.maskedKey})`).join(' + ');
+  addLog(`📡 Configured ${destinations.length} destination(s): ${destinationSummary}`);
+  addLog(`⚙️ Stream Profile: ${bitrateKbps} kbps, maxrate: ${maxrateKbps} kbps, preset: ${preset}`);
 
-  const maskedKey = streamKey.length > 8 ? `${streamKey.slice(0, 4)}...${streamKey.slice(-4)}` : '***';
-  addLog(`📡 Target Facebook RTMP destination configured (Key: ${maskedKey})`);
-
-  // Spawn FFmpeg to transcode incoming WebM/H.264 stream to Facebook-compliant RTMP/FLV
-  // Note: Do NOT use -re when reading from a live network pipe (pipe:0)
-  const ffmpegArgs = [
+  // Construct FFmpeg arguments
+  const baseFfmpegArgs = [
     '-i', 'pipe:0',
     // Video configuration
     '-c:v', 'libx264',
-    '-preset', 'veryfast',
+    '-preset', preset,
     '-tune', 'zerolatency',
-    '-b:v', '3000k',
-    '-maxrate', '3500k',
-    '-bufsize', '6000k',
+    '-b:v', `${bitrateKbps}k`,
+    '-maxrate', `${maxrateKbps}k`,
+    '-bufsize', `${bufsizeKbps}k`,
     '-pix_fmt', 'yuv420p',
-    '-g', '60', // Keyframe every 2 seconds at 30fps (Required by Facebook Live)
+    '-g', '60', // Keyframe every 2 seconds at 30fps (Required by FB & YT)
     '-r', '30',
     // Audio configuration
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
-    // Output FLV to Facebook RTMPS
-    '-f', 'flv',
-    '-flvflags', 'no_duration_filesize',
-    destinationUrl,
   ];
+
+  let ffmpegArgs = [];
+  if (destinations.length === 1) {
+    // Single Destination: Direct FLV output
+    ffmpegArgs = [
+      ...baseFfmpegArgs,
+      '-f', 'flv',
+      '-flvflags', 'no_duration_filesize',
+      destinations[0].url,
+    ];
+  } else {
+    // Dual Stream (Facebook + YouTube): Parallel tee muxer
+    // Uses onfail=ignore so a hiccup on one platform does NOT disconnect the other
+    const teeOutputs = destinations
+      .map((d) => `[f=flv:flvflags=no_duration_filesize:onfail=ignore]${d.url}`)
+      .join('|');
+
+    ffmpegArgs = [
+      ...baseFfmpegArgs,
+      '-flags', '+global_header',
+      '-f', 'tee',
+      '-map', '0:v',
+      '-map', '0:a',
+      teeOutputs,
+    ];
+  }
 
   let ffmpeg = null;
   try {

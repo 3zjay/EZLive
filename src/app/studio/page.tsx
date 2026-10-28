@@ -24,6 +24,8 @@ import { SidebarTabs } from '@/components/streamlabs/SidebarTabs';
 import { SettingsModal } from '@/components/studio/SettingsModal';
 import { SourcePropertiesModal } from '@/components/studio/SourcePropertiesModal';
 import { GuestInviteModal } from '@/components/streamlabs/GuestInviteModal';
+import { GoLiveModal } from '@/components/studio/GoLiveModal';
+import { StreamBandwidthPreset } from '@/types/broadcast';
 import { useAuth } from '@/context/AuthContext';
 import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown, Zap } from 'lucide-react';
 
@@ -114,6 +116,10 @@ export default function StudioPage() {
   const streamingRecorderRef = useRef<MediaRecorder | null>(null);
   const isStreamingRef = useRef(false);
 
+  // Go Live Setup Modal & Active Destination Telemetry
+  const [isGoLiveModalOpen, setIsGoLiveModalOpen] = useState(false);
+  const [streamDestinationsSummary, setStreamDestinationsSummary] = useState<string>('FB');
+
   // Relay Telemetry State (bytes sent & live status)
   const [relayStats, setRelayStats] = useState<{
     connected: boolean;
@@ -125,9 +131,38 @@ export default function StudioPage() {
     status: 'idle',
   });
 
-  const startRelayPipeline = (targetRtmps: string, targetKey: string) => {
+  const startRelayPipeline = (
+    options:
+      | {
+          targetRtmps?: string;
+          targetKey?: string;
+          facebookKey?: string;
+          youtubeKey?: string;
+          bitrateKbps?: number;
+        }
+      | string,
+    fallbackKey?: string
+  ) => {
     try {
-      const relayUrl = settings.relayUrl || (typeof window !== 'undefined' ? localStorage.getItem('hc_relay_url') || '' : '') || 'https://ezlive-relay.onrender.com';
+      let fbKey = '';
+      let ytKey = '';
+      let targetRtmps = settings.rtmpsUrl;
+      let bitrateKbps = 2500;
+
+      if (typeof options === 'string') {
+        targetRtmps = options;
+        fbKey = fallbackKey || '';
+      } else {
+        targetRtmps = options.targetRtmps || settings.rtmpsUrl;
+        fbKey = options.facebookKey || options.targetKey || '';
+        ytKey = options.youtubeKey || '';
+        bitrateKbps = options.bitrateKbps || 2500;
+      }
+
+      const relayUrl =
+        settings.relayUrl ||
+        (typeof window !== 'undefined' ? localStorage.getItem('hc_relay_url') || '' : '') ||
+        'https://ezlive-relay.onrender.com';
       const compositeStream = compositorRef.current?.getCompositeStream(mediaStreamRef.current);
 
       if (!compositeStream) {
@@ -139,14 +174,34 @@ export default function StudioPage() {
 
       const cleanRelay = relayUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').replace(/\/$/, '');
       const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${cleanRelay}/live?rtmpsUrl=${encodeURIComponent(targetRtmps)}&streamKey=${encodeURIComponent(targetKey)}`;
+
+      const query = new URLSearchParams();
+      if (fbKey) {
+        query.set('fbKey', fbKey);
+        query.set('streamKey', fbKey);
+        query.set('rtmpsUrl', targetRtmps);
+      }
+      if (ytKey) {
+        query.set('ytKey', ytKey);
+        query.set('ytRtmpUrl', 'rtmp://a.rtmp.youtube.com/live2/');
+        if (!fbKey) {
+          query.set('streamKey', ytKey);
+          query.set('rtmpsUrl', 'rtmp://a.rtmp.youtube.com/live2/');
+        }
+      }
+      query.set('bitrate', String(bitrateKbps));
+      query.set('preset', 'ultrafast');
+
+      const wsUrl = `${wsProtocol}//${cleanRelay}/live?${query.toString()}`;
 
       const ws = new WebSocket(wsUrl);
       ws.binaryType = 'arraybuffer';
       streamingSocketRef.current = ws;
 
       ws.onopen = () => {
-        console.log('📡 Connected to EZLive Cloud Relay! Streaming canvas to Facebook Live...');
+        const destLabel =
+          fbKey && ytKey ? 'Facebook + YouTube (Dual Stream)' : fbKey ? 'Facebook Live' : 'YouTube Live';
+        console.log(`📡 Connected to EZLive Cloud Relay! Streaming canvas to ${destLabel}...`);
         setRelayStats((prev) => ({ ...prev, connected: true, status: 'streaming' }));
 
         try {
@@ -165,7 +220,7 @@ export default function StudioPage() {
 
           const rec = new MediaRecorder(compositeStream, {
             mimeType: mime,
-            videoBitsPerSecond: 3000000,
+            videoBitsPerSecond: bitrateKbps * 1000,
             audioBitsPerSecond: 128000,
           });
 
@@ -1034,9 +1089,12 @@ export default function StudioPage() {
     }
   };
 
-  // Streaming to Facebook Live (Groups, Pages, or Stream Key)
+  // Streaming to Facebook Live & YouTube Live (Multistreaming)
   const handleToggleStreaming = async () => {
     if (isStreaming) {
+      if (typeof window !== 'undefined' && !confirm('Are you sure you want to end the live broadcast?')) {
+        return;
+      }
       // Ending stream
       const fb = settings.fbSettings;
       if (fb?.activeLiveVideoId) {
@@ -1065,87 +1123,60 @@ export default function StudioPage() {
       };
       handleSaveSettings(updatedEnd);
     } else {
-      // Starting stream
-      const fb = settings.fbSettings;
-      const token = fb?.userToken || (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null);
-
-      // Case 1: Stream Key mode or Group Stream Key
-      if (fb?.destinationType === 'stream_key' || fb?.mode === 'manual' || !token) {
-        const key = fb?.groupStreamKey || settings.streamKey;
-        if (!key) {
-          setIsSettingsOpen(true);
-          alert('Please enter your Facebook Group Stream Key or link your Facebook account in Settings.');
-          return;
-        }
-        startRelayPipeline(settings.rtmpsUrl, key);
-        setIsStreaming(true);
-        isStreamingRef.current = true;
-        return;
-      }
-
-      // Case 2: Auto-connect to Facebook Group, Page, or Timeline via Graph API
-      try {
-        const targetType = fb?.destinationType || 'group';
-        const targetId = targetType === 'group' ? fb?.selectedGroupId : targetType === 'page' ? fb?.selectedPageId : 'me';
-
-        if (targetType === 'group' && !fb?.selectedGroupId) {
-          setIsSettingsOpen(true);
-          alert('Please select your target Facebook Group in Settings, or switch to "Group Stream Key" mode.');
-          return;
-        }
-
-        if (targetType === 'page' && (!fb?.selectedPageId || fb.selectedPageId === 'page-hoopculture')) {
-          setIsSettingsOpen(true);
-          alert('Please select your Facebook Page in Settings.');
-          return;
-        }
-
-        const res = await fetch('/api/facebook/live', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'create_live',
-            targetType,
-            targetId,
-            pageId: fb?.selectedPageId,
-            groupId: fb?.selectedGroupId,
-            pageAccessToken: fb?.selectedPageToken,
-            userAccessToken: token,
-            title: fb?.broadcastTitle || 'Hoop Culture Live Broadcast',
-            description: fb?.broadcastDescription || 'Streaming live via EZLive Broadcast Studio',
-          }),
-        });
-
-        const data = await res.json();
-        if (data.error) {
-          alert(`Facebook Live Error: ${data.error}\n\nTip: You can use "Group Stream Key" mode in Settings to stream directly to your Facebook Group without permissions delays.`);
-          return;
-        }
-
-        const updatedStart: StreamSettings = {
-          ...settings,
-          rtmpsUrl: data.secure_stream_url || settings.rtmpsUrl,
-          streamKey: data.stream_key || settings.streamKey,
-          fbSettings: settings.fbSettings
-            ? {
-                ...settings.fbSettings,
-                activeLiveVideoId: data.id,
-                permalinkUrl: data.permalink_url,
-              }
-            : settings.fbSettings,
-        };
-        handleSaveSettings(updatedStart);
-
-        const liveRtmps = data.secure_stream_url || settings.rtmpsUrl;
-        const liveKey = data.stream_key || settings.streamKey;
-        startRelayPipeline(liveRtmps, liveKey);
-        setIsStreaming(true);
-        isStreamingRef.current = true;
-      } catch (err: any) {
-        console.error('Failed to initiate Facebook Live:', err);
-        alert(`Failed to start Facebook Live: ${err?.message || err}`);
-      }
+      // Open Streamlabs-style Go Live Setup & Destination Selection Modal
+      setIsGoLiveModalOpen(true);
     }
+  };
+
+  const handleConfirmGoLive = async (config: {
+    title: string;
+    description: string;
+    facebookEnabled: boolean;
+    facebookKey: string;
+    youtubeEnabled: boolean;
+    youtubeKey: string;
+    bandwidthPreset: StreamBandwidthPreset;
+    bitrateKbps: number;
+  }) => {
+    setIsGoLiveModalOpen(false);
+
+    const updatedSettings: StreamSettings = {
+      ...settings,
+      broadcastTitle: config.title,
+      broadcastDescription: config.description,
+      bandwidthPreset: config.bandwidthPreset,
+      streamKey: config.facebookKey || settings.streamKey,
+      fbSettings: settings.fbSettings
+        ? {
+            ...settings.fbSettings,
+            broadcastTitle: config.title,
+            broadcastDescription: config.description,
+            groupStreamKey: config.facebookKey,
+          }
+        : undefined,
+      ytSettings: {
+        enabled: config.youtubeEnabled,
+        streamKey: config.youtubeKey,
+      },
+    };
+    handleSaveSettings(updatedSettings);
+
+    const summary =
+      config.facebookEnabled && config.youtubeEnabled
+        ? 'FB + YT'
+        : config.facebookEnabled
+          ? 'FB'
+          : 'YT';
+    setStreamDestinationsSummary(summary);
+
+    startRelayPipeline({
+      facebookKey: config.facebookEnabled ? config.facebookKey : '',
+      youtubeKey: config.youtubeEnabled ? config.youtubeKey : '',
+      bitrateKbps: config.bitrateKbps,
+    });
+
+    setIsStreaming(true);
+    isStreamingRef.current = true;
   };
 
   const destinations: StreamDestinations = {
@@ -1196,6 +1227,7 @@ export default function StudioPage() {
         fps={fps}
         destinations={destinations}
         relayStats={relayStats}
+        destinationsSummary={streamDestinationsSummary}
         onToggleRecording={handleToggleRecording}
         onDownloadRecording={handleDownloadRecording}
         onToggleStreaming={handleToggleStreaming}
@@ -1349,6 +1381,15 @@ export default function StudioPage() {
         isOpen={isSourcePropsOpen}
         onClose={() => setIsSourcePropsOpen(false)}
         onSave={handleSaveSourceProperties}
+      />
+
+      {/* Streamlabs-style Go Live Setup & Destination Selection Modal */}
+      <GoLiveModal
+        isOpen={isGoLiveModalOpen}
+        onClose={() => setIsGoLiveModalOpen(false)}
+        settings={settings}
+        scoreboard={scoreboard}
+        onConfirmGoLive={handleConfirmGoLive}
       />
 
       {/* Studio Settings Modal */}
