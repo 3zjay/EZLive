@@ -1,4 +1,4 @@
-import { Scene, ScoreboardState, Source } from '@/types/broadcast';
+import { Scene, ScoreboardSource, ScoreboardState, Source } from '@/types/broadcast';
 import { BrandKit, ChatMessage, NewsTickerConfig, StageLayout, StreamlabsBanner } from '@/types/streamlabs';
 
 export class VideoCompositor {
@@ -368,117 +368,505 @@ export class VideoCompositor {
     ctx.drawImage(video, sx, sy, sWidth, sHeight, x, y, w, h);
   }
 
-  // --- Scoreboard HUD Source ---
+  // --- Scoreboard HUD Source (With 4 Hoop Culture Themes) ---
   private drawScoreboardSource(source: Source) {
     if (source.type !== 'scoreboard') return;
+
+    const sbSource = source as ScoreboardSource;
+    switch (sbSource.theme) {
+      case 'fullscreen_bar':
+        this.drawFullscreenBarTheme(sbSource);
+        break;
+      case 'nba_neon':
+        this.drawNbaNeonTheme(sbSource);
+        break;
+      case 'nba_classic':
+        this.drawNbaClassicTheme(sbSource);
+        break;
+      case 'nbc':
+      default:
+        this.drawNbcTheme(sbSource);
+        break;
+    }
+  }
+
+  private getOrLoadImage(url?: string | null): HTMLImageElement | null {
+    if (!url) return null;
+    let img = this.imageCache.get(url);
+    if (!img) {
+      img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      this.imageCache.set(url, img);
+    }
+    return img.complete && img.naturalWidth > 0 ? img : null;
+  }
+
+  // ?? THEME 1: NBC / NBA Pro Broadcast Bug (/nbc) ???????????????????????????
+  private drawNbcTheme(source: ScoreboardSource) {
     const { ctx } = this;
     const sb = this.scoreboard;
     const scale = source.scale || 1;
-    const barWidth = source.width;
-    const barHeight = source.height;
+    const barWidth = source.width || 1040 * scale;
+    const barHeight = source.height || 116 * scale;
     const barX = source.x;
     const barY = source.y;
     const radius = 12 * scale;
 
-    ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    ctx.shadowBlur = 20 * scale;
-    ctx.shadowOffsetY = 5 * scale;
+    const homeColor = sb.homeColor || '#f5c842';
+    const awayColor = sb.awayColor || '#c8102e';
 
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+    ctx.shadowBlur = 24 * scale;
+    ctx.shadowOffsetY = 6 * scale;
+
+    // Outer container background
+    ctx.fillStyle = 'rgba(10, 14, 24, 0.95)';
     this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
     ctx.fill();
 
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
 
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+    // Metallic border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
     ctx.lineWidth = 2 * scale;
     this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
     ctx.stroke();
 
-    const segW = barWidth / 3;
+    const segW = (barWidth - 260 * scale) / 2;
 
-    // Away Team
-    ctx.fillStyle = '#1e293b';
-    this.roundRect(ctx, barX, barY, segW, barHeight, [radius, 0, 0, radius]);
+    // ? TOP STRIP: Segmented Team Accent Lines
+    const stripH = 5 * scale;
+    ctx.fillStyle = homeColor;
+    this.roundRect(ctx, barX, barY, segW, stripH, [radius, 0, 0, 0]);
     ctx.fill();
 
-    if (sb.possession === 'away') {
-      ctx.fillStyle = '#eab308';
-      ctx.beginPath();
-      ctx.moveTo(barX + 16 * scale, barY + barHeight / 2 - 8 * scale);
-      ctx.lineTo(barX + 26 * scale, barY + barHeight / 2);
-      ctx.lineTo(barX + 16 * scale, barY + barHeight / 2 + 8 * scale);
-      ctx.fill();
-    }
+    ctx.fillStyle = '#0a0d14';
+    ctx.fillRect(barX + segW, barY, 260 * scale, stripH);
 
+    ctx.fillStyle = awayColor;
+    this.roundRect(ctx, barX + segW + 260 * scale, barY, segW, stripH, [0, radius, 0, 0]);
+    ctx.fill();
+
+    // ? HOME TEAM BLOCK (Left)
+    const homeLogoImg = this.getOrLoadImage(sb.homeLogo);
+    const logoSize = 52 * scale;
+    const logoY = barY + (barHeight - logoSize) / 2 + 2 * scale;
+
+    // Home Logo Circle
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.arc(barX + 40 * scale, barY + barHeight / 2 + 2 * scale, logoSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.stroke();
+
+    if (homeLogoImg) {
+      ctx.clip();
+      ctx.drawImage(homeLogoImg, barX + 40 * scale - logoSize / 2, logoY, logoSize, logoSize);
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(sb.homeTeam.slice(0, 3).toUpperCase(), barX + 40 * scale, barY + barHeight / 2 + 7 * scale);
+    }
+    ctx.restore();
+
+    // Home Text Details
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(26 * scale)}px sans-serif`;
+    ctx.font = `900 ${Math.round(26 * scale)}px sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(sb.awayTeam.toUpperCase(), barX + 36 * scale, barY + barHeight * 0.48);
+    ctx.fillText(sb.homeTeam.toUpperCase(), barX + 76 * scale, barY + barHeight * 0.46);
 
     ctx.fillStyle = '#94a3b8';
-    ctx.font = `600 ${Math.round(14 * scale)}px sans-serif`;
-    ctx.fillText(`FLS: ${sb.awayFouls} • TO: ${sb.awayTimeouts}`, barX + 36 * scale, barY + barHeight * 0.76);
+    ctx.font = `700 ${Math.round(13 * scale)}px sans-serif`;
+    ctx.fillText(`FOULS: ${sb.homeFouls}  ?  TO: ${sb.homeTimeouts}`, barX + 76 * scale, barY + barHeight * 0.74);
 
-    ctx.fillStyle = '#0f172a';
-    this.roundRect(ctx, barX + segW - 85 * scale, barY + 8 * scale, 75 * scale, barHeight - 16 * scale, 8 * scale);
-    ctx.fill();
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = `900 ${Math.round(38 * scale)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${sb.awayScore}`, barX + segW - 47 * scale, barY + barHeight * 0.65);
-
-    // Center Clock & Period
-    const clockX = barX + segW;
-    ctx.fillStyle = '#090d16';
-    ctx.fillRect(clockX, barY, segW, barHeight);
-
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = `bold ${Math.round(18 * scale)}px sans-serif`;
-    ctx.textAlign = 'center';
-    const periodText = sb.period <= 4 ? `Q${sb.period}` : `OT${sb.period - 4}`;
-    ctx.fillText(periodText, clockX + segW / 2, barY + barHeight * 0.36);
-
-    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
-    ctx.font = `900 ${Math.round(34 * scale)}px monospace`;
-    ctx.fillText(sb.gameClock, clockX + segW / 2, barY + barHeight * 0.80);
-
-    // Home Team
-    const homeX = barX + segW * 2;
-    ctx.fillStyle = '#1e293b';
-    this.roundRect(ctx, homeX, barY, segW, barHeight, [0, radius, radius, 0]);
-    ctx.fill();
-
-    ctx.fillStyle = '#0f172a';
-    this.roundRect(ctx, homeX + 10 * scale, barY + 8 * scale, 75 * scale, barHeight - 16 * scale, 8 * scale);
-    ctx.fill();
-    ctx.fillStyle = '#f43f5e';
-    ctx.font = `900 ${Math.round(38 * scale)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${sb.homeScore}`, homeX + 47 * scale, barY + barHeight * 0.65);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(26 * scale)}px sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.fillText(sb.homeTeam.toUpperCase(), homeX + segW - 36 * scale, barY + barHeight * 0.48);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `600 ${Math.round(14 * scale)}px sans-serif`;
-    ctx.fillText(`FLS: ${sb.homeFouls} • TO: ${sb.homeTimeouts}`, homeX + segW - 36 * scale, barY + barHeight * 0.76);
-
+    // Possession Arrow Home
     if (sb.possession === 'home') {
-      ctx.fillStyle = '#eab308';
+      ctx.fillStyle = '#f59e0b';
       ctx.beginPath();
-      ctx.moveTo(homeX + segW - 16 * scale, barY + barHeight / 2 - 8 * scale);
-      ctx.lineTo(homeX + segW - 26 * scale, barY + barHeight / 2);
-      ctx.lineTo(homeX + segW - 16 * scale, barY + barHeight / 2 + 8 * scale);
+      ctx.moveTo(barX + segW - 100 * scale, barY + barHeight / 2 - 7 * scale);
+      ctx.lineTo(barX + segW - 112 * scale, barY + barHeight / 2);
+      ctx.lineTo(barX + segW - 100 * scale, barY + barHeight / 2 + 7 * scale);
       ctx.fill();
     }
+
+    // Home Score Box
+    ctx.fillStyle = '#070a12';
+    this.roundRect(ctx, barX + segW - 88 * scale, barY + 14 * scale, 80 * scale, barHeight - 28 * scale, 8 * scale);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(40 * scale)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${sb.homeScore}`, barX + segW - 48 * scale, barY + barHeight * 0.67);
+
+    // ? CENTER BLOCK: Clock, Period & Shot Clock
+    const centerBlockX = barX + segW;
+    const centerW = 260 * scale;
+
+    ctx.fillStyle = '#05070d';
+    ctx.fillRect(centerBlockX, barY + stripH, centerW, barHeight - stripH);
+
+    // Period Indicator (Q1 / Q2 / Q3 / Q4 / OT)
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = `bold ${Math.round(17 * scale)}px sans-serif`;
+    ctx.textAlign = 'center';
+    const periodStr = sb.period <= 4 ? `PERIOD ${sb.period}` : `OT ${sb.period - 4}`;
+    ctx.fillText(periodStr, centerBlockX + centerW / 2, barY + barHeight * 0.36);
+
+    // Game Clock
+    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
+    ctx.font = `900 ${Math.round(36 * scale)}px monospace`;
+    ctx.fillText(sb.gameClock, centerBlockX + centerW / 2 - 28 * scale, barY + barHeight * 0.80);
+
+    // Shot Clock Pill
+    const scW = 46 * scale;
+    const scH = 34 * scale;
+    const scX = centerBlockX + centerW - scW - 16 * scale;
+    const scY = barY + barHeight * 0.50;
+    const scNum = sb.shotClock;
+    const scColor = scNum <= 5 ? '#ef4444' : '#f97316';
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    this.roundRect(ctx, scX, scY, scW, scH, 6 * scale);
+    ctx.fill();
+    ctx.strokeStyle = scColor;
+    ctx.lineWidth = 1.5 * scale;
+    ctx.stroke();
+
+    ctx.fillStyle = scColor;
+    ctx.font = `900 ${Math.round(22 * scale)}px monospace`;
+    ctx.fillText(`${scNum}`, scX + scW / 2, scY + scH * 0.72);
+
+    // ? AWAY TEAM BLOCK (Right)
+    const awayX = centerBlockX + centerW;
+
+    // Away Score Box
+    ctx.fillStyle = '#070a12';
+    this.roundRect(ctx, awayX + 8 * scale, barY + 14 * scale, 80 * scale, barHeight - 28 * scale, 8 * scale);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(40 * scale)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${sb.awayScore}`, awayX + 48 * scale, barY + barHeight * 0.67);
+
+    // Possession Arrow Away
+    if (sb.possession === 'away') {
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.moveTo(awayX + 100 * scale, barY + barHeight / 2 - 7 * scale);
+      ctx.lineTo(awayX + 112 * scale, barY + barHeight / 2);
+      ctx.lineTo(awayX + 100 * scale, barY + barHeight / 2 + 7 * scale);
+      ctx.fill();
+    }
+
+    // Away Text Details
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(26 * scale)}px sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.fillText(sb.awayTeam.toUpperCase(), awayX + segW - 76 * scale, barY + barHeight * 0.46);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `700 ${Math.round(13 * scale)}px sans-serif`;
+    ctx.fillText(`FOULS: ${sb.awayFouls}  ?  TO: ${sb.awayTimeouts}`, awayX + segW - 76 * scale, barY + barHeight * 0.74);
+
+    // Away Logo Circle
+    const awayLogoImg = this.getOrLoadImage(sb.awayLogo);
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.arc(awayX + segW - 40 * scale, barY + barHeight / 2 + 2 * scale, logoSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.stroke();
+
+    if (awayLogoImg) {
+      ctx.clip();
+      ctx.drawImage(awayLogoImg, awayX + segW - 40 * scale - logoSize / 2, logoY, logoSize, logoSize);
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(sb.awayTeam.slice(0, 3).toUpperCase(), awayX + segW - 40 * scale, barY + barHeight / 2 + 7 * scale);
+    }
+    ctx.restore();
 
     ctx.restore();
   }
+
+  // ?? THEME 2: Classic NBA Scorebug (/nbaoverlay) ???????????????????????????
+  private drawNbaClassicTheme(source: ScoreboardSource) {
+    const { ctx } = this;
+    const sb = this.scoreboard;
+    const scale = source.scale || 1;
+    const barWidth = source.width || 880 * scale;
+    const barHeight = source.height || 100 * scale;
+    const barX = source.x;
+    const barY = source.y;
+    const radius = 10 * scale;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur = 18 * scale;
+
+    // Background
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+    this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    // Top Header Ticker
+    const topH = 26 * scale;
+    ctx.fillStyle = '#0f172a';
+    this.roundRect(ctx, barX, barY, barWidth, topH, [radius, radius, 0, 0]);
+    ctx.fill();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `bold ${Math.round(11 * scale)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      (sb.bannerText || 'HOOP CULTURE NETWORK ? LIVE BROADCAST').toUpperCase(),
+      barX + barWidth / 2,
+      barY + topH * 0.70
+    );
+
+    const mainY = barY + topH;
+    const mainH = barHeight - topH;
+    const sideW = (barWidth - 220 * scale) / 2;
+
+    // Home Block
+    ctx.fillStyle = '#1e293b';
+    this.roundRect(ctx, barX, mainY, sideW, mainH, [0, 0, 0, radius]);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(28 * scale)}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(sb.homeTeam.toUpperCase(), barX + 24 * scale, mainY + mainH * 0.62);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = `900 ${Math.round(36 * scale)}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${sb.homeScore}`, barX + sideW - 20 * scale, mainY + mainH * 0.66);
+
+    // Center Clock
+    const cX = barX + sideW;
+    const cW = 220 * scale;
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(cX, mainY, cW, mainH);
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`Q${sb.period}  ?  :${sb.shotClock}`, cX + cW / 2, mainY + mainH * 0.38);
+
+    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
+    ctx.font = `900 ${Math.round(30 * scale)}px monospace`;
+    ctx.fillText(sb.gameClock, cX + cW / 2, mainY + mainH * 0.82);
+
+    // Away Block
+    const aX = cX + cW;
+    ctx.fillStyle = '#1e293b';
+    this.roundRect(ctx, aX, mainY, sideW, mainH, [0, 0, radius, 0]);
+    ctx.fill();
+
+    ctx.fillStyle = '#f43f5e';
+    ctx.font = `900 ${Math.round(36 * scale)}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`${sb.awayScore}`, aX + 20 * scale, mainY + mainH * 0.66);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(28 * scale)}px sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.fillText(sb.awayTeam.toUpperCase(), aX + sideW - 24 * scale, mainY + mainH * 0.62);
+
+    ctx.restore();
+  }
+
+  // ?? THEME 3: Compact Neon Bug 2 (/nbaoverlay2) ?????????????????????????????
+  private drawNbaNeonTheme(source: ScoreboardSource) {
+    const { ctx } = this;
+    const sb = this.scoreboard;
+    const scale = source.scale || 1;
+    const barWidth = source.width || 480 * scale;
+    const barHeight = source.height || 90 * scale;
+    const barX = source.x;
+    const barY = source.y;
+    const radius = 8 * scale;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 16 * scale;
+
+    ctx.fillStyle = 'rgba(8, 10, 16, 0.96)';
+    this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    ctx.strokeStyle = 'rgba(255, 107, 26, 0.4)';
+    ctx.lineWidth = 1.5 * scale;
+    this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
+    ctx.stroke();
+
+    const colW = barWidth / 3;
+
+    // Home
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(22 * scale)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText(sb.homeTeam.slice(0, 4).toUpperCase(), barX + colW / 2, barY + barHeight * 0.42);
+
+    ctx.fillStyle = '#ff8c42';
+    ctx.font = `900 ${Math.round(34 * scale)}px monospace`;
+    ctx.fillText(`${sb.homeScore}`, barX + colW / 2, barY + barHeight * 0.84);
+
+    // Center Clock & Shot
+    const cX = barX + colW;
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = `bold ${Math.round(13 * scale)}px sans-serif`;
+    ctx.fillText(`Q${sb.period} ? SHOT ${sb.shotClock}`, cX + colW / 2, barY + barHeight * 0.40);
+
+    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
+    ctx.font = `900 ${Math.round(28 * scale)}px monospace`;
+    ctx.fillText(sb.gameClock, cX + colW / 2, barY + barHeight * 0.82);
+
+    // Away
+    const aX = cX + colW;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(22 * scale)}px sans-serif`;
+    ctx.fillText(sb.awayTeam.slice(0, 4).toUpperCase(), aX + colW / 2, barY + barHeight * 0.42);
+
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = `900 ${Math.round(34 * scale)}px monospace`;
+    ctx.fillText(`${sb.awayScore}`, aX + colW / 2, barY + barHeight * 0.84);
+
+    ctx.restore();
+  }
+
+  // ?? THEME 4: Full-Width Lower Third Bar (/fullscreen) ??????????????????????
+  private drawFullscreenBarTheme(source: ScoreboardSource) {
+    const { ctx } = this;
+    const sb = this.scoreboard;
+    const scale = source.scale || 1;
+    const barWidth = 1920;
+    const barHeight = 124 * scale;
+    const barX = 0;
+    const barY = this.height - barHeight;
+
+    ctx.save();
+
+    // Dark luxury gradient
+    const grad = ctx.createLinearGradient(0, barY, 0, barY + barHeight);
+    grad.addColorStop(0, 'rgba(12, 10, 8, 0.98)');
+    grad.addColorStop(1, 'rgba(4, 3, 2, 0.99)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // Top gold/fire accent line
+    const lineGrad = ctx.createLinearGradient(0, 0, barWidth, 0);
+    lineGrad.addColorStop(0, sb.homeColor || '#f5c842');
+    lineGrad.addColorStop(0.5, '#ff6b1a');
+    lineGrad.addColorStop(1, sb.awayColor || '#c8102e');
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(barX, barY, barWidth, 4 * scale);
+
+    const mainH = barHeight - 26 * scale;
+    const midX = barWidth / 2;
+
+    // ?? HOME (Left) ??
+    const homeLogoImg = this.getOrLoadImage(sb.homeLogo);
+    if (homeLogoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(80 * scale, barY + mainH / 2, 36 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fill();
+      ctx.clip();
+      ctx.drawImage(homeLogoImg, 80 * scale - 36 * scale, barY + mainH / 2 - 36 * scale, 72 * scale, 72 * scale);
+      ctx.restore();
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(36 * scale)}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText(sb.homeTeam.toUpperCase(), 140 * scale, barY + mainH * 0.58);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `700 ${Math.round(14 * scale)}px sans-serif`;
+    ctx.fillText(`REC: ${sb.homeRecord || '0-0'}  ?  FLS: ${sb.homeFouls}`, 140 * scale, barY + mainH * 0.85);
+
+    // Home Score
+    ctx.fillStyle = '#ff8c42';
+    ctx.font = `900 ${Math.round(52 * scale)}px monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${sb.homeScore}`, midX - 180 * scale, barY + mainH * 0.70);
+
+    // ?? CENTER (Clock, Period, Shot Clock) ??
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = `bold ${Math.round(18 * scale)}px sans-serif`;
+    ctx.textAlign = 'center';
+    const periodLabel = sb.period <= 4 ? `PERIOD ${sb.period}` : `OVERTIME ${sb.period - 4}`;
+    ctx.fillText(periodLabel, midX, barY + mainH * 0.34);
+
+    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
+    ctx.font = `900 ${Math.round(44 * scale)}px monospace`;
+    ctx.fillText(sb.gameClock, midX, barY + mainH * 0.74);
+
+    ctx.fillStyle = '#ef4444';
+    ctx.font = `900 ${Math.round(18 * scale)}px monospace`;
+    ctx.fillText(`SHOT: ${sb.shotClock}`, midX, barY + mainH * 0.94);
+
+    // ?? AWAY (Right) ??
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = `900 ${Math.round(52 * scale)}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`${sb.awayScore}`, midX + 180 * scale, barY + mainH * 0.70);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(36 * scale)}px sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.fillText(sb.awayTeam.toUpperCase(), barWidth - 140 * scale, barY + mainH * 0.58);
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `700 ${Math.round(14 * scale)}px sans-serif`;
+    ctx.fillText(`FLS: ${sb.awayFouls}  ?  REC: ${sb.awayRecord || '0-0'}`, barWidth - 140 * scale, barY + mainH * 0.85);
+
+    const awayLogoImg = this.getOrLoadImage(sb.awayLogo);
+    if (awayLogoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(barWidth - 80 * scale, barY + mainH / 2, 36 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fill();
+      ctx.clip();
+      ctx.drawImage(awayLogoImg, barWidth - 80 * scale - 36 * scale, barY + mainH / 2 - 36 * scale, 72 * scale, 72 * scale);
+      ctx.restore();
+    }
+
+    // ?? BOTTOM STRIPE: Sponsor & Broadcast Crawl ??
+    const crawlY = barY + barHeight - 24 * scale;
+    ctx.fillStyle = '#060402';
+    ctx.fillRect(barX, crawlY, barWidth, 24 * scale);
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = `bold ${Math.round(11 * scale)}px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'center';
+    const crawlText = sb.bannerText || '?? HOOP CULTURE NETWORK ? DMC BASKETBALL HOUSE LEAGUE ? OFFICIAL GAME OVERLAY';
+    ctx.fillText(crawlText.toUpperCase(), barWidth / 2, crawlY + 16 * scale);
+
+    ctx.restore();
+  }
+
 
   // --- Text Source ---
   private drawTextSource(source: Source) {
@@ -548,19 +936,31 @@ export class VideoCompositor {
   private drawBrowserSourcePlaceholder(source: Source) {
     if (source.type !== 'browser_url') return;
     if (source.syncDataBridge) {
+      let theme: any = 'nbc';
+      const u = (source.url || '').toLowerCase();
+      if (u.includes('fullscreen') || u.includes('overlay')) {
+        theme = 'fullscreen_bar';
+      } else if (u.includes('nbaoverlay2')) {
+        theme = 'nba_neon';
+      } else if (u.includes('nbaoverlay')) {
+        theme = 'nba_classic';
+      } else if (u.includes('nbc')) {
+        theme = 'nbc';
+      }
+
       const mockScoreboardSource: Source = {
         id: `${source.id}-hud`,
         name: 'Synced HUD',
         type: 'scoreboard',
         visible: true,
         locked: true,
-        x: source.x + (source.width - 960) / 2,
-        y: source.y + 40,
-        width: 960,
-        height: 110,
+        x: source.x + (source.width - (theme === 'fullscreen_bar' ? 1920 : 1040)) / 2,
+        y: theme === 'fullscreen_bar' ? 1080 - 124 : source.y + 40,
+        width: theme === 'fullscreen_bar' ? 1920 : 1040,
+        height: theme === 'fullscreen_bar' ? 124 : 116,
         opacity: 1,
         zIndex: source.zIndex,
-        theme: 'hooptimes',
+        theme,
         scale: 1,
       };
       this.drawScoreboardSource(mockScoreboardSource);

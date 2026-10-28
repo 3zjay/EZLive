@@ -14,6 +14,21 @@ export interface ScoreboardState {
   bannerText: string;
   sponsorName: string;
   possession: 'home' | 'away' | 'none';
+  // Enhanced properties from HoopCultureScoreboard
+  homeColor?: string;
+  awayColor?: string;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
+  homeAbbr?: string;
+  awayAbbr?: string;
+  quarter?: number;
+  gameSeconds?: number;
+  shotSeconds?: number;
+  homeRecord?: string;
+  awayRecord?: string;
+  syncKey?: string;
+  syncSource?: 'firebase_rtdb' | 'broadcast_channel' | 'local_sse' | 'manual';
+  lastSyncTimestamp?: number;
 }
 
 export type SourceType = 'camera' | 'browser_url' | 'image' | 'text' | 'scoreboard' | 'color_solid';
@@ -64,9 +79,18 @@ export interface TextSource extends BaseSource {
   borderRadius: number;
 }
 
+export type ScoreboardTheme =
+  | 'nbc'            // Theme 1: NBC / NBA Pro Broadcast Bug (/nbc)
+  | 'nba_classic'    // Theme 2: Classic NBA Scorebug (/nbaoverlay)
+  | 'nba_neon'       // Theme 3: Compact Neon Bug (/nbaoverlay2)
+  | 'fullscreen_bar' // Theme 4: Full-Width Lower Third Bar (/fullscreen)
+  | 'espn'           // Legacy fallback
+  | 'hooptimes'      // Legacy fallback
+  | 'minimal';       // Legacy fallback
+
 export interface ScoreboardSource extends BaseSource {
   type: 'scoreboard';
-  theme: 'espn' | 'hooptimes' | 'minimal';
+  theme: ScoreboardTheme;
   scale: number;
 }
 
@@ -114,6 +138,10 @@ export interface StreamSettings {
   transitionType: TransitionType;
   transitionDurationMs: number;
   fbSettings?: FacebookLiveSettings;
+  // Scoreboard Sync Preferences
+  scoreboardSessionUser?: string;
+  scoreboardSyncMode?: 'auto' | 'firebase_rtdb' | 'local_sse' | 'broadcast_channel' | 'manual';
+  localScoreboardIp?: string;
 }
 
 export interface AudioMeterData {

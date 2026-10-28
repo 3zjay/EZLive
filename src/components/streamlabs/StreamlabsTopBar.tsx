@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Radio, Circle, Settings, Download, UserPlus, Monitor, Video, PanelRight, PanelRightClose } from 'lucide-react';
+import { Radio, Circle, Settings, Download, UserPlus, Monitor, Video, PanelRight, PanelRightClose, Activity } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 import { StreamDestinations } from '@/types/streamlabs';
 
@@ -24,6 +24,8 @@ interface StreamlabsTopBarProps {
   onFlipCamera: () => void;
   isSidebarOpen: boolean;
   onToggleSidebar: () => void;
+  scoreboardSyncUser?: string;
+  isScoreboardConnected?: boolean;
 }
 
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
@@ -43,6 +45,8 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   onFlipCamera,
   isSidebarOpen,
   onToggleSidebar,
+  scoreboardSyncUser,
+  isScoreboardConnected,
 }) => {
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -79,8 +83,30 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
         </div>
       </div>
 
-      {/* Center Tools: Guest Invite & Screen Share */}
+      {/* Center Tools: Guest Invite, Screen Share & Scoreboard Sync Pill */}
       <div className="flex items-center gap-2">
+        {/* Scoreboard Sync Pill */}
+        <button
+          onClick={onOpenSettings}
+          title="Click to manage Scoreboard Sync"
+          className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold transition shadow-sm ${
+            isScoreboardConnected
+              ? 'bg-emerald-950/60 border-emerald-600/60 text-emerald-300 hover:bg-emerald-900/60'
+              : 'bg-amber-950/50 border-amber-600/50 text-amber-300 hover:bg-amber-900/50'
+          }`}
+        >
+          <span className="relative flex h-2 w-2">
+            {isScoreboardConnected && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            )}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${isScoreboardConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
+          </span>
+          <Activity size={12} className={isScoreboardConnected ? 'text-emerald-400' : 'text-amber-400'} />
+          <span className="font-mono text-[10px] truncate max-w-[140px]">
+            {isScoreboardConnected ? (scoreboardSyncUser || 'Scoreboard Live') : 'Offline Scoreboard'}
+          </span>
+        </button>
+
         <button
           onClick={onOpenGuestInvite}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 rounded-lg text-xs font-bold transition shadow-sm"
@@ -159,46 +185,46 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
           <button
             onClick={onDownloadRecording}
             className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold transition shadow"
-            title="Download Recorded Game Video"
+            title="Download Saved Game Video"
           >
             <Download size={13} />
-            <span>MP4</span>
+            <span className="hidden sm:inline">MP4</span>
           </button>
         )}
 
-        {/* Go Live Button */}
+        {/* Go Live (Facebook Live Relay) */}
         <button
           onClick={onToggleStreaming}
-          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition shadow-lg ${
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black tracking-wide transition shadow-lg active:scale-95 ${
             isStreaming
-              ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
+              ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse shadow-rose-950/60'
+              : 'bg-gradient-to-r from-[#ff6b1a] to-[#e8430a] hover:from-[#ff8533] hover:to-[#ff5714] text-white shadow-[#e8430a]/30'
           }`}
         >
-          <Radio size={14} />
-          <span>{isStreaming ? 'End Live' : 'Go Live'}</span>
+          <Radio size={13} />
+          <span>{isStreaming ? 'END LIVE' : 'GO LIVE'}</span>
         </button>
 
-        {/* Settings Button */}
+        {/* Settings */}
         <button
           onClick={onOpenSettings}
-          className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition border border-transparent hover:border-slate-700"
+          className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 rounded-lg text-slate-300 hover:text-white transition"
           title="Studio Settings"
         >
-          <Settings size={17} />
+          <Settings size={15} />
         </button>
 
-        {/* Sidebar Toggle Button (Expands stage for iPad / Mobile) */}
+        {/* Sidebar Toggle */}
         <button
           onClick={onToggleSidebar}
-          className={`p-1.5 rounded-lg transition border ${
+          className={`p-1.5 rounded-lg border transition ${
             isSidebarOpen
-              ? 'bg-slate-800 text-sky-400 border-slate-700'
-              : 'bg-slate-900 text-slate-400 hover:text-white border-transparent hover:border-slate-800'
+              ? 'bg-[#e8430a]/20 border-[#e8430a]/40 text-[#ff6b1a]'
+              : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 text-slate-300 hover:text-white'
           }`}
-          title={isSidebarOpen ? 'Collapse Tools & Expand Stage' : 'Show Studio Tools'}
+          title={isSidebarOpen ? 'Close Docks Sidebar' : 'Open Docks Sidebar'}
         >
-          {isSidebarOpen ? <PanelRightClose size={17} /> : <PanelRight size={17} />}
+          {isSidebarOpen ? <PanelRightClose size={15} /> : <PanelRight size={15} />}
         </button>
       </div>
     </header>

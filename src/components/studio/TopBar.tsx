@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Camera, Mic, Radio, Circle, Settings, Download, Video } from 'lucide-react';
+import { Camera, Mic, Radio, Circle, Settings, Download, Video, Activity } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 
 interface TopBarProps {
@@ -17,6 +17,8 @@ interface TopBarProps {
   onOpenSettings: () => void;
   facingMode: 'environment' | 'user';
   onFlipCamera: () => void;
+  scoreboardSyncUser?: string;
+  isScoreboardConnected?: boolean;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -32,6 +34,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenSettings,
   facingMode,
   onFlipCamera,
+  scoreboardSyncUser,
+  isScoreboardConnected,
 }) => {
   const formatDuration = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -52,61 +56,86 @@ export const TopBar: React.FC<TopBarProps> = ({
     <header className="h-16 bg-slate-950/95 border-b border-slate-800 px-4 flex items-center justify-between text-white select-none z-30">
       {/* Brand & Studio Title */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 shadow-lg shadow-sky-900/30 font-black text-lg tracking-tighter">
-          EZ
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-600 shadow-lg shadow-orange-950/40 font-black text-lg tracking-tighter">
+          HC
         </div>
         <div>
           <div className="text-sm font-extrabold tracking-tight flex items-center gap-2">
-            <span>EZ BROADCAST STUDIO</span>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
-              PWA 1080p
+            <span>EZLIVE STUDIO</span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
+              1080p 60FPS
             </span>
           </div>
           <div className="text-[11px] text-slate-400 flex items-center gap-2">
-            <span>OBS-Style Mobile Studio</span>
+            <span>Hoop Culture Web OBS</span>
             <span>•</span>
             <span className="text-emerald-400 font-mono font-medium">{fps} FPS</span>
           </div>
         </div>
       </div>
 
-      {/* Device & Hardware Status Indicators */}
-      <div className="hidden md:flex items-center gap-4 bg-slate-900/90 py-1.5 px-3 rounded-xl border border-slate-800">
-        {/* Camera Status */}
-        <div className="flex items-center gap-2 text-xs">
-          <div className={`p-1 rounded-md ${hasCamera ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-            <Camera size={15} />
+      {/* Center Group: Device Status & Scoreboard Sync Pill */}
+      <div className="flex items-center gap-3">
+        {/* Device & Hardware Status Indicators */}
+        <div className="hidden md:flex items-center gap-4 bg-slate-900/90 py-1.5 px-3 rounded-xl border border-slate-800">
+          {/* Camera Status */}
+          <div className="flex items-center gap-2 text-xs">
+            <div className={`p-1 rounded-md ${hasCamera ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+              <Camera size={15} />
+            </div>
+            <span className="text-slate-300 font-medium">
+              {hasCamera ? (facingMode === 'environment' ? 'Rear (Court)' : 'Front') : 'No Camera'}
+            </span>
+            {hasCamera && (
+              <button
+                onClick={onFlipCamera}
+                title="Flip Camera (Front/Rear)"
+                className="ml-1 p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition"
+              >
+                <Video size={13} />
+              </button>
+            )}
           </div>
-          <span className="text-slate-300 font-medium">
-            {hasCamera ? (facingMode === 'environment' ? 'Rear (Court)' : 'Front') : 'No Camera'}
+
+          <div className="w-px h-4 bg-slate-800" />
+
+          {/* Microphone Level */}
+          <div className="flex items-center gap-2 text-xs">
+            <div className={`p-1 rounded-md ${hasAudio ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+              <Mic size={15} />
+            </div>
+            <div className="w-16 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
+              <div
+                className={`h-full rounded-full transition-all duration-75 ${
+                  audioLevel > 80 ? 'bg-rose-500' : audioLevel > 50 ? 'bg-amber-400' : 'bg-emerald-400'
+                }`}
+                style={{ width: `${Math.min(100, audioLevel)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Live Scoreboard Sync Indicator Pill */}
+        <button
+          onClick={onOpenSettings}
+          title="Click to manage Scoreboard Sync"
+          className={`hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition shadow-sm ${
+            isScoreboardConnected
+              ? 'bg-emerald-950/60 border-emerald-600/60 text-emerald-300 hover:bg-emerald-900/60'
+              : 'bg-amber-950/50 border-amber-600/50 text-amber-300 hover:bg-amber-900/50'
+          }`}
+        >
+          <span className="relative flex h-2 w-2">
+            {isScoreboardConnected && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            )}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${isScoreboardConnected ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
           </span>
-          {hasCamera && (
-            <button
-              onClick={onFlipCamera}
-              title="Flip Camera (Front/Rear)"
-              className="ml-1 p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition"
-            >
-              <Video size={13} />
-            </button>
-          )}
-        </div>
-
-        <div className="w-px h-4 bg-slate-800" />
-
-        {/* Microphone Level */}
-        <div className="flex items-center gap-2 text-xs">
-          <div className={`p-1 rounded-md ${hasAudio ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-            <Mic size={15} />
-          </div>
-          <div className="w-16 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
-            <div
-              className={`h-full rounded-full transition-all duration-75 ${
-                audioLevel > 80 ? 'bg-rose-500' : audioLevel > 50 ? 'bg-amber-400' : 'bg-emerald-400'
-              }`}
-              style={{ width: `${Math.min(100, audioLevel)}%` }}
-            />
-          </div>
-        </div>
+          <Activity size={12} className={isScoreboardConnected ? 'text-emerald-400' : 'text-amber-400'} />
+          <span className="font-mono text-[11px] truncate max-w-[200px]">
+            {isScoreboardConnected ? (scoreboardSyncUser || 'Scoreboard Live') : 'Standalone Mode'}
+          </span>
+        </button>
       </div>
 
       {/* Broadcast & Recording Master Controls */}
@@ -153,7 +182,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-md active:scale-95 ${
             isStreaming
               ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse'
-              : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+              : 'bg-[#e8430a] hover:bg-[#ff6b1a] text-white shadow-lg shadow-orange-950/40'
           }`}
         >
           <Radio size={14} />

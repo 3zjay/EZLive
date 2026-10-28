@@ -1,4 +1,5 @@
 import { ScoreboardState } from '@/types/broadcast';
+import { scoreboardSync, normalizeScoreboardState } from '@/services/scoreboardSync';
 
 export type ScoreboardUpdateListener = (state: Partial<ScoreboardState>) => void;
 
@@ -6,6 +7,7 @@ export class OverlayBridge {
   private listeners: Set<ScoreboardUpdateListener> = new Set();
   private broadcastChannel: BroadcastChannel | null = null;
   private messageHandler: ((event: MessageEvent) => void) | null = null;
+  private unsubscribeSync: (() => void) | null = null;
 
   constructor() {
     this.setupListeners();
@@ -49,6 +51,11 @@ export class OverlayBridge {
   private setupListeners() {
     if (typeof window === 'undefined') return;
 
+    // Connect to the unified ScoreboardSyncManager
+    this.unsubscribeSync = scoreboardSync.subscribe((liveState) => {
+      this.notify(liveState);
+    });
+
     // Cross-tab BroadcastChannel
     try {
       this.broadcastChannel = new BroadcastChannel('ezlive_scoreboard_channel');
@@ -68,6 +75,13 @@ export class OverlayBridge {
       // Handle standard EZ format
       if (event.data.type === 'EZ_SCOREBOARD_UPDATE' && event.data.payload) {
         this.notify(event.data.payload);
+        return;
+      }
+
+      // Handle Hoop Culture format
+      if (event.data.type === 'state' && event.data.data) {
+        const normalized = normalizeScoreboardState(event.data.data, 'broadcast_channel');
+        this.notify(normalized);
         return;
       }
 
@@ -115,6 +129,10 @@ export class OverlayBridge {
   }
 
   public destroy() {
+    if (this.unsubscribeSync) {
+      this.unsubscribeSync();
+      this.unsubscribeSync = null;
+    }
     if (this.broadcastChannel) {
       this.broadcastChannel.close();
       this.broadcastChannel = null;

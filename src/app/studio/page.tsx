@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { VideoCompositor } from '@/services/compositor';
 import { BroadcastRecorder, RecordingState } from '@/services/recorder';
 import { OverlayBridge } from '@/services/overlayBridge';
+import { scoreboardSync } from '@/services/scoreboardSync';
 import { SceneStorage, DEFAULT_OBS_SCENES } from '@/services/sceneStorage';
 import { Scene, ScoreboardState, Source, SourceType, StreamSettings } from '@/types/broadcast';
 import {
@@ -211,6 +212,18 @@ export default function StudioPage() {
     mimeType: '',
   });
   const [isStreaming, setIsStreaming] = useState(false);
+
+  // Auto-pair Scoreboard with logged-in Google email or assigned court
+  useEffect(() => {
+    const emailOrCourt = user?.email || settings.scoreboardSessionUser || profile?.assignedCourt;
+    if (emailOrCourt) {
+      scoreboardSync.setSessionUser(emailOrCourt);
+      setSettings((prev) => ({
+        ...prev,
+        scoreboardSessionUser: prev.scoreboardSessionUser || emailOrCourt,
+      }));
+    }
+  }, [user?.email, profile?.assignedCourt, settings.scoreboardSessionUser]);
 
   // Sync with Firebase profile on login
   useEffect(() => {
@@ -953,6 +966,8 @@ export default function StudioPage() {
         onFlipCamera={handleFlipCamera}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+        scoreboardSyncUser={settings.scoreboardSessionUser || user?.email || profile?.assignedCourt}
+        isScoreboardConnected={scoreboard.syncSource !== undefined && scoreboard.syncSource !== 'manual'}
       />
 
       {/* Main Studio Middle Zone: Program Preview Stage + Streamlabs Right Sidebar */}

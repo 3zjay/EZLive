@@ -215,53 +215,118 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: Scoreboard Sync */}
+          {/* TAB 2: Scoreboard Sync (Hoop Culture Realtime Integration) */}
           {activeTab === 'overlay' && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
-                  Default Vercel Scoreboard Overlay URL
+              {/* Email / Session Pairing */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-orange-400 uppercase tracking-wider">
+                    Scoreboard Pairing Account (Google Email / Session)
+                  </label>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-mono font-bold border border-emerald-500/30">
+                    Auto-Paired
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  value={localSettings.scoreboardSessionUser || ''}
+                  onChange={(e) => setLocalSettings({ ...localSettings, scoreboardSessionUser: e.target.value })}
+                  placeholder="e.g. isidro.pascua@gmail.com or court-1"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-100 text-xs font-mono focus:outline-none focus:border-orange-500"
+                />
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Both tablets sync automatically when logged into the same Google account. Tablet 1 writes live game clocks & scores, and this broadcast studio streams them into your 60 FPS video canvas.
+                </p>
+              </div>
+
+              {/* Sync Channel Selector */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block">
+                  Connection Pipeline
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={localSettings.overlayUrl}
-                    onChange={(e) => setLocalSettings({ ...localSettings, overlayUrl: e.target.value })}
-                    placeholder="https://your-scoreboard.vercel.app/overlay"
-                    className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500"
-                  />
+                <div className="grid grid-cols-2 gap-2 text-xs">
                   <button
-                    onClick={() => setLocalSettings({ ...localSettings, overlayUrl: '/scoreboard' })}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-700 text-slate-200"
+                    type="button"
+                    onClick={() => setLocalSettings({ ...localSettings, scoreboardSyncMode: 'auto' })}
+                    className={`p-2.5 rounded-xl border text-left font-bold transition ${
+                      (!localSettings.scoreboardSyncMode || localSettings.scoreboardSyncMode === 'auto')
+                        ? 'border-orange-500 bg-orange-950/40 text-orange-300'
+                        : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                    }`}
                   >
-                    Demo URL
+                    <div>Auto-Detect (Recommended)</div>
+                    <div className="text-[10px] font-normal text-slate-400 mt-0.5">Firebase RTDB + Local 0ms BroadcastChannel</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLocalSettings({ ...localSettings, scoreboardSyncMode: 'local_sse' })}
+                    className={`p-2.5 rounded-xl border text-left font-bold transition ${
+                      localSettings.scoreboardSyncMode === 'local_sse'
+                        ? 'border-orange-500 bg-orange-950/40 text-orange-300'
+                        : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div>Local Gym Server (:3000)</div>
+                    <div className="text-[10px] font-normal text-slate-400 mt-0.5">Offline gym hotspot (Node.js SSE stream)</div>
                   </button>
                 </div>
               </div>
 
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-bold text-slate-200">
-                      Enable PostMessage / Real-time Data Bridge
-                    </div>
-                    <div className="text-[11px] text-slate-400">
-                      Syncs scores into the Canvas compositor so they appear in the encoded MP4 video.
-                    </div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={localSettings.usePostMessageBridge}
-                    onChange={(e) => setLocalSettings({ ...localSettings, usePostMessageBridge: e.target.checked })}
-                    className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 bg-slate-900 border-slate-700"
-                  />
+              {/* The 4 Official Overlay URLs */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2.5">
+                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  The 4 Official Hoop Culture Overlays
                 </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/nbc?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="p-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-left"
+                  >
+                    <div className="font-bold text-orange-400">1. NBC Pro Scorebug</div>
+                    <div className="text-[10px] font-mono text-slate-400">/nbc</div>
+                  </button>
 
-                <div className="text-xs text-sky-300/90 bg-sky-950/40 p-3 rounded-lg border border-sky-800/40 flex items-start gap-2">
-                  <HelpCircle size={16} className="shrink-0 mt-0.5 text-sky-400" />
-                  <span>
-                    You can add any number of custom Browser Sources inside each scene. If the page sends postMessage updates, EZ Studio bakes them into every frame at 60 FPS.
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/fullscreen?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="p-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-left"
+                  >
+                    <div className="font-bold text-amber-400">2. Full-Width Lower Third</div>
+                    <div className="text-[10px] font-mono text-slate-400">/fullscreen</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/nbaoverlay?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="p-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-left"
+                  >
+                    <div className="font-bold text-sky-400">3. Classic NBA Bug</div>
+                    <div className="text-[10px] font-mono text-slate-400">/nbaoverlay</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/nbaoverlay2?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="p-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-left"
+                  >
+                    <div className="font-bold text-purple-400">4. Compact Neon Bug</div>
+                    <div className="text-[10px] font-mono text-slate-400">/nbaoverlay2</div>
+                  </button>
                 </div>
               </div>
             </div>

@@ -160,6 +160,88 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
             </div>
           )}
 
+          {/* SCOREBOARD SOURCE THEME SELECTOR */}
+          {localSource.type === 'scoreboard' && (
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+              <div className="font-bold text-orange-400 uppercase text-[11px] flex items-center justify-between">
+                <span>Hoop Culture Overlay Theme</span>
+                <span className="text-[10px] text-slate-400 font-mono">60 FPS In-Stream</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLocalSource({ ...localSource, theme: 'nbc', width: 1040, height: 116, x: (1920 - 1040) / 2, y: 40 })}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.theme === 'nbc'
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-orange-400">1. NBC Pro Broadcast Bug</span>
+                  <span className="text-[10px] text-slate-400">Official /nbc segmented bug with team colors, logo crests & shot clock</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLocalSource({ ...localSource, theme: 'fullscreen_bar', width: 1920, height: 124, x: 0, y: 956 })}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.theme === 'fullscreen_bar'
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-amber-400">2. Full-Width Lower Third</span>
+                  <span className="text-[10px] text-slate-400">Full 1920px bottom bar (/fullscreen) with sponsor & venue crawl</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLocalSource({ ...localSource, theme: 'nba_classic', width: 880, height: 100, x: (1920 - 880) / 2, y: 40 })}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.theme === 'nba_classic'
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-sky-400">3. Classic NBA Scorebug</span>
+                  <span className="text-[10px] text-slate-400">Top banner (/nbaoverlay) with split Home/Away columns</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLocalSource({ ...localSource, theme: 'nba_neon', width: 480, height: 90, x: 50, y: 40 })}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.theme === 'nba_neon'
+                      ? 'border-orange-500 bg-orange-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-purple-400">4. Compact Neon Bug</span>
+                  <span className="text-[10px] text-slate-400">Minimalist corner scorebug (/nbaoverlay2) with neon dots</span>
+                </button>
+              </div>
+
+              <div className="pt-1">
+                <label className="block font-bold text-slate-400 text-xs mb-1">Scale Multiplier</label>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="1.5"
+                  step="0.05"
+                  value={localSource.scale || 1}
+                  onChange={(e) => setLocalSource({ ...localSource, scale: parseFloat(e.target.value) || 1 })}
+                  className="w-full accent-orange-500"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+                  <span>0.5x</span>
+                  <span>Scale: {(localSource.scale || 1).toFixed(2)}x</span>
+                  <span>1.5x</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TEXT SOURCE */}
           {localSource.type === 'text' && (
             <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
