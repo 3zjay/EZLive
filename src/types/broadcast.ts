@@ -122,6 +122,9 @@ export interface FacebookLiveSettings {
   mode: 'auto' | 'manual';
   destinationType?: 'group' | 'page' | 'timeline' | 'stream_key';
   userToken: string;
+  userName?: string;
+  userPicture?: string;
+  appId?: string;
   selectedPageId: string;
   selectedPageName: string;
   selectedPageToken: string;

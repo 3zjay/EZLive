@@ -453,16 +453,59 @@ const FacebookDestinationManager: React.FC<{
 
   const destinationType = fb.destinationType || 'group';
 
-  // Load cached token from localStorage
+  // 1. Load cached token or listen for OAuth messages
   React.useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') || '' : '';
-    if (token && !fb.userToken) {
-      setLocalSettings((prev) => ({
-        ...prev,
-        fbSettings: { ...fb, userToken: token },
-      }));
+    const token = fb.userToken || (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') || '' : '');
+    const savedName = typeof window !== 'undefined' ? localStorage.getItem('fb_user_name') || '' : '';
+    const savedPic = typeof window !== 'undefined' ? localStorage.getItem('fb_user_picture') || '' : '';
+
+    if (token) {
+      if (!fb.userToken || !fb.userName) {
+        setLocalSettings((prev) => ({
+          ...prev,
+          fbSettings: {
+            ...(prev.fbSettings || fb),
+            userToken: token,
+            userName: prev.fbSettings?.userName || savedName,
+            userPicture: prev.fbSettings?.userPicture || savedPic,
+          },
+        }));
+      }
       fetchDestinations(token);
     }
+
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'FB_AUTH_SUCCESS') {
+        const { token: authTok, user: authUser } = event.data;
+        if (authTok) {
+          try {
+            localStorage.setItem('fb_user_access_token', authTok);
+            if (authUser?.name) localStorage.setItem('fb_user_name', authUser.name);
+            if (authUser?.picture) localStorage.setItem('fb_user_picture', authUser.picture);
+          } catch {}
+
+          setLocalSettings((prev) => ({
+            ...prev,
+            fbSettings: {
+              ...(prev.fbSettings || fb),
+              userToken: authTok,
+              userName: authUser?.name || 'Facebook User',
+              userPicture: authUser?.picture || '',
+              destinationType: 'group',
+              mode: 'auto',
+            },
+          }));
+
+          setStatusMsg(`✓ Successfully linked Facebook account (${authUser?.name || 'User'})!`);
+          fetchDestinations(authTok);
+        }
+      } else if (event.data?.type === 'FB_AUTH_ERROR') {
+        setStatusMsg(`Facebook Login Error: ${event.data.error || 'Login window closed'}`);
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
   }, []);
 
   const fetchDestinations = async (token?: string) => {
@@ -527,36 +570,59 @@ const FacebookDestinationManager: React.FC<{
     }
   };
 
-  const handleConnectFacebook = async () => {
-    try {
-      setIsLoading(true);
-      setStatusMsg('');
-      const { signInWithFacebook } = await import('@/services/firebase');
-      const u = await signInWithFacebook();
-      if (u) {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') || '' : '';
-        setLocalSettings((prev) => ({
-          ...prev,
-          fbSettings: { ...(prev.fbSettings || fb), userToken: token },
-        }));
-        await fetchDestinations(token);
-      }
-    } catch (err: any) {
-      const errStr = String(err?.message || err);
-      if (err?.code === 'auth/operation-not-allowed' || errStr.includes('operation-not-allowed')) {
-        setStatusMsg(
-          '⚠️ Facebook OAuth is currently disabled in your Firebase Console (hoop-culture-scoreboard). We have switched you to "Group Stream Key" below — this is the standard Streamlabs & OBS method and lets you stream to your Facebook Group immediately with 0 Meta setup!'
-        );
-        setLocalSettings((prev) => ({
-          ...prev,
-          fbSettings: { ...(prev.fbSettings || fb), destinationType: 'stream_key', mode: 'manual' },
-        }));
-      } else {
-        setStatusMsg('Facebook connection note: ' + (err?.message || 'Check popup blocker'));
-      }
-    } finally {
+  const handleConnectFacebook = () => {
+    setIsLoading(true);
+    setStatusMsg('Opening Facebook authentication popup...');
+    const width = 600;
+    const height = 750;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
+    const customAppId = fb.appId ? `?app_id=${encodeURIComponent(fb.appId)}` : '';
+
+    const popup = window.open(
+      `/api/auth/facebook/login${customAppId}`,
+      'FacebookOAuth',
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no`
+    );
+
+    if (!popup || popup.closed) {
+      alert('Pop-up was blocked. Please allow popups for ezlive.vercel.app to log into Facebook.');
       setIsLoading(false);
+      return;
     }
+
+    const timer = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(timer);
+        setIsLoading(false);
+      }
+    }, 1000);
+  };
+
+  const handleDisconnectFacebook = () => {
+    try {
+      localStorage.removeItem('fb_user_access_token');
+      localStorage.removeItem('fb_user_name');
+      localStorage.removeItem('fb_user_picture');
+    } catch {}
+
+    setLocalSettings((prev) => ({
+      ...prev,
+      fbSettings: {
+        ...(prev.fbSettings || fb),
+        userToken: '',
+        userName: '',
+        userPicture: '',
+        selectedGroupId: '',
+        selectedGroupName: '',
+        destinationType: 'stream_key',
+        mode: 'manual',
+      },
+    }));
+
+    setGroups([]);
+    setPages([]);
+    setStatusMsg('Disconnected from Facebook.');
   };
 
   const isConnected = Boolean(fb.userToken || (typeof window !== 'undefined' && localStorage.getItem('fb_user_access_token')));
@@ -565,37 +631,84 @@ const FacebookDestinationManager: React.FC<{
     <div className="space-y-4 text-xs">
       {/* 1. Account Connection Ribbon */}
       <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-[#1877f2] flex items-center justify-center font-black text-white text-sm shadow">
-            f
-          </div>
+        <div className="flex items-center gap-3">
+          {fb.userPicture ? (
+            <img
+              src={fb.userPicture}
+              alt={fb.userName || 'Facebook Avatar'}
+              className="w-9 h-9 rounded-full border-2 border-indigo-500 shadow object-cover"
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-[#1877f2] flex items-center justify-center font-black text-white text-base shadow">
+              f
+            </div>
+          )}
           <div>
-            <div className="font-extrabold text-white text-xs">Facebook Live Integration</div>
+            <div className="font-extrabold text-white text-xs flex items-center gap-2">
+              <span>{isConnected ? fb.userName || 'Connected Facebook Account' : 'Facebook Live Integration'}</span>
+              {isConnected && (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[9px] uppercase font-bold tracking-wider border border-emerald-500/30">
+                  LINKED
+                </span>
+              )}
+            </div>
             <div className="text-[10px] text-slate-400">
-              {isConnected ? '✓ Connected to Meta Platform' : 'Link account to stream directly to Groups & Pages'}
+              {isConnected
+                ? 'Stream directly to your groups & pages without stream keys'
+                : 'Direct OAuth linking to stream to your Facebook Groups & Pages'}
             </div>
           </div>
         </div>
 
         {isConnected ? (
-          <button
-            type="button"
-            onClick={() => fetchDestinations()}
-            disabled={isLoading}
-            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-700 text-sky-400 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
-          >
-            <span>{isLoading ? 'Refreshing...' : '🔄 Refresh Groups'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fetchDestinations()}
+              disabled={isLoading}
+              className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-700 text-sky-400 rounded-lg text-xs font-bold transition flex items-center gap-1.5"
+            >
+              <span>{isLoading ? 'Refreshing...' : '🔄 Refresh Groups'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleDisconnectFacebook}
+              className="px-2 py-1.5 text-rose-400 hover:text-rose-300 text-xs font-bold hover:underline"
+            >
+              Disconnect
+            </button>
+          </div>
         ) : (
           <button
             type="button"
             onClick={handleConnectFacebook}
             disabled={isLoading}
-            className="px-3 py-1.5 bg-[#1877f2] hover:bg-[#166fe5] text-white rounded-lg text-xs font-bold transition shadow flex items-center gap-1.5"
+            className="px-3.5 py-2 bg-[#1877f2] hover:bg-[#166fe5] active:scale-[0.98] text-white rounded-lg text-xs font-bold transition shadow-lg flex items-center gap-2"
           >
-            <span>Connect Facebook</span>
+            <span className="font-black text-sm">f</span>
+            <span>{isLoading ? 'Opening...' : 'Connect Facebook Account'}</span>
           </button>
         )}
+      </div>
+
+      {/* Optional Meta App ID override */}
+      <div className="flex items-center justify-between px-1 text-[11px] text-slate-500">
+        <span>Meta App Configuration:</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Meta App ID (optional override)"
+            value={fb.appId || ''}
+            onChange={(e) => {
+              const val = e.target.value.trim();
+              setLocalSettings((prev) => ({
+                ...prev,
+                fbSettings: { ...(prev.fbSettings || fb), appId: val },
+              }));
+            }}
+            className="bg-slate-950 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-300 font-mono w-48 focus:border-indigo-500 focus:outline-none"
+          />
+        </div>
       </div>
 
       {statusMsg && (
