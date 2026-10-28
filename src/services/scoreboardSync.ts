@@ -147,6 +147,17 @@ class ScoreboardSyncManager {
   constructor() {
     this.initFirebase();
     this.initBroadcastChannels();
+    this.setSessionUser('isidro.pascua@gmail.com');
+  }
+
+  private ensureInitialized() {
+    if (typeof window === 'undefined') return;
+    if (!this.scoreboardDb) {
+      this.initFirebase();
+    }
+    if (!this.hcBroadcastChannel) {
+      this.initBroadcastChannels();
+    }
   }
 
   private initFirebase() {
@@ -214,8 +225,9 @@ class ScoreboardSyncManager {
    * e.g. "isidro.pascua@gmail.com" or "court-1"
    */
   public setSessionUser(userEmailOrSession: string) {
+    this.ensureInitialized();
     const safeKey = sanitizeSessionKey(userEmailOrSession);
-    if (this.currentSafeKey === safeKey && this.isConnected) {
+    if (this.currentSafeKey === safeKey && this.isConnected && this.rtdbUnsubscribe) {
       return;
     }
 
@@ -227,6 +239,7 @@ class ScoreboardSyncManager {
   }
 
   private connectFirebaseRTDB(safeKey: string) {
+    this.ensureInitialized();
     if (!this.scoreboardDb) return;
 
     if (this.rtdbUnsubscribe) {
@@ -307,6 +320,7 @@ class ScoreboardSyncManager {
   }
 
   public subscribe(listener: ScoreboardSyncListener): () => void {
+    this.ensureInitialized();
     this.listeners.add(listener);
     if (this.currentState) {
       listener(this.currentState);

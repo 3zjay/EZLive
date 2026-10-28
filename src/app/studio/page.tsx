@@ -54,6 +54,8 @@ const DEFAULT_SETTINGS: StreamSettings = {
   usePostMessageBridge: true,
   transitionType: 'fade',
   transitionDurationMs: 400,
+  scoreboardSessionUser: 'isidro.pascua@gmail.com',
+  scoreboardSyncMode: 'auto',
   fbSettings: {
     mode: 'auto',
     userToken: '',
@@ -215,7 +217,7 @@ export default function StudioPage() {
 
   // Auto-pair Scoreboard with logged-in Google email or assigned court
   useEffect(() => {
-    const emailOrCourt = user?.email || settings.scoreboardSessionUser || profile?.assignedCourt;
+    const emailOrCourt = user?.email || settings.scoreboardSessionUser || profile?.assignedCourt || 'isidro.pascua@gmail.com';
     if (emailOrCourt) {
       scoreboardSync.setSessionUser(emailOrCourt);
       setSettings((prev) => ({

@@ -30,7 +30,8 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase once
-export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+const defaultApp = getApps().find((a) => a.name === '[DEFAULT]');
+export const app = defaultApp || initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 

@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     "192.168.50.252",
     "192.168.50.252:3000",
+    "192.168.50.146",
+    "192.168.50.146:3000",
     "*.trycloudflare.com",
     "*.loca.lt",
     "localhost:3000",
