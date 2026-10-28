@@ -128,11 +128,8 @@ wss.on('connection', (ws, req) => {
 
   // When client provides hardware H.264 (from iPad/Fold/Chrome hardware encoder):
   // Passthrough copy uses 0% CPU on Render and guarantees full real-time 60fps (speed=1.0x) with zero lag!
-  // -use_wallclock_as_timestamps 1 guarantees monotonic timestamps so FLV muxer never drops frames.
   const videoConfigArgs = isH264
-    ? [
-        '-c:v', 'copy',
-      ]
+    ? ['-c:v', 'copy']
     : [
         '-c:v', 'libx264',
         '-preset', preset,
@@ -145,19 +142,20 @@ wss.on('connection', (ws, req) => {
         '-r', String(fps),
       ];
 
-  // Construct FFmpeg arguments with wallclock timestamp synchronization
+  // Construct FFmpeg arguments with audio synchronization & large mux queue
   const baseFfmpegArgs = [
     '-fflags', '+genpts+discardcorrupt',
-    '-use_wallclock_as_timestamps', '1',
     '-analyzeduration', '1000000',
     '-probesize', '1000000',
     '-i', 'pipe:0',
     ...videoConfigArgs,
-    // Audio: Normalized AAC stereo 128k
+    // Audio: Normalized AAC stereo with automatic drift compensation
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
     '-ac', '2',
+    '-af', 'aresample=async=1000',
+    '-max_muxing_queue_size', '4096',
   ];
 
   let ffmpegArgs = [];
@@ -165,6 +163,7 @@ wss.on('connection', (ws, req) => {
     // Single Destination: Direct FLV output
     ffmpegArgs = [
       ...baseFfmpegArgs,
+      '-avoid_negative_ts', 'make_zero',
       '-flags', '+global_header',
       '-f', 'flv',
       '-flvflags', 'no_duration_filesize',
@@ -179,6 +178,7 @@ wss.on('connection', (ws, req) => {
 
     ffmpegArgs = [
       ...baseFfmpegArgs,
+      '-avoid_negative_ts', 'make_zero',
       '-flags', '+global_header',
       '-f', 'tee',
       '-map', '0:v',

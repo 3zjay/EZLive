@@ -174,12 +174,12 @@ export default function StudioPage() {
       let isH264 = false;
       if (typeof MediaRecorder !== 'undefined') {
         const h264Candidates = [
-          'video/webm;codecs=h264,opus',
-          'video/webm;codecs=h264',
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=avc1,opus',
           'video/mp4;codecs=avc1',
           'video/mp4',
+          'video/webm;codecs=h264,opus',
+          'video/webm;codecs=h264',
         ];
         for (const candidate of h264Candidates) {
           if (MediaRecorder.isTypeSupported(candidate)) {
@@ -200,6 +200,11 @@ export default function StudioPage() {
 
       if (compositorRef.current) {
         compositorRef.current.setTargetFps(streamFps);
+        if (bitrateKbps >= 5000) {
+          compositorRef.current.setStreamResolution(1920, 1080);
+        } else {
+          compositorRef.current.setStreamResolution(1280, 720);
+        }
       }
 
       const compositeStream = compositorRef.current?.getCompositeStream(mediaStreamRef.current);
