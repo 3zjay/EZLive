@@ -99,7 +99,10 @@ const COURT_OPTIONS = [
 ];
 
 export default function StudioPage() {
-  const { user, profile, authError, clearAuthError, signInGoogle, signInFacebook, signOut, updateAssignedCourt, saveSessionState } = useAuth();
+  const [leagueEmail, setLeagueEmail] = useState('');
+  const [leaguePassword, setLeaguePassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { user, profile, authError, clearAuthError, signInGoogle, signInFacebook, signInWithCredentials, signOut, updateAssignedCourt, saveSessionState } = useAuth();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -1166,9 +1169,9 @@ export default function StudioPage() {
             <h3 className="text-lg font-black text-[#f2ede8] uppercase tracking-wide">
               Operator Sign In
             </h3>
-            <p className="text-xs text-slate-400 mt-1 mb-5">
-              Sign in with your Google or Facebook account. Your court assignments, custom scenes, scoreboard links, and Facebook stream keys will sync automatically.
-            </p>
+            <div className="text-[11px] font-bold text-[#ff6b1a] uppercase tracking-wider mb-3">
+              Hoop Culture Ecosystem
+            </div>
 
             {/* Error Banner */}
             {authError && (
@@ -1177,17 +1180,17 @@ export default function StudioPage() {
               </div>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               <button
                 onClick={async () => {
                   try {
                     await signInGoogle();
                     setIsAuthModalOpen(false);
                   } catch (e) {
-                    // error handled in authError
+                    // handled by authError
                   }
                 }}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-100 transition shadow"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-100 transition shadow"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -1204,10 +1207,10 @@ export default function StudioPage() {
                     await signInFacebook();
                     setIsAuthModalOpen(false);
                   } catch (e) {
-                    // error handled in authError
+                    // handled by authError
                   }
                 }}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#1877F2] text-white rounded-xl font-bold text-xs hover:bg-[#166fe5] transition shadow"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#1877F2] text-white rounded-xl font-bold text-xs hover:bg-[#166fe5] transition shadow"
               >
                 <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
@@ -1215,6 +1218,67 @@ export default function StudioPage() {
                 <span>Continue with Facebook</span>
               </button>
             </div>
+
+            <div className="flex items-center my-4">
+              <div className="flex-1 border-b border-[#2a1e14]"></div>
+              <span className="px-3 text-[10px] uppercase font-bold text-slate-500 tracking-wider">or league credentials</span>
+              <div className="flex-1 border-b border-[#2a1e14]"></div>
+            </div>
+
+            {/* League Email & Password Login */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setIsSubmitting(true);
+                try {
+                  const u = await signInWithCredentials(leagueEmail, leaguePassword);
+                  if (u) {
+                    setIsAuthModalOpen(false);
+                  }
+                } catch (err) {
+                  // error handled by authError
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              className="space-y-3 text-left"
+            >
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-1 uppercase tracking-wide">
+                  League Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={leagueEmail}
+                  onChange={(e) => setLeagueEmail(e.target.value)}
+                  placeholder="admin@hoopculture.ca"
+                  className="w-full bg-black/60 border border-[#3a2818] rounded-xl px-3 py-2 text-xs text-[#f2ede8] focus:outline-none focus:border-[#e8430a]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 mb-1 uppercase tracking-wide">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={leaguePassword}
+                  onChange={(e) => setLeaguePassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-black/60 border border-[#3a2818] rounded-xl px-3 py-2 text-xs text-[#f2ede8] focus:outline-none focus:border-[#e8430a]"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !leagueEmail || !leaguePassword}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:from-[#ff6b1a] hover:to-[#ff8c00] disabled:opacity-40 text-white rounded-xl font-black text-xs uppercase tracking-wide transition shadow"
+              >
+                {isSubmitting ? 'Signing In...' : 'Sign In to Studio'}
+              </button>
+            </form>
 
             <button
               onClick={() => {

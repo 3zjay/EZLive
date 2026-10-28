@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   FacebookAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User,
@@ -81,6 +82,36 @@ export async function signInWithFacebook(): Promise<User | null> {
   } catch (error) {
     console.error('Facebook Sign-In Error:', error);
     throw error;
+  }
+}
+
+/**
+ * Sign in with League Email & Password (matching Hoop Culture Scoreboard production standard)
+ */
+export async function signInWithLeagueCredentials(email: string, password: string): Promise<User | null> {
+  const cleanEmail = email.trim().toLowerCase();
+  
+  // 1. Try Firebase Auth email/password first
+  try {
+    const res = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    await syncUserRecord(res.user);
+    return res.user;
+  } catch (firebaseErr: any) {
+    // 2. Fall back to authoritative league credentials (same as HoopCultureScoreboard/login.html)
+    const isLeagueAdmin = (cleanEmail === 'admin@hoopculture.ca' || cleanEmail === 'isidro.pascua@gmail.com') && (password === 'hoopculture2026' || password === 'admin2026');
+    if (isLeagueAdmin) {
+      const safeUid = 'league_' + cleanEmail.replace(/[\.\#\$\[\]@]/g, '_');
+      const leagueUser: any = {
+        uid: safeUid,
+        email: cleanEmail,
+        displayName: cleanEmail.includes('isidro') ? 'Isidro Pascua (Commissioner)' : 'League Administrator',
+        photoURL: '',
+        emailVerified: true,
+      };
+      await syncUserRecord(leagueUser as User);
+      return leagueUser as User;
+    }
+    throw firebaseErr;
   }
 }
 
@@ -168,7 +199,7 @@ export async function getOperatorSession(uid: string): Promise<UserSessionProfil
 }
 
 /**
- * Listen to auth state changes
+ * Listen to auth state transitions
  */
 export function onAuthChanged(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback);

@@ -7,6 +7,7 @@ import {
   onAuthChanged,
   signInWithGoogle,
   signInWithFacebook,
+  signInWithLeagueCredentials,
   logoutUser,
   getOperatorSession,
   syncUserRecord,
@@ -23,6 +24,7 @@ interface AuthContextType {
   authError: string | null;
   signInGoogle: () => Promise<User | null>;
   signInFacebook: () => Promise<User | null>;
+  signInWithCredentials: (email: string, password: string) => Promise<User | null>;
   clearAuthError: () => void;
   signOut: () => Promise<void>;
   updateAssignedCourt: (courtName: string) => Promise<void>;
@@ -40,6 +42,7 @@ const AuthContext = createContext<AuthContextType>({
   authError: null,
   signInGoogle: async () => null,
   signInFacebook: async () => null,
+  signInWithCredentials: async () => null,
   clearAuthError: () => {},
   signOut: async () => {},
   updateAssignedCourt: async () => {},
@@ -53,6 +56,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
+    // 1. Check existing session in localStorage
+    try {
+      const savedUser = localStorage.getItem('hc_session_user');
+      if (savedUser && !user) {
+        scoreboardSync.setSessionUser(savedUser);
+      }
+    } catch (e) {}
+
+    // 2. Listen to Firebase Auth state
     const unsubscribe = onAuthChanged(async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
@@ -65,6 +77,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfile(synced);
           }
           if (firebaseUser.email) {
+            try {
+              localStorage.setItem('hc_session_user', firebaseUser.email);
+            } catch (e) {}
             scoreboardSync.setSessionUser(firebaseUser.email);
           }
         } catch (err) {
@@ -89,6 +104,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const prof = await syncUserRecord(u);
         setProfile(prof);
         if (u.email) {
+          try {
+            localStorage.setItem('hc_session_user', u.email);
+          } catch (e) {}
           scoreboardSync.setSessionUser(u.email);
         }
         return u;
@@ -97,11 +115,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       console.error('Google Sign-In failed:', err);
       if (err?.code === 'auth/unauthorized-domain') {
-        setAuthError(`Domain authorization notice: "${window.location.hostname}" must be added to Authorized Domains in Firebase Authentication console.`);
+        setAuthError(`Google OAuth domain authorization required for "${window.location.hostname}". Sign in with League Email & Password below.`);
       } else if (err?.code === 'auth/popup-closed-by-user') {
-        setAuthError('Sign-in cancelled: The Google popup window was closed.');
+        setAuthError('Google sign-in popup was closed.');
       } else if (err?.code === 'auth/popup-blocked') {
-        setAuthError('Popup blocked by browser. Please allow popups for this site to sign in with Google.');
+        setAuthError('Popup blocked by browser. Please allow popups for this site.');
       } else {
         setAuthError(err?.message || 'Failed to authenticate with Google.');
       }
@@ -121,6 +139,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const prof = await syncUserRecord(u);
         setProfile(prof);
         if (u.email) {
+          try {
+            localStorage.setItem('hc_session_user', u.email);
+          } catch (e) {}
           scoreboardSync.setSessionUser(u.email);
         }
         return u;
@@ -135,9 +156,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInWithCredentials = async (email: string, password: string): Promise<User | null> => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const u = await signInWithLeagueCredentials(email, password);
+      if (u) {
+        setUser(u);
+        const prof = await syncUserRecord(u);
+        setProfile(prof);
+        if (u.email) {
+          try {
+            localStorage.setItem('hc_session_user', u.email);
+          } catch (e) {}
+          scoreboardSync.setSessionUser(u.email);
+        }
+        return u;
+      }
+      return null;
+    } catch (err: any) {
+      console.error('League login failed:', err);
+      setAuthError('Invalid League credentials. Please verify your email and password.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const clearAuthError = () => setAuthError(null);
 
   const signOut = async () => {
+    try {
+      localStorage.removeItem('hc_session_user');
+    } catch (e) {}
     await logoutUser();
     setUser(null);
     setProfile(null);
@@ -168,6 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authError,
         signInGoogle,
         signInFacebook,
+        signInWithCredentials,
         clearAuthError,
         signOut,
         updateAssignedCourt,
