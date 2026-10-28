@@ -21,9 +21,8 @@ interface AuthContextType {
   profile: UserSessionProfile | null;
   loading: boolean;
   authError: string | null;
-  signInGoogle: () => Promise<void>;
-  signInFacebook: () => Promise<void>;
-  signInAsOperator: (email: string, displayName?: string) => Promise<void>;
+  signInGoogle: () => Promise<User | null>;
+  signInFacebook: () => Promise<User | null>;
   clearAuthError: () => void;
   signOut: () => Promise<void>;
   updateAssignedCourt: (courtName: string) => Promise<void>;
@@ -39,9 +38,8 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   authError: null,
-  signInGoogle: async () => {},
-  signInFacebook: async () => {},
-  signInAsOperator: async () => {},
+  signInGoogle: async () => null,
+  signInFacebook: async () => null,
   clearAuthError: () => {},
   signOut: async () => {},
   updateAssignedCourt: async () => {},
@@ -54,53 +52,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const signInAsOperator = async (email: string, displayName?: string) => {
-    const cleanEmail = (email || 'isidro.pascua@gmail.com').trim();
-    const cleanName = displayName || (cleanEmail.toLowerCase().includes('isidro') ? 'Isidro Pascua (Commissioner)' : 'Court Operator');
-    const safeUid = 'op_' + cleanEmail.replace(/[\.\#\$\[\]@]/g, '_');
-
-    try {
-      localStorage.setItem('hc_session_user', cleanEmail);
-    } catch (e) {}
-
-    const mockUser: any = {
-      uid: safeUid,
-      email: cleanEmail,
-      displayName: cleanName,
-      photoURL: '',
-      emailVerified: true,
-    };
-
-    const mockProfile: UserSessionProfile = {
-      uid: safeUid,
-      displayName: cleanName,
-      email: cleanEmail,
-      photoURL: '',
-      role: 'operator',
-      assignedCourt: 'Court 1 - Main Gymnasium',
-      activeGym: 'Hoop Culture Arena',
-      lastLogin: Date.now(),
-    };
-
-    setUser(mockUser as User);
-    setProfile(mockProfile);
-    scoreboardSync.setSessionUser(cleanEmail);
-    setAuthError(null);
-  };
-
   useEffect(() => {
-    // 1. Check saved operator session in localStorage (cross-app sync with HoopCultureScoreboard)
-    try {
-      const savedUser = localStorage.getItem('hc_session_user');
-      if (savedUser) {
-        signInAsOperator(savedUser);
-      }
-    } catch (e) {}
-
-    // 2. Listen to Firebase Auth state
     const unsubscribe = onAuthChanged(async (firebaseUser) => {
+      setUser(firebaseUser);
       if (firebaseUser) {
-        setUser(firebaseUser);
         try {
           const prof = await getOperatorSession(firebaseUser.uid);
           if (prof) {
@@ -110,14 +65,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfile(synced);
           }
           if (firebaseUser.email) {
-            try {
-              localStorage.setItem('hc_session_user', firebaseUser.email);
-            } catch (e) {}
             scoreboardSync.setSessionUser(firebaseUser.email);
           }
         } catch (err) {
           console.warn('Error fetching operator session:', err);
         }
+      } else {
+        setProfile(null);
       }
       setLoading(false);
     });
@@ -125,29 +79,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const signInGoogle = async () => {
+  const signInGoogle = async (): Promise<User | null> => {
     setLoading(true);
     setAuthError(null);
     try {
       const u = await signInWithGoogle();
       if (u) {
+        setUser(u);
         const prof = await syncUserRecord(u);
         setProfile(prof);
         if (u.email) {
-          try {
-            localStorage.setItem('hc_session_user', u.email);
-          } catch (e) {}
           scoreboardSync.setSessionUser(u.email);
         }
+        return u;
       }
+      return null;
     } catch (err: any) {
-      console.warn('Google Sign-In failed or was blocked:', err);
+      console.error('Google Sign-In failed:', err);
       if (err?.code === 'auth/unauthorized-domain') {
-        setAuthError('Local domain not authorized in Google OAuth. Click Quick Sign-In below to enter directly as Isidro Pascua.');
+        setAuthError(`Domain authorization notice: "${window.location.hostname}" must be added to Authorized Domains in Firebase Authentication console.`);
       } else if (err?.code === 'auth/popup-closed-by-user') {
-        setAuthError('Google sign-in popup was closed.');
+        setAuthError('Sign-in cancelled: The Google popup window was closed.');
+      } else if (err?.code === 'auth/popup-blocked') {
+        setAuthError('Popup blocked by browser. Please allow popups for this site to sign in with Google.');
       } else {
-        setAuthError(err?.message || 'Authentication error. Use 1-Click Quick Sign-In below.');
+        setAuthError(err?.message || 'Failed to authenticate with Google.');
       }
       throw err;
     } finally {
@@ -155,17 +111,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInFacebook = async () => {
+  const signInFacebook = async (): Promise<User | null> => {
     setLoading(true);
     setAuthError(null);
     try {
       const u = await signInWithFacebook();
       if (u) {
+        setUser(u);
         const prof = await syncUserRecord(u);
         setProfile(prof);
+        if (u.email) {
+          scoreboardSync.setSessionUser(u.email);
+        }
+        return u;
       }
+      return null;
     } catch (err: any) {
-      setAuthError(err?.message || 'Facebook authentication error.');
+      console.error('Facebook Sign-In failed:', err);
+      setAuthError(err?.message || 'Failed to authenticate with Facebook.');
       throw err;
     } finally {
       setLoading(false);
@@ -175,9 +138,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const clearAuthError = () => setAuthError(null);
 
   const signOut = async () => {
-    try {
-      localStorage.removeItem('hc_session_user');
-    } catch (e) {}
     await logoutUser();
     setUser(null);
     setProfile(null);
@@ -208,7 +168,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authError,
         signInGoogle,
         signInFacebook,
-        signInAsOperator,
         clearAuthError,
         signOut,
         updateAssignedCourt,

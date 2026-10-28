@@ -40,8 +40,7 @@ const COURTS = [
 
 export default function LandingPage() {
   const router = useRouter();
-  const [customEmail, setCustomEmail] = useState('');
-  const { user, profile, authError, clearAuthError, signInGoogle, signInFacebook, signInAsOperator, signOut, updateAssignedCourt } = useAuth();
+  const { user, profile, authError, clearAuthError, signInGoogle, signInFacebook, signOut, updateAssignedCourt } = useAuth();
   const [selectedCourt, setSelectedCourt] = useState(profile?.assignedCourt || COURTS[0].name);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
@@ -360,43 +359,31 @@ export default function LandingPage() {
             <h3 className="text-lg font-black text-[#f2ede8] uppercase tracking-wide">
               Operator Sign In
             </h3>
-            <p className="text-xs text-slate-400 mt-1 mb-4">
-              Sign in to automatically sync your court scenes, live scoreboard HUD, and stream keys across any tablet.
+            <p className="text-xs text-slate-400 mt-1 mb-5">
+              Sign in with your Google or Facebook account. Your court assignments, custom scenes, scoreboard links, and Facebook stream keys will sync automatically.
             </p>
 
             {/* Error Banner */}
             {authError && (
-              <div className="p-3 bg-red-950/70 border border-red-500/50 rounded-xl text-left text-xs text-red-200 mb-4 space-y-1">
+              <div className="p-3 bg-red-950/70 border border-red-500/50 rounded-xl text-left text-xs text-red-200 mb-4">
                 <p className="font-semibold">{authError}</p>
-                <p className="text-[11px] text-red-300/80">Tip: Click the Fast Sign-In button below to bypass OAuth.</p>
               </div>
             )}
 
-            <div className="space-y-2.5">
-              {/* Direct Fast Sign-In for Commissioner */}
-              <button
-                onClick={async () => {
-                  await signInAsOperator('isidro.pascua@gmail.com');
-                  setIsAuthModalOpen(false);
-                  router.push('/studio');
-                }}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:from-[#ff6b1a] hover:to-[#ff8c00] text-white rounded-xl font-black text-xs uppercase tracking-wide transition shadow-lg shadow-[#e8430a]/30 active:scale-95"
-              >
-                <Zap size={15} className="text-yellow-300 fill-yellow-300" />
-                <span>Fast Sign In: Isidro Pascua</span>
-              </button>
-
+            <div className="space-y-3">
               <button
                 onClick={async () => {
                   try {
-                    await signInGoogle();
-                    setIsAuthModalOpen(false);
-                    router.push('/studio');
+                    const u = await signInGoogle();
+                    if (u) {
+                      setIsAuthModalOpen(false);
+                      router.push('/studio');
+                    }
                   } catch (e) {
-                    // handled by authError
+                    // error handled in authError
                   }
                 }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-100 transition shadow"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white text-slate-900 rounded-xl font-bold text-xs hover:bg-slate-100 transition shadow"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -410,53 +397,22 @@ export default function LandingPage() {
               <button
                 onClick={async () => {
                   try {
-                    await signInFacebook();
-                    setIsAuthModalOpen(false);
-                    router.push('/studio');
+                    const u = await signInFacebook();
+                    if (u) {
+                      setIsAuthModalOpen(false);
+                      router.push('/studio');
+                    }
                   } catch (e) {
-                    // handled by authError
+                    // error handled in authError
                   }
                 }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-[#1877F2] text-white rounded-xl font-bold text-xs hover:bg-[#166fe5] transition shadow"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-[#1877F2] text-white rounded-xl font-bold text-xs hover:bg-[#166fe5] transition shadow"
               >
                 <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24">
                   <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
                 <span>Continue with Facebook</span>
               </button>
-            </div>
-
-            {/* Custom Operator Email Form */}
-            <div className="mt-4 pt-3 border-t border-[#2a1e14] text-left">
-              <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wide">
-                Or Sign In by Operator Email:
-              </label>
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (customEmail.trim()) {
-                    await signInAsOperator(customEmail.trim());
-                    setIsAuthModalOpen(false);
-                    router.push('/studio');
-                  }
-                }}
-                className="flex gap-2"
-              >
-                <input
-                  type="email"
-                  value={customEmail}
-                  onChange={(e) => setCustomEmail(e.target.value)}
-                  placeholder="isidro.pascua@gmail.com"
-                  className="flex-1 bg-black/60 border border-[#3a2818] rounded-xl px-3 py-2 text-xs text-[#f2ede8] focus:outline-none focus:border-[#e8430a]"
-                />
-                <button
-                  type="submit"
-                  disabled={!customEmail.trim()}
-                  className="px-3.5 py-2 bg-[#2a1e14] hover:bg-[#3a2818] disabled:opacity-40 text-xs font-bold text-white rounded-xl transition"
-                >
-                  Enter
-                </button>
-              </form>
             </div>
 
             <button
