@@ -56,21 +56,21 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   };
 
   return (
-    <header className="h-14 bg-slate-950 border-b border-slate-800 px-3 flex items-center justify-between text-white select-none z-30">
+    <header className="h-14 bg-[#080605] border-b border-[#2a1e14] px-3 flex items-center justify-between text-white select-none z-30">
       {/* Brand & Studio Status */}
       <div className="flex items-center gap-2.5">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-500 shadow-md shadow-emerald-950/40 font-black text-slate-950 text-base">
-          S
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-[#ff6b1a] via-[#e8430a] to-[#c8841a] shadow-md shadow-[#e8430a]/20 font-black text-white text-sm">
+          HC
         </div>
         <div>
           <div className="text-xs font-black tracking-tight flex items-center gap-1.5">
-            <span>STREAMLABS WEB STUDIO</span>
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              PRO 1080p
+            <span>EZLiveStudio</span>
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-[#e8430a]/20 text-[#ff6b1a] border border-[#e8430a]/30">
+              BY HOOP CULTURE
             </span>
           </div>
           <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
-            <span className="text-emerald-400 font-mono">{fps} FPS</span>
+            <span className="text-[#ff6b1a] font-mono">{fps} FPS</span>
             <span>•</span>
             <span className="text-slate-400">
               {destinations.facebook.enabled ? 'FB: ' + destinations.facebook.pageName : 'Direct Output'}

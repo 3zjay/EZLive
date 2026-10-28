@@ -1,14 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 
 export const metadata: Metadata = {
-  title: "EZ Web Broadcast Studio",
-  description: "Cross-Platform OBS-Style PWA for Live Basketball Broadcasting and Recording",
+  title: "EZLiveStudio by HoopCulture | Live Court Broadcast Engine",
+  description: "Cross-platform tablet broadcasting studio for basketball gyms. Live scoreboard integration, multi-court sessions, Facebook Live streaming, and instant game recordings.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "EZ Studio",
+    title: "EZLiveStudio",
   },
   icons: {
     icon: "/icon.svg",
@@ -22,7 +23,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
-  themeColor: "#020617",
+  themeColor: "#080605",
 };
 
 export default function RootLayout({
@@ -31,13 +32,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full bg-slate-950 text-white antialiased">
+    <html lang="en" className="h-full bg-[#080605] text-white antialiased">
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-touch-fullscreen" content="yes" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
-      <body className="h-full w-full overflow-hidden flex flex-col bg-slate-950 text-white">
-        {children}
+      <body className="min-h-screen w-full flex flex-col bg-[#080605] text-[#f2ede8]">
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `

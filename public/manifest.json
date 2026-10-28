@@ -1,12 +1,12 @@
 {
-  "name": "EZ Web Broadcast Studio",
-  "short_name": "EZ Studio",
-  "description": "Cross-Platform OBS-Style PWA for Live Basketball Broadcasting and Recording",
-  "start_url": "/",
+  "name": "EZLiveStudio by HoopCulture",
+  "short_name": "EZLiveStudio",
+  "description": "Live Court Broadcast Studio by HoopCulture. Tablet-first OBS & Streamlabs broadcasting.",
+  "start_url": "/studio",
   "display": "standalone",
   "orientation": "landscape",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "background_color": "#080605",
+  "theme_color": "#080605",
   "icons": [
     {
       "src": "/icon.svg",
