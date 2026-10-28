@@ -48,9 +48,20 @@ export interface AudioChannel {
 export interface StreamDestinations {
   facebook: {
     enabled: boolean;
-    pageName: string;
-    pageId: string;
+    destinationType?: 'page' | 'group' | 'timeline' | 'stream_key';
+    pageName?: string;
+    pageId?: string;
+    pageToken?: string;
+    groupName?: string;
+    groupId?: string;
     streamKey?: string;
+    rtmpsUrl?: string;
+    title?: string;
+    description?: string;
+    liveVideoId?: string;
+    permalinkUrl?: string;
+    connectedUserName?: string;
+    connectedUserToken?: string;
   };
   youtube: {
     enabled: boolean;

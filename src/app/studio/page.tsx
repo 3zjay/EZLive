@@ -65,6 +65,10 @@ const DEFAULT_SETTINGS: StreamSettings = {
   scoreboardSyncMode: 'auto',
   fbSettings: {
     mode: 'auto',
+    destinationType: 'group',
+    selectedGroupId: '',
+    selectedGroupName: '',
+    groupStreamKey: '',
     userToken: '',
     selectedPageId: 'page-hoopculture',
     selectedPageName: 'Hoop Culture Live',
@@ -169,7 +173,7 @@ export default function StudioPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
   const [highlightedChat, setHighlightedChat] = useState<ChatMessage | null>(null);
   const [tickerConfig, setTickerConfig] = useState<NewsTickerConfig>({
-    enabled: true,
+    enabled: false,
     text: '🏀 HOOP CULTURE BASKETBALL LEAGUE • CHAMPIONSHIP FINALS • STREAMING LIVE • LIKE & SHARE THE BROADCAST!',
     speed: 120,
     backgroundColor: 'rgba(8, 6, 5, 0.95)',
@@ -858,18 +862,22 @@ export default function StudioPage() {
     }
   };
 
-  // Streaming
+  // Streaming to Facebook Live (Groups, Pages, or Stream Key)
   const handleToggleStreaming = async () => {
     if (isStreaming) {
-      if (settings.fbSettings?.userToken && settings.fbSettings?.selectedPageId) {
+      // Ending stream
+      const fb = settings.fbSettings;
+      if (fb?.activeLiveVideoId) {
         try {
+          const token = fb.selectedPageToken || fb.userToken || (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null);
           await fetch('/api/facebook/live', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               action: 'end_live',
-              userAccessToken: settings.fbSettings.userToken,
-              pageId: settings.fbSettings.selectedPageId,
+              liveVideoId: fb.activeLiveVideoId,
+              userAccessToken: token,
+              pageAccessToken: fb?.selectedPageToken,
             }),
           });
         } catch (e) {
@@ -877,16 +885,91 @@ export default function StudioPage() {
         }
       }
       setIsStreaming(false);
+      setSettings((prev) => ({
+        ...prev,
+        fbSettings: prev.fbSettings ? { ...prev.fbSettings, activeLiveVideoId: undefined } : prev.fbSettings,
+      }));
     } else {
-      setIsStreaming(true);
+      // Starting stream
+      const fb = settings.fbSettings;
+      const token = fb?.userToken || (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null);
+
+      // Case 1: Stream Key mode or Group Stream Key
+      if (fb?.destinationType === 'stream_key' || fb?.mode === 'manual' || !token) {
+        const key = fb?.groupStreamKey || settings.streamKey;
+        if (!key) {
+          setIsSettingsOpen(true);
+          alert('Please enter your Facebook Group Stream Key or link your Facebook account in Settings.');
+          return;
+        }
+        setIsStreaming(true);
+        return;
+      }
+
+      // Case 2: Auto-connect to Facebook Group, Page, or Timeline via Graph API
+      try {
+        const targetType = fb?.destinationType || 'group';
+        const targetId = targetType === 'group' ? fb?.selectedGroupId : fb?.selectedPageId;
+
+        if (targetType === 'group' && !fb?.selectedGroupId) {
+          setIsSettingsOpen(true);
+          alert('Please select a Facebook Group in Settings, or use "Group Stream Key" mode.');
+          return;
+        }
+
+        const res = await fetch('/api/facebook/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_live',
+            targetType,
+            targetId,
+            pageId: fb?.selectedPageId,
+            groupId: fb?.selectedGroupId,
+            pageAccessToken: fb?.selectedPageToken,
+            userAccessToken: token,
+            title: fb?.broadcastTitle || 'Hoop Culture Live Broadcast',
+            description: fb?.broadcastDescription || 'Streaming live via EZLive Broadcast Studio',
+          }),
+        });
+
+        const data = await res.json();
+        if (data.error) {
+          alert(`Facebook Live Error: ${data.error}\n\nTip: You can use "Group Stream Key" mode in Settings to stream directly to your Facebook Group without permissions delays.`);
+          return;
+        }
+
+        setSettings((prev) => ({
+          ...prev,
+          rtmpsUrl: data.secure_stream_url || prev.rtmpsUrl,
+          streamKey: data.stream_key || prev.streamKey,
+          fbSettings: prev.fbSettings
+            ? {
+                ...prev.fbSettings,
+                activeLiveVideoId: data.id,
+                permalinkUrl: data.permalink_url,
+              }
+            : prev.fbSettings,
+        }));
+
+        setIsStreaming(true);
+      } catch (err: any) {
+        console.error('Failed to initiate Facebook Live:', err);
+        setIsStreaming(true);
+      }
     }
   };
 
   const destinations: StreamDestinations = {
     facebook: {
       enabled: isStreaming,
+      destinationType: settings.fbSettings?.destinationType || 'group',
       pageName: settings.fbSettings?.selectedPageName || 'Hoop Culture Live',
-      pageId: settings.fbSettings?.selectedPageId || 'page-hoopculture',
+      pageId: settings.fbSettings?.selectedPageId || '',
+      groupName: settings.fbSettings?.selectedGroupName || 'Community Group',
+      groupId: settings.fbSettings?.selectedGroupId || '',
+      streamKey: settings.fbSettings?.groupStreamKey || settings.streamKey,
+      permalinkUrl: settings.fbSettings?.permalinkUrl,
     },
     youtube: {
       enabled: false,
@@ -914,90 +997,6 @@ export default function StudioPage() {
         style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0.001, pointerEvents: 'none', top: 0, left: 0, zIndex: -50 }}
       />
 
-      {/* Operator Session Ribbon */}
-      <div className="bg-[#100d0a] border-b border-[#2a1e14] px-3 py-1 flex items-center justify-between text-xs">
-        {/* Left: Brand Identity & Active Court */}
-        <div className="flex items-center gap-2">
-          <Link href="/" className="flex items-center gap-1.5 text-[#ff6b1a] hover:text-[#ff8c00] font-black tracking-wider text-[11px] uppercase">
-            <span>← EZLiveStudio</span>
-          </Link>
-          <span className="text-[#3a2820]">|</span>
-          
-          {/* Court Selector Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setIsCourtDropdownOpen(!isCourtDropdownOpen)}
-              className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#1a1410] border border-[#3a2818] text-amber-300 font-bold text-[11px] hover:border-[#ff6b1a] transition"
-            >
-              <MapPin size={11} className="text-[#e8430a]" />
-              <span>{profile?.assignedCourt || 'Court 1 — Championship Hardwood'}</span>
-              <ChevronDown size={11} />
-            </button>
-
-            {isCourtDropdownOpen && (
-              <div className="absolute left-0 top-full mt-1 w-64 bg-[#140f0c] border border-[#3a2818] rounded-xl shadow-2xl py-1 z-50">
-                <div className="px-3 py-1 text-[10px] uppercase font-bold text-slate-400 border-b border-[#2a1e14]">
-                  Assign Broadcast Court
-                </div>
-                {COURT_OPTIONS.map((court) => (
-                  <button
-                    key={court}
-                    onClick={() => {
-                      updateAssignedCourt(court);
-                      setIsCourtDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-3 py-2 text-xs font-bold transition flex items-center justify-between ${
-                      (profile?.assignedCourt || 'Court 1 — Championship Hardwood') === court
-                        ? 'bg-[#e8430a]/20 text-[#ff6b1a]'
-                        : 'text-slate-300 hover:bg-[#1a1410]'
-                    }`}
-                  >
-                    <span>{court}</span>
-                    {(profile?.assignedCourt || 'Court 1 — Championship Hardwood') === court && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#e8430a]" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right: Operator Profile & Session Sync */}
-        <div className="flex items-center gap-3">
-          {user ? (
-            <div className="flex items-center gap-2">
-              {user.photoURL ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.photoURL} alt={user.displayName || 'Operator'} className="w-5 h-5 rounded-full border border-[#ff6b1a]" />
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-[#e8430a] text-white flex items-center justify-center text-[10px] font-bold">
-                  {(user.displayName || 'O')[0].toUpperCase()}
-                </div>
-              )}
-              <span className="text-slate-300 font-bold text-[11px] hidden sm:inline">{user.displayName || 'Operator'}</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800">
-                SYNCED
-              </span>
-              <button
-                onClick={() => signOut()}
-                className="text-slate-400 hover:text-white text-[10px] underline ml-1"
-              >
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-[#e8430a] hover:bg-[#ff6b1a] text-white font-bold text-[11px] shadow transition"
-            >
-              <LogIn size={11} />
-              <span>Sign In to Sync</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Streamlabs Top Header Bar */}
       <StreamlabsTopBar
         hasCamera={hasCamera}
@@ -1020,6 +1019,13 @@ export default function StudioPage() {
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         scoreboardSyncUser={settings.scoreboardSessionUser || user?.email || profile?.assignedCourt}
         isScoreboardConnected={scoreboard.syncSource !== undefined && scoreboard.syncSource !== 'manual'}
+        user={user}
+        profile={profile}
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onSignOut={() => signOut()}
+        assignedCourt={profile?.assignedCourt || 'Court 1 — Championship Hardwood'}
+        onUpdateAssignedCourt={updateAssignedCourt}
+        courtOptions={COURT_OPTIONS}
       />
 
       {/* Main Studio Middle Zone: Program Preview Stage + Streamlabs Right Sidebar */}
@@ -1035,70 +1041,7 @@ export default function StudioPage() {
             onUpdateSourceTransform={handleUpdateSourceTransform}
           />
 
-          {/* Floating Tablet Quick-Action HUD (Quick Scenes & Score Tapping when tools are collapsed) */}
-          <div className="absolute bottom-3 inset-x-3 pointer-events-none flex items-center justify-between z-20">
-            {/* Quick Scenes Switcher Bar */}
-            <div className="pointer-events-auto flex items-center gap-1.5 bg-[#080605]/90 backdrop-blur-md border border-[#2a1e14] p-1.5 rounded-2xl shadow-2xl max-w-[65%] overflow-x-auto no-scrollbar">
-              {scenes.map((sc) => {
-                const isActive = sc.id === activeSceneId;
-                return (
-                  <button
-                    key={sc.id}
-                    onClick={() => handleSelectScene(sc.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition shadow-sm ${
-                      isActive
-                        ? 'bg-[#e8430a] text-white ring-2 ring-[#ff6b1a]/50'
-                        : 'bg-[#140f0c] text-slate-300 hover:text-white hover:bg-[#1f1712]'
-                    }`}
-                  >
-                    {isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-white mr-1.5 animate-pulse" />}
-                    {sc.name}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Quick Scoreboard Controls for Courtside iPad Operator */}
-            <div className="pointer-events-auto flex items-center gap-1.5 bg-[#080605]/90 backdrop-blur-md border border-[#2a1e14] p-1.5 rounded-2xl shadow-2xl">
-              {/* Away +1 */}
-              <button
-                onClick={() => handleScoreboardChange({ awayScore: scoreboard.awayScore + 1 })}
-                className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-black shadow transition active:scale-95"
-                title={`${scoreboard.awayTeam} +1 Pt`}
-              >
-                {scoreboard.awayTeam.slice(0, 3).toUpperCase()} +1
-              </button>
-
-              {/* Home +1 */}
-              <button
-                onClick={() => handleScoreboardChange({ homeScore: scoreboard.homeScore + 1 })}
-                className="px-2.5 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] text-white rounded-xl text-xs font-black shadow transition active:scale-95"
-                title={`${scoreboard.homeTeam} +1 Pt`}
-              >
-                {scoreboard.homeTeam.slice(0, 3).toUpperCase()} +1
-              </button>
-
-              {/* Flip camera */}
-              <button
-                onClick={handleFlipCamera}
-                className="p-1.5 bg-[#140f0c] hover:bg-[#1f1712] text-slate-200 rounded-xl text-xs transition active:scale-95 border border-[#2a1e14]"
-                title="Flip Camera (Front / Rear Court)"
-              >
-                📷
-              </button>
-
-              {/* Re-open full tools if collapsed */}
-              {!isSidebarOpen && (
-                <button
-                  onClick={() => setIsSidebarOpen(true)}
-                  className="px-2.5 py-1.5 bg-[#140f0c] hover:bg-[#1f1712] text-[#ff6b1a] rounded-xl text-xs font-bold border border-[#3a2818] shadow"
-                >
-                  Tools ⚙
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+           </div>
 
         {/* Streamlabs Toolset Sidebar (Desktop Side Panel or Mobile/Tablet Overlay Drawer) */}
         {isSidebarOpen && (
@@ -1140,6 +1083,55 @@ export default function StudioPage() {
                 onClose={() => setIsSidebarOpen(false)}
               />
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Streamlabs Dedicated Scenes Toolbar (Below Stage, 0% Video Occlusion) */}
+      <div className="bg-[#0e0a08] border-t border-[#2a1e14] px-3 py-1.5 flex items-center justify-between text-xs select-none shrink-0 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+            <span>SCENES</span>
+          </span>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {scenes.map((sc) => {
+              const isActive = sc.id === activeSceneId;
+              const shortName = sc.name.includes('—') ? sc.name.split('—')[1].trim() : sc.name;
+              return (
+                <button
+                  key={sc.id}
+                  onClick={() => handleSelectScene(sc.id)}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 ${
+                    isActive
+                      ? 'bg-[#e8430a] text-white shadow-sm ring-1 ring-[#ff6b1a]'
+                      : 'bg-[#140f0c] text-slate-300 hover:text-white hover:bg-[#1f1712] border border-[#2a1e14]'
+                  }`}
+                >
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+                  <span>{shortName}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Live Broadcast Facebook Link when streaming */}
+        {isStreaming && (
+          <div className="flex items-center gap-2 pl-2">
+            <span className="flex items-center gap-1.5 text-rose-400 font-bold text-[11px] animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span>LIVE ON FACEBOOK</span>
+            </span>
+            {settings.fbSettings?.permalinkUrl && (
+              <a
+                href={settings.fbSettings.permalinkUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-0.5 bg-[#1877f2] hover:bg-[#166fe5] text-white rounded-lg text-[10px] font-bold shadow transition flex items-center gap-1"
+              >
+                <span>View Group Post ↗</span>
+              </a>
+            )}
           </div>
         )}
       </div>

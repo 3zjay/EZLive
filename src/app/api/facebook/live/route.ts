@@ -3,9 +3,20 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { action, pageId, pageAccessToken, userAccessToken, title, description, liveVideoId } = body;
+    const {
+      action,
+      targetType = 'page', // 'page' | 'group' | 'timeline'
+      targetId,
+      pageId,
+      groupId,
+      pageAccessToken,
+      userAccessToken,
+      title,
+      description,
+      liveVideoId,
+    } = body;
 
-    // ACTION 1: Fetch user's managed Facebook Pages
+    // 1. Fetch user's managed Facebook Pages
     if (action === 'get_pages') {
       if (!userAccessToken) {
         return NextResponse.json({ error: 'Missing userAccessToken' }, { status: 400 });
@@ -23,21 +34,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ pages: data.data || [] });
     }
 
-    // ACTION 2: Automatically create a Facebook Live broadcast on the Page (Streamlabs style)
+    // 2. Fetch user's Facebook Groups (where user is admin/member)
+    if (action === 'get_groups') {
+      if (!userAccessToken) {
+        return NextResponse.json({ error: 'Missing userAccessToken' }, { status: 400 });
+      }
+
+      const res = await fetch(
+        `https://graph.facebook.com/v21.0/me/groups?access_token=${encodeURIComponent(userAccessToken)}&fields=id,name,picture,administrator,privacy`
+      );
+      const data = await res.json();
+
+      if (data.error) {
+        return NextResponse.json({ error: data.error.message }, { status: 400 });
+      }
+
+      return NextResponse.json({ groups: data.data || [] });
+    }
+
+    // 3. Create Live Broadcast (Pages, Groups, or Timeline - Streamlabs standard)
     if (action === 'create_live') {
-      if (!pageId || !pageAccessToken) {
-        return NextResponse.json({ error: 'Missing pageId or pageAccessToken' }, { status: 400 });
+      let endpointId = targetId || pageId || groupId;
+      let token = pageAccessToken || userAccessToken;
+
+      if (targetType === 'timeline') {
+        endpointId = 'me';
+        token = userAccessToken;
+      } else if (targetType === 'group') {
+        endpointId = groupId || targetId;
+        token = userAccessToken; // Groups use userAccessToken
+      } else {
+        // Page
+        endpointId = pageId || targetId;
+        token = pageAccessToken || userAccessToken;
+      }
+
+      if (!endpointId || !token) {
+        return NextResponse.json(
+          { error: `Missing ${targetType} ID or access token to create live video` },
+          { status: 400 }
+        );
       }
 
       const params = new URLSearchParams({
-        access_token: pageAccessToken,
-        title: title || 'Live Basketball Broadcast',
-        description: description || 'Streamed live via EZ Web Broadcast Studio',
+        access_token: token,
+        title: title || 'Hoop Culture Live Broadcast',
+        description: description || 'Streamed live via EZLive Broadcast Studio',
         status: 'LIVE_NOW',
         stream_type: 'REGULAR',
       });
 
-      const res = await fetch(`https://graph.facebook.com/v21.0/${pageId}/live_videos`, {
+      const res = await fetch(`https://graph.facebook.com/v21.0/${endpointId}/live_videos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: params.toString(),
@@ -49,26 +96,35 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: data.error.message }, { status: 400 });
       }
 
-      // Facebook returns:
-      // id: live video ID
-      // stream_url: standard RTMP URL
-      // secure_stream_url: RTMPS URL containing the stream key!
+      // Extract raw stream key from secure_stream_url
+      // secure_stream_url format: rtmps://live-api-s.facebook.com:443/rtmp/{STREAM_KEY}
+      let streamKey = '';
+      if (data.secure_stream_url) {
+        const lastSlash = data.secure_stream_url.lastIndexOf('/');
+        if (lastSlash !== -1) {
+          streamKey = data.secure_stream_url.slice(lastSlash + 1);
+        }
+      }
+
       return NextResponse.json({
         id: data.id,
         stream_url: data.stream_url,
         secure_stream_url: data.secure_stream_url,
+        stream_key: streamKey,
+        permalink_url: data.permalink_url || `https://www.facebook.com/${data.id}`,
         status: data.status,
       });
     }
 
-    // ACTION 3: End the live video
+    // 4. End the live video
     if (action === 'end_live') {
-      if (!liveVideoId || !pageAccessToken) {
-        return NextResponse.json({ error: 'Missing liveVideoId or pageAccessToken' }, { status: 400 });
+      const token = pageAccessToken || userAccessToken;
+      if (!liveVideoId || !token) {
+        return NextResponse.json({ error: 'Missing liveVideoId or access token' }, { status: 400 });
       }
 
       const params = new URLSearchParams({
-        access_token: pageAccessToken,
+        access_token: token,
         end_live_video: 'true',
       });
 

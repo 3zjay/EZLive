@@ -120,13 +120,18 @@ export type TransitionType = 'cut' | 'fade';
 
 export interface FacebookLiveSettings {
   mode: 'auto' | 'manual';
+  destinationType?: 'group' | 'page' | 'timeline' | 'stream_key';
   userToken: string;
   selectedPageId: string;
   selectedPageName: string;
   selectedPageToken: string;
+  selectedGroupId?: string;
+  selectedGroupName?: string;
+  groupStreamKey?: string;
   broadcastTitle: string;
   broadcastDescription: string;
   activeLiveVideoId?: string;
+  permalinkUrl?: string;
 }
 
 export interface StreamSettings {
