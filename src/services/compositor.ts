@@ -15,7 +15,7 @@ export class VideoCompositor {
   private videoElement: HTMLVideoElement | null = null;
   private screenShareElement: HTMLVideoElement | null = null;
   private animationFrameId: number | null = null;
-  private targetFps: number = 60;
+  private targetFps: number = 30; // 30 FPS standard broadcast (eliminates wasted frames)
   private width: number = 1920;
   private height: number = 1080;
 
@@ -109,6 +109,10 @@ export class VideoCompositor {
 
   public updateScoreboard(scoreboard: ScoreboardState) {
     this.scoreboard = scoreboard;
+  }
+
+  public setTargetFps(fps: number) {
+    this.targetFps = fps > 0 ? fps : 30;
   }
 
   public setScene(scene: Scene, durationMs: number = 400) {

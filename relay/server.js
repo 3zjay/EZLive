@@ -83,6 +83,8 @@ wss.on('connection', (ws, req) => {
   const maxrateKbps = Math.round(bitrateKbps * 1.25);
   const bufsizeKbps = Math.round(bitrateKbps * 2);
   const preset = url.searchParams.get('preset') || 'ultrafast'; // 'ultrafast' drastically saves CPU on Render Free tier
+  const isH264 = url.searchParams.get('isH264') === '1';
+  const fps = parseInt(url.searchParams.get('fps'), 10) || 30;
 
   const destinations = [];
 
@@ -118,22 +120,28 @@ wss.on('connection', (ws, req) => {
 
   const destinationSummary = destinations.map((d) => `${d.name} (${d.maskedKey})`).join(' + ');
   addLog(`📡 Configured ${destinations.length} destination(s): ${destinationSummary}`);
-  addLog(`⚙️ Stream Profile: ${bitrateKbps} kbps, maxrate: ${maxrateKbps} kbps, preset: ${preset}`);
+  addLog(`⚙️ Stream Profile: ${bitrateKbps} kbps @ ${fps}fps | Mode: ${isH264 ? '⚡ Zero-CPU Hardware Passthrough (-c:v copy)' : 'Software Transcode (libx264)'}`);
+
+  // Video Configuration: If client already encoded in hardware H.264, use zero-CPU passthrough copy!
+  const videoConfigArgs = isH264
+    ? ['-c:v', 'copy']
+    : [
+        '-c:v', 'libx264',
+        '-preset', preset,
+        '-tune', 'zerolatency',
+        '-b:v', `${bitrateKbps}k`,
+        '-maxrate', `${maxrateKbps}k`,
+        '-bufsize', `${bufsizeKbps}k`,
+        '-pix_fmt', 'yuv420p',
+        '-g', String(fps * 2), // Keyframe every 2 seconds
+        '-r', String(fps),
+      ];
 
   // Construct FFmpeg arguments
   const baseFfmpegArgs = [
     '-i', 'pipe:0',
-    // Video configuration
-    '-c:v', 'libx264',
-    '-preset', preset,
-    '-tune', 'zerolatency',
-    '-b:v', `${bitrateKbps}k`,
-    '-maxrate', `${maxrateKbps}k`,
-    '-bufsize', `${bufsizeKbps}k`,
-    '-pix_fmt', 'yuv420p',
-    '-g', '60', // Keyframe every 2 seconds at 30fps (Required by FB & YT)
-    '-r', '30',
-    // Audio configuration
+    ...videoConfigArgs,
+    // Audio configuration: Convert Opus to AAC (uses negligible CPU, ~0.2%)
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
