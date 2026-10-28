@@ -1157,6 +1157,12 @@ export default function StudioPage() {
     title: string;
     description: string;
     facebookEnabled: boolean;
+    facebookDestinationType: 'page' | 'group' | 'stream_key';
+    facebookPageId?: string;
+    facebookPageName?: string;
+    facebookPageToken?: string;
+    facebookGroupId?: string;
+    facebookGroupName?: string;
     facebookKey: string;
     youtubeEnabled: boolean;
     youtubeKey: string;
@@ -1166,20 +1172,117 @@ export default function StudioPage() {
   }) => {
     setIsGoLiveModalOpen(false);
 
+    let resolvedFbKey = config.facebookKey;
+    let resolvedRtmps = settings.rtmpsUrl;
+    let liveVideoId: string | undefined = undefined;
+
+    // Case A: Create Live Video on Facebook Page via Graph API
+    if (
+      config.facebookEnabled &&
+      config.facebookDestinationType === 'page' &&
+      config.facebookPageId &&
+      !config.facebookKey
+    ) {
+      try {
+        const token =
+          config.facebookPageToken ||
+          settings.fbSettings?.selectedPageToken ||
+          (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null);
+
+        const res = await fetch('/api/facebook/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_live',
+            targetType: 'page',
+            targetId: config.facebookPageId,
+            pageId: config.facebookPageId,
+            pageAccessToken: config.facebookPageToken,
+            userAccessToken: token,
+            title: config.title || 'Hoop Culture Live Broadcast',
+            description: config.description || 'Streaming live via EZLive Broadcast Studio',
+          }),
+        });
+
+        const data = await res.json();
+        if (data.error) {
+          alert(`Facebook Page Live Error: ${data.error}\n\nTip: You can paste your Page's Stream Key directly to stream without API delays.`);
+          return;
+        }
+
+        resolvedRtmps = data.secure_stream_url || settings.rtmpsUrl;
+        resolvedFbKey = data.stream_key || '';
+        liveVideoId = data.id;
+      } catch (err: any) {
+        console.error('Failed to create live video on Facebook Page:', err);
+        alert(`Failed to start live stream on Facebook Page: ${err?.message || err}`);
+        return;
+      }
+    } else if (
+      config.facebookEnabled &&
+      config.facebookDestinationType === 'group' &&
+      config.facebookGroupId &&
+      !config.facebookKey
+    ) {
+      // Case B: Create Live Video on Facebook Group via Graph API
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null;
+        const res = await fetch('/api/facebook/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_live',
+            targetType: 'group',
+            targetId: config.facebookGroupId,
+            groupId: config.facebookGroupId,
+            userAccessToken: token,
+            title: config.title || 'Hoop Culture Live Broadcast',
+            description: config.description || 'Streaming live via EZLive Broadcast Studio',
+          }),
+        });
+
+        const data = await res.json();
+        if (data.error) {
+          alert(`Facebook Group Live Error: ${data.error}\n\nTip: Use Group Stream Key mode to stream directly.`);
+          return;
+        }
+
+        resolvedRtmps = data.secure_stream_url || settings.rtmpsUrl;
+        resolvedFbKey = data.stream_key || '';
+        liveVideoId = data.id;
+      } catch (err: any) {
+        console.error('Failed to create live video on Facebook Group:', err);
+        alert(`Failed to start live stream on Facebook Group: ${err?.message || err}`);
+        return;
+      }
+    }
+
     const updatedSettings: StreamSettings = {
       ...settings,
+      rtmpsUrl: resolvedRtmps,
+      streamKey: resolvedFbKey || settings.streamKey,
       broadcastTitle: config.title,
       broadcastDescription: config.description,
       bandwidthPreset: config.bandwidthPreset,
-      streamKey: config.facebookKey || settings.streamKey,
-      fbSettings: settings.fbSettings
-        ? {
-            ...settings.fbSettings,
-            broadcastTitle: config.title,
-            broadcastDescription: config.description,
-            groupStreamKey: config.facebookKey,
-          }
-        : undefined,
+      fbSettings: {
+        ...(settings.fbSettings || {
+          mode: 'auto',
+          userToken: '',
+          selectedPageId: '',
+          selectedPageName: '',
+          selectedPageToken: '',
+          broadcastTitle: '',
+          broadcastDescription: '',
+        }),
+        destinationType: config.facebookDestinationType,
+        selectedPageId: config.facebookPageId || settings.fbSettings?.selectedPageId || '',
+        selectedPageName: config.facebookPageName || settings.fbSettings?.selectedPageName || '',
+        selectedPageToken: config.facebookPageToken || settings.fbSettings?.selectedPageToken || '',
+        selectedGroupId: config.facebookGroupId || settings.fbSettings?.selectedGroupId,
+        selectedGroupName: config.facebookGroupName || settings.fbSettings?.selectedGroupName,
+        groupStreamKey: resolvedFbKey,
+        activeLiveVideoId: liveVideoId,
+      },
       ytSettings: {
         enabled: config.youtubeEnabled,
         streamKey: config.youtubeKey,
@@ -1187,16 +1290,18 @@ export default function StudioPage() {
     };
     handleSaveSettings(updatedSettings);
 
+    const pageLabel = config.facebookPageName ? config.facebookPageName.split(' ')[0] : 'FB Page';
     const summary =
       config.facebookEnabled && config.youtubeEnabled
-        ? 'FB + YT'
+        ? `${pageLabel} + YT`
         : config.facebookEnabled
-          ? 'FB'
+          ? pageLabel
           : 'YT';
     setStreamDestinationsSummary(summary);
 
     startRelayPipeline({
-      facebookKey: config.facebookEnabled ? config.facebookKey : '',
+      targetRtmps: resolvedRtmps,
+      facebookKey: config.facebookEnabled ? resolvedFbKey : '',
       youtubeKey: config.youtubeEnabled ? config.youtubeKey : '',
       bitrateKbps: config.bitrateKbps,
       fps: config.fps,
