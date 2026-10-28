@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Radio, Circle, Settings, Download, UserPlus, Monitor, Video } from 'lucide-react';
+import { Radio, Circle, Settings, Download, UserPlus, Monitor, Video, PanelRight, PanelRightClose } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 import { StreamDestinations } from '@/types/streamlabs';
 
@@ -22,6 +22,8 @@ interface StreamlabsTopBarProps {
   onOpenGuestInvite: () => void;
   facingMode: 'environment' | 'user';
   onFlipCamera: () => void;
+  isSidebarOpen: boolean;
+  onToggleSidebar: () => void;
 }
 
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
@@ -39,6 +41,8 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   onOpenSettings,
   onOpenGuestInvite,
   onFlipCamera,
+  isSidebarOpen,
+  onToggleSidebar,
 }) => {
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -182,6 +186,19 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
           title="Studio Settings"
         >
           <Settings size={17} />
+        </button>
+
+        {/* Sidebar Toggle Button (Expands stage for iPad / Mobile) */}
+        <button
+          onClick={onToggleSidebar}
+          className={`p-1.5 rounded-lg transition border ${
+            isSidebarOpen
+              ? 'bg-slate-800 text-sky-400 border-slate-700'
+              : 'bg-slate-900 text-slate-400 hover:text-white border-transparent hover:border-slate-800'
+          }`}
+          title={isSidebarOpen ? 'Collapse Tools & Expand Stage' : 'Show Studio Tools'}
+        >
+          {isSidebarOpen ? <PanelRightClose size={17} /> : <PanelRight size={17} />}
         </button>
       </div>
     </header>

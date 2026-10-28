@@ -147,19 +147,28 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
       className="relative flex-1 bg-black flex items-center justify-center overflow-hidden select-none"
       onClick={() => onSelectSource(null)}
     >
-      {/* Hidden Source Video Element */}
+      {/* Hidden Source Video Element (keeps decoding frames actively on iOS Safari WebKit) */}
       <video
         ref={videoRef}
         playsInline
         muted
         autoPlay
-        className="hidden"
+        style={{
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          opacity: 0.001,
+          pointerEvents: 'none',
+          top: 0,
+          left: 0,
+          zIndex: -50,
+        }}
       />
 
       {/* 16:9 Stage Viewport Container */}
       <div
         ref={stageBoxRef}
-        className="relative w-full h-full max-w-[1920px] max-h-[1080px] aspect-video flex items-center justify-center bg-slate-950 shadow-2xl"
+        className="relative w-full h-full max-w-[1920px] max-h-[1080px] aspect-video flex items-center justify-center bg-slate-950 shadow-2xl touch-none"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
@@ -205,7 +214,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
           <div
             className={`absolute border-2 ${
               selectedSource.locked ? 'border-amber-500/80' : 'border-red-500'
-            } z-30 transition-none`}
+            } z-30 transition-none touch-none`}
             style={{
               left: toPercent(selectedSource.x, 1920),
               top: toPercent(selectedSource.y, 1080),
@@ -217,7 +226,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header Tag with Source Name and Dimensions */}
-            <div className="absolute -top-6 left-0 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-t flex items-center gap-1.5 whitespace-nowrap shadow">
+            <div className="absolute -top-6 left-0 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-t flex items-center gap-1.5 whitespace-nowrap shadow select-none">
               {selectedSource.locked && <Lock size={10} />}
               <span>{selectedSource.name}</span>
               <span className="text-red-200 font-mono text-[9px]">
@@ -225,23 +234,23 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
               </span>
             </div>
 
-            {/* Corner Resize Handles */}
+            {/* Corner Resize Handles - Enhanced with 36x36px touch hit targets for iPad */}
             {!selectedSource.locked && (
               <>
                 <div
-                  className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-red-600 rounded-sm cursor-nwse-resize shadow"
+                  className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-red-600 rounded-sm cursor-nwse-resize shadow touch-none before:content-[''] before:absolute before:-inset-3 before:cursor-nwse-resize"
                   onPointerDown={(e) => handlePointerDown(e, 'tl')}
                 />
                 <div
-                  className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-red-600 rounded-sm cursor-nesw-resize shadow"
+                  className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-red-600 rounded-sm cursor-nesw-resize shadow touch-none before:content-[''] before:absolute before:-inset-3 before:cursor-nesw-resize"
                   onPointerDown={(e) => handlePointerDown(e, 'tr')}
                 />
                 <div
-                  className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-red-600 rounded-sm cursor-nesw-resize shadow"
+                  className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-red-600 rounded-sm cursor-nesw-resize shadow touch-none before:content-[''] before:absolute before:-inset-3 before:cursor-nesw-resize"
                   onPointerDown={(e) => handlePointerDown(e, 'bl')}
                 />
                 <div
-                  className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-red-600 rounded-sm cursor-nwse-resize shadow"
+                  className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-red-600 rounded-sm cursor-nwse-resize shadow touch-none before:content-[''] before:absolute before:-inset-3 before:cursor-nwse-resize"
                   onPointerDown={(e) => handlePointerDown(e, 'br')}
                 />
               </>

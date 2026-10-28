@@ -16,6 +16,7 @@ import {
   Play,
   Pause,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import { ChatMessage, NewsTickerConfig, StreamlabsBanner, BrandKit } from '@/types/streamlabs';
 import { Scene, ScoreboardState, SourceType } from '@/types/broadcast';
@@ -59,6 +60,9 @@ interface SidebarTabsProps {
   micMuted: boolean;
   onChangeMicVolume: (vol: number) => void;
   onToggleMicMute: () => void;
+
+  // Drawer / Mobile Close
+  onClose?: () => void;
 }
 
 export const SidebarTabs: React.FC<SidebarTabsProps> = ({
@@ -89,6 +93,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   micMuted,
   onChangeMicVolume,
   onToggleMicMute,
+  onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'ticker' | 'brand' | 'obs' | 'scoreboard' | 'mixer'>('chat');
   const [chatInputText, setChatInputText] = useState('');
@@ -199,6 +204,16 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
           <Sliders size={14} />
           <span>Audio</span>
         </button>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="py-1.5 px-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            title="Close Tools Panel"
+          >
+            <X size={15} />
+          </button>
+        )}
       </div>
 
       {/* --- TAB CONTENT BODY --- */}

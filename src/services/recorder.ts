@@ -62,12 +62,21 @@ export class BroadcastRecorder {
     try {
       this.mediaRecorder = new MediaRecorder(stream, options);
     } catch (err) {
-      console.warn('MediaRecorder init with options failed, retrying without options:', err);
+      console.warn('MediaRecorder init with full bitrate options failed, retrying with mimeType only:', err);
       try {
-        this.mediaRecorder = new MediaRecorder(stream);
-      } catch (fatalErr) {
-        console.error('Fatal MediaRecorder initialization failure:', fatalErr);
-        return false;
+        if (this.selectedMimeType) {
+          this.mediaRecorder = new MediaRecorder(stream, { mimeType: this.selectedMimeType });
+        } else {
+          this.mediaRecorder = new MediaRecorder(stream);
+        }
+      } catch (mimeErr) {
+        console.warn('MediaRecorder init with mimeType failed, falling back to default:', mimeErr);
+        try {
+          this.mediaRecorder = new MediaRecorder(stream);
+        } catch (fatalErr) {
+          console.error('Fatal MediaRecorder initialization failure:', fatalErr);
+          return false;
+        }
       }
     }
 

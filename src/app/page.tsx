@@ -187,6 +187,11 @@ export default function StreamlabsBroadcastStudio() {
   const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [isSourcePropsOpen, setIsSourcePropsOpen] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Screen Wake Lock API ref for continuous iPad streaming
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wakeLockRef = useRef<any>(null);
 
   // State: Recording & Streaming
   const [recordingState, setRecordingState] = useState<RecordingState>({
@@ -295,7 +300,47 @@ export default function StreamlabsBroadcastStudio() {
     }
   }, []);
 
-  // Camera Initialization
+  // Screen Wake Lock to prevent iPad / phone screen from sleeping during broadcast
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if ('wakeLock' in navigator && !wakeLockRef.current) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        wakeLockRef.current.addEventListener('release', () => {
+          wakeLockRef.current = null;
+        });
+      }
+    } catch (err) {
+      console.warn('Wake Lock request skipped or unavailable:', err);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch (err) {
+      console.warn('Wake Lock release error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    requestWakeLock();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      releaseWakeLock();
+    };
+  }, [requestWakeLock, releaseWakeLock]);
+
+  // Camera Initialization with Robust Mobile & iOS Safari Fallbacks
   const startCamera = useCallback(
     async (facing: 'environment' | 'user' = 'environment', videoDevId?: string, audioDevId?: string) => {
       try {
@@ -306,27 +351,53 @@ export default function StreamlabsBroadcastStudio() {
         const is1080p = settings.targetResolution.startsWith('1080');
         const is60fps = settings.targetResolution.endsWith('60');
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: videoDevId ? undefined : facing,
-            deviceId: videoDevId ? { exact: videoDevId } : undefined,
-            width: { ideal: is1080p ? 1920 : 1280 },
-            height: { ideal: is1080p ? 1080 : 720 },
-            frameRate: { ideal: is60fps ? 60 : 30 },
-          },
-          audio: {
-            deviceId: audioDevId ? { exact: audioDevId } : undefined,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-        });
+        let stream: MediaStream | null = null;
+
+        // Attempt 1: High-resolution requested constraints
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: videoDevId ? undefined : { ideal: facing },
+              deviceId: videoDevId ? { exact: videoDevId } : undefined,
+              width: { ideal: is1080p ? 1920 : 1280 },
+              height: { ideal: is1080p ? 1080 : 720 },
+              frameRate: { ideal: is60fps ? 60 : 30 },
+            },
+            audio: audioDevId
+              ? { deviceId: { exact: audioDevId } }
+              : true,
+          });
+        } catch (initialErr) {
+          console.warn('High-res getUserMedia rejected, attempting relaxed mobile constraints:', initialErr);
+          try {
+            // Attempt 2: Relaxed resolution with audio for iPad/phones
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: facing } },
+              audio: true,
+            });
+          } catch (audioErr) {
+            console.warn('Audio+video rejected, attempting video only mode:', audioErr);
+            // Attempt 3: Video only (e.g. if microphone permission denied on mobile)
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: { ideal: facing } },
+              audio: false,
+            });
+          }
+        }
+
+        if (!stream) {
+          throw new Error('Unable to acquire media stream from device.');
+        }
 
         mediaStreamRef.current = stream;
 
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => {});
+          videoRef.current.muted = true;
+          videoRef.current.playsInline = true;
+          await videoRef.current.play().catch((playErr) => {
+            console.warn('Video auto-play caught:', playErr);
+          });
         }
 
         if (compositorRef.current && videoRef.current) {
@@ -755,9 +826,15 @@ export default function StreamlabsBroadcastStudio() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-slate-950 overflow-hidden font-sans select-none">
-      {/* Hidden Source Elements */}
-      <video ref={screenShareVideoRef} autoPlay playsInline muted className="hidden" />
+    <div className="flex flex-col h-full h-[100dvh] w-screen bg-slate-950 overflow-hidden font-sans select-none">
+      {/* Hidden Source Elements (Offscreen with minimal opacity to keep WebKit rendering frames) */}
+      <video
+        ref={screenShareVideoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0.001, pointerEvents: 'none', top: 0, left: 0, zIndex: -50 }}
+      />
 
       {/* Streamlabs Top Header Bar */}
       <StreamlabsTopBar
@@ -777,50 +854,130 @@ export default function StreamlabsBroadcastStudio() {
         onOpenGuestInvite={() => setIsGuestInviteOpen(true)}
         facingMode={facingMode}
         onFlipCamera={handleFlipCamera}
+        isSidebarOpen={isSidebarOpen}
+        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
       />
 
       {/* Main Studio Middle Zone: Program Preview Stage + Streamlabs Right Sidebar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Main 16:9 Broadcast Stage Canvas with Bounding Box & Interactive Layers */}
-        <PreviewStage
-          canvasRef={canvasRef}
-          videoRef={videoRef}
-          activeScene={activeScene}
-          selectedSourceId={selectedSourceId}
-          onSelectSource={setSelectedSourceId}
-          onUpdateSourceTransform={handleUpdateSourceTransform}
-        />
+        <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
+          <PreviewStage
+            canvasRef={canvasRef}
+            videoRef={videoRef}
+            activeScene={activeScene}
+            selectedSourceId={selectedSourceId}
+            onSelectSource={setSelectedSourceId}
+            onUpdateSourceTransform={handleUpdateSourceTransform}
+          />
 
-        {/* Streamlabs Toolset Sidebar (Chat, Ticker, Brand, OBS, Scores, Mixer) */}
-        <SidebarTabs
-          chatMessages={chatMessages}
-          highlightedChat={highlightedChat}
-          onHighlightChat={setHighlightedChat}
-          onSendChatMessage={handleSendChatMessage}
-          tickerConfig={tickerConfig}
-          onUpdateTicker={setTickerConfig}
-          activeBanner={activeBanner}
-          onToggleBanner={setActiveBanner}
-          brandKit={brandKit}
-          onUpdateBrandKit={setBrandKit}
-          scenes={scenes}
-          activeSceneId={activeSceneId}
-          selectedSourceId={selectedSourceId}
-          onSelectScene={handleSelectScene}
-          onAddScene={handleAddScene}
-          onDeleteScene={handleDeleteScene}
-          onSelectSource={setSelectedSourceId}
-          onAddSource={handleAddSource}
-          onDeleteSource={handleDeleteSource}
-          onToggleSourceVisibility={handleToggleSourceVisibility}
-          onOpenSourceProperties={handleOpenSourceProperties}
-          scoreboard={scoreboard}
-          onChangeScoreboard={handleScoreboardChange}
-          micVolume={micVolume}
-          micMuted={micMuted}
-          onChangeMicVolume={setMicVolume}
-          onToggleMicMute={() => setMicMuted(!micMuted)}
-        />
+          {/* Floating Tablet Quick-Action HUD (Quick Scenes & Score Tapping when tools are collapsed) */}
+          <div className="absolute bottom-3 inset-x-3 pointer-events-none flex items-center justify-between z-20">
+            {/* Quick Scenes Switcher Bar */}
+            <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-800/80 p-1.5 rounded-2xl shadow-2xl max-w-[65%] overflow-x-auto no-scrollbar">
+              {scenes.map((sc) => {
+                const isActive = sc.id === activeSceneId;
+                return (
+                  <button
+                    key={sc.id}
+                    onClick={() => handleSelectScene(sc.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition shadow-sm ${
+                      isActive
+                        ? 'bg-red-600 text-white ring-2 ring-red-500/50'
+                        : 'bg-slate-900/90 text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    {isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-white mr-1.5 animate-pulse" />}
+                    {sc.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quick Scoreboard Controls for Courtside iPad Operator */}
+            <div className="pointer-events-auto flex items-center gap-1.5 bg-slate-950/85 backdrop-blur-md border border-slate-800/80 p-1.5 rounded-2xl shadow-2xl">
+              {/* Away +1 */}
+              <button
+                onClick={() => handleScoreboardChange({ awayScore: scoreboard.awayScore + 1 })}
+                className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-black shadow transition active:scale-95"
+                title={`${scoreboard.awayTeam} +1 Pt`}
+              >
+                {scoreboard.awayTeam.slice(0, 3).toUpperCase()} +1
+              </button>
+
+              {/* Home +1 */}
+              <button
+                onClick={() => handleScoreboardChange({ homeScore: scoreboard.homeScore + 1 })}
+                className="px-2.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black shadow transition active:scale-95"
+                title={`${scoreboard.homeTeam} +1 Pt`}
+              >
+                {scoreboard.homeTeam.slice(0, 3).toUpperCase()} +1
+              </button>
+
+              {/* Flip camera */}
+              <button
+                onClick={handleFlipCamera}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs transition active:scale-95"
+                title="Flip Camera (Front / Rear Court)"
+              >
+                📷
+              </button>
+
+              {/* Re-open full tools if collapsed */}
+              {!isSidebarOpen && (
+                <button
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-xl text-xs font-bold border border-slate-700 shadow"
+                >
+                  Tools ⚙
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Streamlabs Toolset Sidebar (Desktop Side Panel or Mobile/Tablet Overlay Drawer) */}
+        {isSidebarOpen && (
+          <div className="fixed inset-y-0 right-0 z-40 md:relative md:inset-auto md:w-80 h-full shadow-2xl flex">
+            {/* Mobile / Tablet Backdrop click to close */}
+            <div
+              className="fixed inset-0 bg-black/60 md:hidden z-30"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+            <div className="relative z-40 w-80 max-w-[85vw] h-full flex flex-col bg-slate-900 border-l border-slate-800">
+              <SidebarTabs
+                chatMessages={chatMessages}
+                highlightedChat={highlightedChat}
+                onHighlightChat={setHighlightedChat}
+                onSendChatMessage={handleSendChatMessage}
+                tickerConfig={tickerConfig}
+                onUpdateTicker={setTickerConfig}
+                activeBanner={activeBanner}
+                onToggleBanner={setActiveBanner}
+                brandKit={brandKit}
+                onUpdateBrandKit={setBrandKit}
+                scenes={scenes}
+                activeSceneId={activeSceneId}
+                selectedSourceId={selectedSourceId}
+                onSelectScene={handleSelectScene}
+                onAddScene={handleAddScene}
+                onDeleteScene={handleDeleteScene}
+                onSelectSource={setSelectedSourceId}
+                onAddSource={handleAddSource}
+                onDeleteSource={handleDeleteSource}
+                onToggleSourceVisibility={handleToggleSourceVisibility}
+                onOpenSourceProperties={handleOpenSourceProperties}
+                scoreboard={scoreboard}
+                onChangeScoreboard={handleScoreboardChange}
+                micVolume={micVolume}
+                micMuted={micMuted}
+                onChangeMicVolume={setMicVolume}
+                onToggleMicMute={() => setMicMuted(!micMuted)}
+                onClose={() => setIsSidebarOpen(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Backstage Participant Strip & Layout Switcher (Solo, Split, PIP, Grid) */}
