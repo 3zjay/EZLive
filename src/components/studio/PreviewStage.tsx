@@ -168,7 +168,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
       {/* 16:9 Stage Viewport Container */}
       <div
         ref={stageBoxRef}
-        className="relative w-full h-full max-w-[1920px] max-h-[1080px] aspect-video flex items-center justify-center bg-slate-950 shadow-2xl touch-none"
+        className="relative w-full h-full max-w-[1920px] max-h-[1080px] aspect-video flex items-center justify-center bg-slate-950 shadow-2xl touch-none" style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
@@ -177,7 +177,7 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
           ref={canvasRef}
           width={1920}
           height={1080}
-          className="w-full h-full object-contain pointer-events-none"
+          className="w-full h-full object-contain pointer-events-none" style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
         />
 
         {/* Live Browser Source (Vercel URL Overlays) Layered on Stage */}
@@ -194,6 +194,8 @@ export const PreviewStage: React.FC<PreviewStageProps> = ({
                 height: toPercent(source.height, 1080),
                 opacity: source.opacity,
                 zIndex: source.zIndex + 10,
+                transform: "translateZ(0)",
+                backfaceVisibility: "hidden",
               }}
             >
               <iframe

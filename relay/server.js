@@ -54,14 +54,12 @@ wss.on('connection', (ws, req) => {
     destinationUrl = rtmpsUrl;
   }
 
-  console.log(`📡 Ingesting live stream from mobile client & forwarding to: ${cleanRtmpsUrl}[REDACTED]`);
+  console.log(`📡 Ingesting live stream from mobile client & forwarding to Facebook Live RTMP`);
 
   // Spawn FFmpeg to transcode incoming WebM/H.264 stream to Facebook-compliant RTMP/FLV
   const ffmpegArgs = [
     '-re',
     '-i', 'pipe:0',
-    '-f', 'lavfi',
-    '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
     // Video configuration
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
@@ -72,12 +70,10 @@ wss.on('connection', (ws, req) => {
     '-pix_fmt', 'yuv420p',
     '-g', '60', // Keyframe every 2 seconds at 30fps (Required by Facebook Live)
     '-r', '30',
-    // Audio configuration: use input audio if present, fallback to silent source
+    // Audio configuration
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
-    '-map', '0:v:0',
-    '-map', '0:a:0?',
     // Output FLV to Facebook RTMPS
     '-f', 'flv',
     destinationUrl,

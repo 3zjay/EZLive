@@ -148,11 +148,18 @@ export default function StudioPage() {
       ws.onopen = () => {
         console.log('📡 Connected to EZLive Cloud Relay! Streaming canvas to Facebook Live...');
         try {
-          const mime = typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/webm;codecs=h264')
-            ? 'video/webm;codecs=h264'
-            : typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
-            ? 'video/webm;codecs=vp8'
-            : 'video/webm';
+          let mime = 'video/webm';
+          if (typeof MediaRecorder !== 'undefined') {
+            if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+              mime = 'video/webm;codecs=vp8,opus';
+            } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+              mime = 'video/webm;codecs=h264,opus';
+            } else if (MediaRecorder.isTypeSupported('video/webm')) {
+              mime = 'video/webm';
+            } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+              mime = 'video/mp4';
+            }
+          }
 
           const rec = new MediaRecorder(compositeStream, {
             mimeType: mime,
