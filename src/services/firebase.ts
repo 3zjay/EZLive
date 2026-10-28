@@ -9,14 +9,6 @@ import {
   onAuthStateChanged,
   User,
 } from 'firebase/auth';
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
 import { Scene, ScoreboardState, StreamSettings } from '@/types/broadcast';
 import { BrandKit } from '@/types/streamlabs';
 
@@ -33,7 +25,6 @@ const firebaseConfig = {
 const defaultApp = getApps().find((a) => a.name === '[DEFAULT]');
 export const app = defaultApp || initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -123,39 +114,43 @@ export async function logoutUser(): Promise<void> {
 }
 
 /**
- * Ensure user document exists in Firestore and sync metadata
+ * Ensure user session profile exists in local cache (0ms instant, no disabled Firestore hanging)
  */
 export async function syncUserRecord(user: User, assignedCourt: string = 'Court 1 - Main Gymnasium'): Promise<UserSessionProfile> {
-  const localProfile: UserSessionProfile = {
+  const profileKey = `ezlive_operator_profile_${user.uid}`;
+  let existing: Partial<UserSessionProfile> = {};
+
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(profileKey);
+      if (stored) {
+        existing = JSON.parse(stored);
+      }
+    } catch (e) {}
+  }
+
+  const profile: UserSessionProfile = {
     uid: user.uid,
-    displayName: user.displayName || 'Court Operator',
-    email: user.email || '',
-    photoURL: user.photoURL || '',
+    displayName: user.displayName || existing.displayName || 'Court Operator',
+    email: user.email || existing.email || '',
+    photoURL: user.photoURL || existing.photoURL || '',
     role: 'operator',
-    assignedCourt,
-    activeGym: 'Hoop Culture Arena',
+    assignedCourt: existing.assignedCourt || assignedCourt,
+    activeGym: existing.activeGym || 'Hoop Culture Arena',
     lastLogin: Date.now(),
+    savedScenes: existing.savedScenes,
+    scoreboardPreset: existing.scoreboardPreset,
+    streamSettings: existing.streamSettings,
+    brandKit: existing.brandKit,
   };
 
-  try {
-    const userRef = doc(db, 'ezlive_operators', user.uid);
-    const snap = await getDoc(userRef);
-
-    if (!snap.exists()) {
-      await setDoc(userRef, { ...localProfile, lastLogin: serverTimestamp() });
-      return localProfile;
-    } else {
-      await updateDoc(userRef, {
-        lastLogin: serverTimestamp(),
-        displayName: user.displayName || snap.data()?.displayName || 'Court Operator',
-        photoURL: user.photoURL || snap.data()?.photoURL || '',
-      });
-      return snap.data() as UserSessionProfile;
-    }
-  } catch (err) {
-    console.warn('Firestore user record sync skipped (using local operator profile):', err);
-    return localProfile;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(profileKey, JSON.stringify(profile));
+    } catch (e) {}
   }
+
+  return profile;
 }
 
 /**
@@ -171,30 +166,41 @@ export async function saveOperatorSession(
     brandKit?: Partial<BrandKit>;
   }
 ): Promise<void> {
+  if (typeof window === 'undefined') return;
   try {
-    const userRef = doc(db, 'ezlive_operators', uid);
-    await updateDoc(userRef, {
+    const key = `ezlive_operator_profile_${uid}`;
+    const existing = await getOperatorSession(uid);
+    const updated: UserSessionProfile = {
+      ...(existing || {
+        uid,
+        displayName: 'Court Operator',
+        email: '',
+        photoURL: '',
+        role: 'operator' as const,
+        assignedCourt: 'Court 1 - Main Gymnasium',
+        activeGym: 'Hoop Culture Arena',
+        lastLogin: Date.now(),
+      }),
       ...data,
-      updatedAt: serverTimestamp(),
-    });
+      lastLogin: Date.now(),
+    };
+    localStorage.setItem(key, JSON.stringify(updated));
   } catch (err) {
-    console.warn('Operator session save error (falling back to local cache):', err);
+    console.warn('Operator session save error:', err);
   }
 }
 
 /**
- * Retrieve operator session profile from Firestore
+ * Retrieve operator session profile from local cache
  */
 export async function getOperatorSession(uid: string): Promise<UserSessionProfile | null> {
+  if (typeof window === 'undefined') return null;
   try {
-    const userRef = doc(db, 'ezlive_operators', uid);
-    const snap = await getDoc(userRef);
-    if (snap.exists()) {
-      return snap.data() as UserSessionProfile;
+    const stored = localStorage.getItem(`ezlive_operator_profile_${uid}`);
+    if (stored) {
+      return JSON.parse(stored) as UserSessionProfile;
     }
-  } catch (err) {
-    console.warn('Operator session load error:', err);
-  }
+  } catch (e) {}
   return null;
 }
 

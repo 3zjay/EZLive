@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -46,6 +46,13 @@ export default function LandingPage() {
   const { user, profile, authError, clearAuthError, signInGoogle, signInFacebook, signInWithCredentials, signOut, updateAssignedCourt } = useAuth();
   const [selectedCourt, setSelectedCourt] = useState(profile?.assignedCourt || COURTS[0].name);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (user && isAuthModalOpen) {
+      setIsAuthModalOpen(false);
+      window.location.href = '/studio';
+    }
+  }, [user, isAuthModalOpen]);
 
   const handleSelectCourt = async (courtName: string) => {
     setSelectedCourt(courtName);
@@ -380,7 +387,7 @@ export default function LandingPage() {
                     const u = await signInGoogle();
                     if (u) {
                       setIsAuthModalOpen(false);
-                      router.push('/studio');
+                      window.location.href = '/studio';
                     }
                   } catch (e) {
                     // handled by authError
@@ -403,7 +410,7 @@ export default function LandingPage() {
                     const u = await signInFacebook();
                     if (u) {
                       setIsAuthModalOpen(false);
-                      router.push('/studio');
+                      window.location.href = '/studio';
                     }
                   } catch (e) {
                     // handled by authError
@@ -433,7 +440,7 @@ export default function LandingPage() {
                   const u = await signInWithCredentials(leagueEmail, leaguePassword);
                   if (u) {
                     setIsAuthModalOpen(false);
-                    router.push('/studio');
+                    window.location.href = '/studio';
                   }
                 } catch (err) {
                   // error handled by authError
