@@ -79,12 +79,14 @@ wss.on('connection', (ws, req) => {
   const ytRtmpUrl = url.searchParams.get('ytRtmpUrl') || 'rtmp://a.rtmp.youtube.com/live2/';
 
   // Bandwidth & Transcoding Control
-  const bitrateKbps = parseInt(url.searchParams.get('bitrate'), 10) || 2500;
-  const maxrateKbps = Math.round(bitrateKbps * 1.25);
-  const bufsizeKbps = Math.round(bitrateKbps * 2);
+  // Facebook Live ceiling is 4000-4500k; clamping to 4000k prevents buffer overrun & Broken Pipe disconnects
+  const requestedBitrate = parseInt(url.searchParams.get('bitrate'), 10) || 3500;
+  const targetBitrate = Math.min(requestedBitrate, 4000);
+  const maxrateKbps = Math.round(targetBitrate * 1.15); // e.g. 4600k
+  const bufsizeKbps = Math.round(targetBitrate * 1.5);  // e.g. 6000k
   const preset = url.searchParams.get('preset') || 'ultrafast'; // 'ultrafast' drastically saves CPU on Render Free tier
-  const isH264 = url.searchParams.get('isH264') === '1';
-  const fps = parseInt(url.searchParams.get('fps'), 10) || 30;
+  const fps = parseInt(url.searchParams.get('fps'), 10) || 60;
+  const gop = fps * 2; // Strict 2-second keyframe interval required by Facebook & YouTube
 
   const destinations = [];
 
@@ -120,31 +122,29 @@ wss.on('connection', (ws, req) => {
 
   const destinationSummary = destinations.map((d) => `${d.name} (${d.maskedKey})`).join(' + ');
   addLog(`📡 Configured ${destinations.length} destination(s): ${destinationSummary}`);
-  addLog(`⚙️ Stream Profile: ${bitrateKbps} kbps @ ${fps}fps | Mode: ${isH264 ? '⚡ Zero-CPU Hardware Passthrough (-c:v copy)' : 'Software Transcode (libx264)'}`);
+  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ ${fps}fps (Keyframes: 2s GOP ${gop}) | Mode: Ultrafast Low-CPU x264`);
 
-  // Video Configuration: If client already encoded in hardware H.264, use zero-CPU passthrough copy!
-  const videoConfigArgs = isH264
-    ? ['-c:v', 'copy']
-    : [
-        '-c:v', 'libx264',
-        '-preset', preset,
-        '-tune', 'zerolatency',
-        '-b:v', `${bitrateKbps}k`,
-        '-maxrate', `${maxrateKbps}k`,
-        '-bufsize', `${bufsizeKbps}k`,
-        '-pix_fmt', 'yuv420p',
-        '-g', String(fps * 2), // Keyframe every 2 seconds
-        '-r', String(fps),
-      ];
-
-  // Construct FFmpeg arguments
+  // Construct FFmpeg arguments with timestamp regeneration & strict rate limiting
   const baseFfmpegArgs = [
+    '-fflags', '+genpts+discardcorrupt',
+    '-analyzeduration', '1000000',
+    '-probesize', '1000000',
     '-i', 'pipe:0',
-    ...videoConfigArgs,
-    // Audio configuration: Convert Opus to AAC (uses negligible CPU, ~0.2%)
+    // Video: Ultrafast x264 zero-latency with strict bitrate ceiling & 2s GOP
+    '-c:v', 'libx264',
+    '-preset', preset,
+    '-tune', 'zerolatency',
+    '-b:v', `${targetBitrate}k`,
+    '-maxrate', `${maxrateKbps}k`,
+    '-bufsize', `${bufsizeKbps}k`,
+    '-pix_fmt', 'yuv420p',
+    '-g', String(gop),
+    '-r', String(fps),
+    // Audio: Normalized AAC stereo 128k
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
+    '-ac', '2',
   ];
 
   let ffmpegArgs = [];
@@ -152,6 +152,7 @@ wss.on('connection', (ws, req) => {
     // Single Destination: Direct FLV output
     ffmpegArgs = [
       ...baseFfmpegArgs,
+      '-flags', '+global_header',
       '-f', 'flv',
       '-flvflags', 'no_duration_filesize',
       destinations[0].url,
@@ -197,17 +198,27 @@ wss.on('connection', (ws, req) => {
 
   ffmpeg.stdout.on('data', () => {});
 
+  let lastStatsLogTime = 0;
   ffmpeg.stderr.on('data', (data) => {
     const msg = data.toString();
-    addLog(`[FFmpeg] ${msg.trim()}`);
+    const trimmed = msg.trim();
 
-    if (msg.includes('fps=') || msg.includes('speed=')) {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: 'FFMPEG_STATS', message: msg.trim() }));
+    if (trimmed.includes('fps=') || trimmed.includes('speed=')) {
+      const now = Date.now();
+      if (now - lastStatsLogTime >= 8000) {
+        lastStatsLogTime = now;
+        const lastLine = trimmed.split('\n').pop();
+        addLog(`[FFmpeg Progress] ${lastLine}`);
       }
-    } else if (msg.includes('error') || msg.includes('Error') || msg.includes('failed') || msg.includes('Failed')) {
       if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: 'FFMPEG_ERROR', message: msg.trim() }));
+        ws.send(JSON.stringify({ type: 'FFMPEG_STATS', message: trimmed }));
+      }
+    } else {
+      addLog(`[FFmpeg] ${trimmed}`);
+      if (trimmed.includes('error') || trimmed.includes('Error') || trimmed.includes('failed') || trimmed.includes('Failed')) {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(JSON.stringify({ type: 'FFMPEG_ERROR', message: trimmed }));
+        }
       }
     }
   });
