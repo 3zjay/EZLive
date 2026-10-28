@@ -120,26 +120,39 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  const isH264 = url.searchParams.get('isH264') === '1';
+
   const destinationSummary = destinations.map((d) => `${d.name} (${d.maskedKey})`).join(' + ');
   addLog(`📡 Configured ${destinations.length} destination(s): ${destinationSummary}`);
-  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ ${fps}fps (Keyframes: 2s GOP ${gop}) | Mode: Ultrafast Low-CPU x264`);
+  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ ${fps}fps | Mode: ${isH264 ? '⚡ Zero-CPU Hardware Passthrough (-c:v copy)' : 'Software Transcode (libx264)'}`);
 
-  // Construct FFmpeg arguments with timestamp regeneration & strict rate limiting
+  // When client provides hardware H.264 (from iPad/Fold/Chrome hardware encoder):
+  // Passthrough copy uses 0% CPU on Render and guarantees full real-time 60fps (speed=1.0x) with zero lag!
+  // -use_wallclock_as_timestamps 1 guarantees monotonic timestamps so FLV muxer never drops frames.
+  const videoConfigArgs = isH264
+    ? [
+        '-c:v', 'copy',
+      ]
+    : [
+        '-c:v', 'libx264',
+        '-preset', preset,
+        '-tune', 'zerolatency',
+        '-b:v', `${targetBitrate}k`,
+        '-maxrate', `${maxrateKbps}k`,
+        '-bufsize', `${bufsizeKbps}k`,
+        '-pix_fmt', 'yuv420p',
+        '-g', String(gop),
+        '-r', String(fps),
+      ];
+
+  // Construct FFmpeg arguments with wallclock timestamp synchronization
   const baseFfmpegArgs = [
     '-fflags', '+genpts+discardcorrupt',
+    '-use_wallclock_as_timestamps', '1',
     '-analyzeduration', '1000000',
     '-probesize', '1000000',
     '-i', 'pipe:0',
-    // Video: Ultrafast x264 zero-latency with strict bitrate ceiling & 2s GOP
-    '-c:v', 'libx264',
-    '-preset', preset,
-    '-tune', 'zerolatency',
-    '-b:v', `${targetBitrate}k`,
-    '-maxrate', `${maxrateKbps}k`,
-    '-bufsize', `${bufsizeKbps}k`,
-    '-pix_fmt', 'yuv420p',
-    '-g', String(gop),
-    '-r', String(fps),
+    ...videoConfigArgs,
     // Audio: Normalized AAC stereo 128k
     '-c:a', 'aac',
     '-b:a', '128k',

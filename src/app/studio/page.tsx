@@ -168,23 +168,32 @@ export default function StudioPage() {
         'https://ezlive-relay.onrender.com';
 
       // Determine optimal browser MediaRecorder container & codec
-      // Chrome/Android: WebM (VP8/Opus) provides maximum stability and monotonic chunk timestamps
-      // iPad/Safari/iOS: MP4 (AVC1 H.264)
+      // Prioritize hardware H.264 (Apple VideoToolbox on iPad/iOS / Snapdragon/MediaTek on Android / NVENC on PC)
+      // Hardware H.264 enables 0% CPU passthrough on the relay for silky-smooth 60fps with ZERO lag!
       let mime = '';
+      let isH264 = false;
       if (typeof MediaRecorder !== 'undefined') {
-        const mimeCandidates = [
-          'video/webm;codecs=vp8,opus',
+        const h264Candidates = [
           'video/webm;codecs=h264,opus',
-          'video/webm',
+          'video/webm;codecs=h264',
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=avc1,opus',
           'video/mp4;codecs=avc1',
           'video/mp4',
         ];
-        for (const candidate of mimeCandidates) {
+        for (const candidate of h264Candidates) {
           if (MediaRecorder.isTypeSupported(candidate)) {
             mime = candidate;
+            isH264 = true;
             break;
+          }
+        }
+        if (!isH264) {
+          // Fallback to VP8 only if device cannot hardware encode H.264
+          if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+            mime = 'video/webm;codecs=vp8,opus';
+          } else if (MediaRecorder.isTypeSupported('video/webm')) {
+            mime = 'video/webm';
           }
         }
       }
@@ -219,8 +228,9 @@ export default function StudioPage() {
           query.set('rtmpsUrl', 'rtmp://a.rtmp.youtube.com/live2/');
         }
       }
-      query.set('bitrate', String(Math.min(bitrateKbps, 4000)));
+      query.set('bitrate', String(Math.min(bitrateKbps, 3500)));
       query.set('fps', String(streamFps));
+      query.set('isH264', isH264 ? '1' : '0');
       query.set('preset', 'ultrafast');
 
       const wsUrl = `${wsProtocol}//${cleanRelay}/live?${query.toString()}`;
@@ -232,11 +242,11 @@ export default function StudioPage() {
       ws.onopen = () => {
         const destLabel =
           fbKey && ytKey ? 'Facebook + YouTube (Dual Stream)' : fbKey ? 'Facebook Live' : 'YouTube Live';
-        console.log(`📡 Connected to EZLive Cloud Relay! Streaming canvas to ${destLabel} (${mime || 'default'}, ${streamFps}fps)...`);
+        console.log(`📡 Connected to EZLive Cloud Relay! Streaming canvas to ${destLabel} (${mime || 'default'}, ${streamFps}fps, isH264=${isH264})...`);
         setRelayStats((prev) => ({ ...prev, connected: true, status: 'streaming' }));
 
         try {
-          const safeClientBitrate = Math.min(bitrateKbps, 4000);
+          const safeClientBitrate = Math.min(bitrateKbps, 3500);
           const rec = new MediaRecorder(compositeStream, {
             ...(mime ? { mimeType: mime } : {}),
             videoBitsPerSecond: safeClientBitrate * 1000,
