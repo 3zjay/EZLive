@@ -530,6 +530,7 @@ const FacebookDestinationManager: React.FC<{
   const handleConnectFacebook = async () => {
     try {
       setIsLoading(true);
+      setStatusMsg('');
       const { signInWithFacebook } = await import('@/services/firebase');
       const u = await signInWithFacebook();
       if (u) {
@@ -541,7 +542,18 @@ const FacebookDestinationManager: React.FC<{
         await fetchDestinations(token);
       }
     } catch (err: any) {
-      alert('Facebook login error: ' + (err?.message || 'Check popup blocker'));
+      const errStr = String(err?.message || err);
+      if (err?.code === 'auth/operation-not-allowed' || errStr.includes('operation-not-allowed')) {
+        setStatusMsg(
+          '⚠️ Facebook OAuth is currently disabled in your Firebase Console (hoop-culture-scoreboard). We have switched you to "Group Stream Key" below — this is the standard Streamlabs & OBS method and lets you stream to your Facebook Group immediately with 0 Meta setup!'
+        );
+        setLocalSettings((prev) => ({
+          ...prev,
+          fbSettings: { ...(prev.fbSettings || fb), destinationType: 'stream_key', mode: 'manual' },
+        }));
+      } else {
+        setStatusMsg('Facebook connection note: ' + (err?.message || 'Check popup blocker'));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -599,42 +611,7 @@ const FacebookDestinationManager: React.FC<{
         </label>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setLocalSettings((prev) => ({
-                ...prev,
-                fbSettings: { ...(prev.fbSettings || fb), destinationType: 'group', mode: 'auto' },
-              }))
-            }
-            className={`p-2 rounded-xl border text-center font-bold transition ${
-              destinationType === 'group'
-                ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300 ring-1 ring-indigo-500/50'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-            }`}
-          >
-            <div className="text-sm mb-0.5">👥</div>
-            <div>Facebook Group</div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setLocalSettings((prev) => ({
-                ...prev,
-                fbSettings: { ...(prev.fbSettings || fb), destinationType: 'page', mode: 'auto' },
-              }))
-            }
-            className={`p-2 rounded-xl border text-center font-bold transition ${
-              destinationType === 'page'
-                ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300 ring-1 ring-indigo-500/50'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
-            }`}
-          >
-            <div className="text-sm mb-0.5">📄</div>
-            <div>Facebook Page</div>
-          </button>
-
+          {/* Option 1: Group Stream Key (Instant Test / Streamlabs Standard) */}
           <button
             type="button"
             onClick={() =>
@@ -643,16 +620,58 @@ const FacebookDestinationManager: React.FC<{
                 fbSettings: { ...(prev.fbSettings || fb), destinationType: 'stream_key', mode: 'manual' },
               }))
             }
-            className={`p-2 rounded-xl border text-center font-bold transition ${
+            className={`p-2.5 rounded-xl border text-center font-bold transition ${
               destinationType === 'stream_key'
                 ? 'bg-amber-950/60 border-amber-500 text-amber-300 ring-1 ring-amber-500/50'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
             }`}
           >
             <div className="text-sm mb-0.5">🔑</div>
-            <div>Group Stream Key</div>
+            <div className="text-xs">Group Stream Key</div>
+            <div className="text-[9px] text-amber-400 font-extrabold uppercase mt-0.5 tracking-wider">⚡ Instant (No Login)</div>
           </button>
 
+          {/* Option 2: Facebook Group (OAuth API) */}
+          <button
+            type="button"
+            onClick={() =>
+              setLocalSettings((prev) => ({
+                ...prev,
+                fbSettings: { ...(prev.fbSettings || fb), destinationType: 'group', mode: 'auto' },
+              }))
+            }
+            className={`p-2.5 rounded-xl border text-center font-bold transition ${
+              destinationType === 'group'
+                ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300 ring-1 ring-indigo-500/50'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+            }`}
+          >
+            <div className="text-sm mb-0.5">👥</div>
+            <div className="text-xs">Facebook Group</div>
+            <div className="text-[9px] text-slate-500 uppercase mt-0.5">Via Meta API</div>
+          </button>
+
+          {/* Option 3: Facebook Page */}
+          <button
+            type="button"
+            onClick={() =>
+              setLocalSettings((prev) => ({
+                ...prev,
+                fbSettings: { ...(prev.fbSettings || fb), destinationType: 'page', mode: 'auto' },
+              }))
+            }
+            className={`p-2.5 rounded-xl border text-center font-bold transition ${
+              destinationType === 'page'
+                ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300 ring-1 ring-indigo-500/50'
+                : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
+            }`}
+          >
+            <div className="text-sm mb-0.5">📄</div>
+            <div className="text-xs">Facebook Page</div>
+            <div className="text-[9px] text-slate-500 uppercase mt-0.5">Pages API</div>
+          </button>
+
+          {/* Option 4: Personal Timeline */}
           <button
             type="button"
             onClick={() =>
@@ -661,14 +680,15 @@ const FacebookDestinationManager: React.FC<{
                 fbSettings: { ...(prev.fbSettings || fb), destinationType: 'timeline', mode: 'auto' },
               }))
             }
-            className={`p-2 rounded-xl border text-center font-bold transition ${
+            className={`p-2.5 rounded-xl border text-center font-bold transition ${
               destinationType === 'timeline'
                 ? 'bg-indigo-950/60 border-indigo-500 text-indigo-300 ring-1 ring-indigo-500/50'
                 : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700'
             }`}
           >
             <div className="text-sm mb-0.5">👤</div>
-            <div>My Timeline</div>
+            <div className="text-xs">My Timeline</div>
+            <div className="text-[9px] text-slate-500 uppercase mt-0.5">Personal</div>
           </button>
         </div>
 

@@ -64,8 +64,8 @@ const DEFAULT_SETTINGS: StreamSettings = {
   scoreboardSessionUser: 'isidro.pascua@gmail.com',
   scoreboardSyncMode: 'auto',
   fbSettings: {
-    mode: 'auto',
-    destinationType: 'group',
+    mode: 'manual',
+    destinationType: 'stream_key',
     selectedGroupId: '',
     selectedGroupName: '',
     groupStreamKey: '',
