@@ -1170,12 +1170,15 @@ export default function StudioPage() {
     let resolvedRtmps = settings.rtmpsUrl;
     let liveVideoId: string | undefined = undefined;
 
+    const isSingleUseKey = Boolean(config.facebookKey?.includes('?') || config.facebookKey?.includes('s_vt='));
+
     // Case A: Create Live Video on Facebook Page via Graph API
+    // When a Facebook Page is chosen, ALWAYS generate a fresh, active live broadcast on that Page
     if (
       config.facebookEnabled &&
       config.facebookDestinationType === 'page' &&
       config.facebookPageId &&
-      !config.facebookKey
+      (!config.facebookKey || isSingleUseKey)
     ) {
       try {
         const token =
@@ -1183,6 +1186,7 @@ export default function StudioPage() {
           settings.fbSettings?.selectedPageToken ||
           (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null);
 
+        console.log(`📡 Creating fresh Facebook Live broadcast on Page ${config.facebookPageName || config.facebookPageId}...`);
         const res = await fetch('/api/facebook/live', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1207,6 +1211,7 @@ export default function StudioPage() {
         resolvedRtmps = data.secure_stream_url || settings.rtmpsUrl;
         resolvedFbKey = data.stream_key || '';
         liveVideoId = data.id;
+        console.log(`✅ Fresh Facebook Live video created! ID: ${liveVideoId}`);
       } catch (err: any) {
         console.error('Failed to create live video on Facebook Page:', err);
         alert(`Failed to start live stream on Facebook Page: ${err?.message || err}`);
@@ -1216,11 +1221,12 @@ export default function StudioPage() {
       config.facebookEnabled &&
       config.facebookDestinationType === 'group' &&
       config.facebookGroupId &&
-      !config.facebookKey
+      (!config.facebookKey || isSingleUseKey)
     ) {
       // Case B: Create Live Video on Facebook Group via Graph API
       try {
         const token = typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') : null;
+        console.log(`📡 Creating fresh Facebook Live broadcast on Group ${config.facebookGroupName || config.facebookGroupId}...`);
         const res = await fetch('/api/facebook/live', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1244,6 +1250,7 @@ export default function StudioPage() {
         resolvedRtmps = data.secure_stream_url || settings.rtmpsUrl;
         resolvedFbKey = data.stream_key || '';
         liveVideoId = data.id;
+        console.log(`✅ Fresh Facebook Group live video created! ID: ${liveVideoId}`);
       } catch (err: any) {
         console.error('Failed to create live video on Facebook Group:', err);
         alert(`Failed to start live stream on Facebook Group: ${err?.message || err}`);
@@ -1254,7 +1261,8 @@ export default function StudioPage() {
     const updatedSettings: StreamSettings = {
       ...settings,
       rtmpsUrl: resolvedRtmps,
-      streamKey: resolvedFbKey || settings.streamKey,
+      // Only persist manual keys, never ephemeral single-use session keys
+      streamKey: config.facebookKey && !isSingleUseKey ? config.facebookKey : settings.streamKey,
       broadcastTitle: config.title,
       broadcastDescription: config.description,
       bandwidthPreset: config.bandwidthPreset,
@@ -1274,7 +1282,7 @@ export default function StudioPage() {
         selectedPageToken: config.facebookPageToken || settings.fbSettings?.selectedPageToken || '',
         selectedGroupId: config.facebookGroupId || settings.fbSettings?.selectedGroupId,
         selectedGroupName: config.facebookGroupName || settings.fbSettings?.selectedGroupName,
-        groupStreamKey: resolvedFbKey,
+        groupStreamKey: config.facebookKey && !isSingleUseKey ? config.facebookKey : settings.fbSettings?.groupStreamKey,
         activeLiveVideoId: liveVideoId,
       },
       ytSettings: {

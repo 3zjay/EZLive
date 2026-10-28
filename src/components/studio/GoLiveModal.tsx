@@ -122,10 +122,17 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
     fb?.destinationType === 'group' || fb?.destinationType === 'stream_key' ? fb.destinationType : 'page'
   );
 
+  const cleanInitialKey = (key?: string) => {
+    if (!key) return '';
+    // If it contains query parameters (like ?s_bl= or &a=), it is an ephemeral single-use session key from a previous live broadcast, NOT a persistent reusable stream key.
+    if (key.includes('?') || key.includes('s_vt=')) return '';
+    return key;
+  };
+
   const initialFbKey =
-    fb?.groupStreamKey ||
-    settings.streamKey ||
-    (typeof window !== 'undefined' ? localStorage.getItem('hc_fb_stream_key') || '' : '');
+    cleanInitialKey(fb?.groupStreamKey) ||
+    cleanInitialKey(settings.streamKey) ||
+    (typeof window !== 'undefined' ? cleanInitialKey(localStorage.getItem('hc_fb_stream_key') || '') : '');
   const [fbKey, setFbKey] = useState(initialFbKey);
   const [showFbKey, setShowFbKey] = useState(false);
 
@@ -294,8 +301,14 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   const handleConfirm = () => {
     if (!hasAtLeastOneDestination) return;
 
+    const cleanedKey = cleanInitialKey(fbKey.trim());
+
     if (typeof window !== 'undefined') {
-      if (fbKey.trim()) localStorage.setItem('hc_fb_stream_key', fbKey.trim());
+      if (cleanedKey) {
+        localStorage.setItem('hc_fb_stream_key', cleanedKey);
+      } else {
+        localStorage.removeItem('hc_fb_stream_key');
+      }
       if (ytKey.trim()) localStorage.setItem('hc_yt_stream_key', ytKey.trim());
       localStorage.setItem('ezlive_stream_title', title);
       localStorage.setItem('ezlive_stream_desc', description);
@@ -311,7 +324,7 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       facebookPageToken: selectedPage?.access_token || fb?.selectedPageToken || '',
       facebookGroupId: selectedGroupId,
       facebookGroupName: selectedGroup?.name || fb?.selectedGroupName || '',
-      facebookKey: fbKey.trim(),
+      facebookKey: cleanedKey,
       youtubeEnabled: ytEnabled && ytKey.trim().length > 0,
       youtubeKey: ytKey.trim(),
       bandwidthPreset: qualityPreset,
