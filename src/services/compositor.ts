@@ -1,4 +1,4 @@
-import { SceneConfig, ScoreboardState } from '@/types/broadcast';
+import { Scene, ScoreboardState, Source } from '@/types/broadcast';
 
 export class VideoCompositor {
   private canvas: HTMLCanvasElement;
@@ -10,8 +10,8 @@ export class VideoCompositor {
   private height: number = 1080;
 
   // Scene transition state
-  private currentScene: SceneConfig;
-  private previousScene: SceneConfig | null = null;
+  private currentScene: Scene;
+  private previousScene: Scene | null = null;
   private transitionAlpha: number = 1; // 0 to 1
   private isTransitioning: boolean = false;
   private transitionStartTime: number = 0;
@@ -26,6 +26,9 @@ export class VideoCompositor {
   // Current scoreboard state reference
   private scoreboard: ScoreboardState;
 
+  // Image cache for image sources
+  private imageCache: Map<string, HTMLImageElement> = new Map();
+
   // Metrics
   private frameCount: number = 0;
   private lastFpsUpdateTime: number = performance.now();
@@ -33,7 +36,7 @@ export class VideoCompositor {
 
   constructor(
     canvas: HTMLCanvasElement,
-    initialScene: SceneConfig,
+    initialScene: Scene,
     initialScoreboard: ScoreboardState
   ) {
     this.canvas = canvas;
@@ -56,13 +59,28 @@ export class VideoCompositor {
     this.scoreboard = scoreboard;
   }
 
-  public setScene(scene: SceneConfig) {
-    if (this.currentScene.id === scene.id) return;
+  public setScene(scene: Scene, durationMs: number = 400) {
+    if (this.currentScene.id === scene.id) {
+      this.currentScene = scene;
+      return;
+    }
+    if (durationMs <= 0) {
+      this.currentScene = scene;
+      this.previousScene = null;
+      this.isTransitioning = false;
+      this.transitionAlpha = 1;
+      return;
+    }
     this.previousScene = this.currentScene;
     this.currentScene = scene;
+    this.transitionDuration = durationMs;
     this.isTransitioning = true;
     this.transitionStartTime = performance.now();
     this.transitionAlpha = 0;
+  }
+
+  public updateCurrentScene(scene: Scene) {
+    this.currentScene = scene;
   }
 
   public start() {
@@ -86,7 +104,6 @@ export class VideoCompositor {
   }
 
   public getCompositeStream(micStream: MediaStream | null): MediaStream {
-    // Capture stream from canvas at desired FPS
     const canvasWithCapture = this.canvas as HTMLCanvasElement & {
       captureStream?(fps?: number): MediaStream;
       mozCaptureStream?(fps?: number): MediaStream;
@@ -100,10 +117,11 @@ export class VideoCompositor {
 
     const videoTrack = canvasStream.getVideoTracks()[0];
 
-    // If microphone audio is available, mix it into the stream
     if (micStream && micStream.getAudioTracks().length > 0) {
       try {
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         this.audioContext = new AudioCtx();
         this.audioSourceNode = this.audioContext.createMediaStreamSource(micStream);
         this.audioDestinationNode = this.audioContext.createMediaStreamDestination();
@@ -124,7 +142,6 @@ export class VideoCompositor {
   }
 
   private render(timestamp: number) {
-    // Measure FPS
     this.frameCount++;
     if (timestamp - this.lastFpsUpdateTime >= 1000) {
       this.currentFps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdateTime));
@@ -132,7 +149,6 @@ export class VideoCompositor {
       this.lastFpsUpdateTime = timestamp;
     }
 
-    // Handle scene transition timing
     if (this.isTransitioning) {
       const elapsed = timestamp - this.transitionStartTime;
       this.transitionAlpha = Math.min(1, elapsed / this.transitionDuration);
@@ -144,468 +160,322 @@ export class VideoCompositor {
 
     const { ctx, width, height } = this;
 
-    // 1. Draw Base Camera or Dark Stage Background
-    ctx.fillStyle = '#0f172a';
+    // Clear base to studio black
+    ctx.fillStyle = '#020617';
     ctx.fillRect(0, 0, width, height);
 
-    if (this.currentScene.hasCamera && this.videoElement && this.videoElement.readyState >= 2) {
-      // Calculate aspect-fill framing
-      const vWidth = this.videoElement.videoWidth || 1920;
-      const vHeight = this.videoElement.videoHeight || 1080;
-      const vAspect = vWidth / vHeight;
-      const cAspect = width / height;
-
-      let sx = 0, sy = 0, sWidth = vWidth, sHeight = vHeight;
-      if (vAspect > cAspect) {
-        // Video is wider than canvas
-        sWidth = vHeight * cAspect;
-        sx = (vWidth - sWidth) / 2;
-      } else {
-        // Video is taller than canvas
-        sHeight = vWidth / cAspect;
-        sy = (vHeight - sHeight) / 2;
-      }
-
+    // If transitioning from a previous scene, render it first
+    if (this.isTransitioning && this.previousScene) {
       ctx.save();
-      if (this.isTransitioning) {
-        ctx.globalAlpha = this.transitionAlpha;
-      }
-      ctx.drawImage(this.videoElement, sx, sy, sWidth, sHeight, 0, 0, width, height);
+      ctx.globalAlpha = 1 - this.transitionAlpha;
+      this.renderSceneSources(this.previousScene);
       ctx.restore();
     }
 
-    // 2. Render Scene-Specific Graphics
-    switch (this.currentScene.id) {
-      case 'game':
-        this.renderGameScene(ctx);
-        break;
-      case 'intro':
-        this.renderIntroScene(ctx);
-        break;
-      case 'interview':
-        this.renderInterviewScene(ctx);
-        break;
-      case 'sponsor':
-        this.renderSponsorScene(ctx);
-        break;
-      case 'halftime':
-        this.renderHalftimeScene(ctx);
-        break;
-    }
-
-    // 3. Render Persistent Sponsor Bug if enabled
-    if (this.currentScene.showSponsor && this.currentScene.id !== 'sponsor') {
-      this.renderSponsorWatermark(ctx);
-    }
-
-    // 4. If transitioning, draw quick fade flash effect
+    // Render current active scene
+    ctx.save();
     if (this.isTransitioning) {
-      ctx.save();
-      ctx.fillStyle = `rgba(0, 0, 0, ${(1 - this.transitionAlpha) * 0.4})`;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
+      ctx.globalAlpha = this.transitionAlpha;
+    }
+    this.renderSceneSources(this.currentScene);
+    ctx.restore();
+  }
+
+  private renderSceneSources(scene: Scene) {
+    // Sort sources by zIndex (lowest first)
+    const sorted = [...scene.sources].sort((a, b) => a.zIndex - b.zIndex);
+
+    for (const source of sorted) {
+      if (!source.visible) continue;
+      this.renderSource(source);
     }
   }
 
-  // --- Basketball Game Scene: Pro Broadcast Scoreboard Bar ---
-  private renderGameScene(ctx: CanvasRenderingContext2D) {
+  private renderSource(source: Source) {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, source.opacity ?? 1));
+
+    switch (source.type) {
+      case 'camera':
+        this.drawCameraSource(source);
+        break;
+      case 'scoreboard':
+        this.drawScoreboardSource(source);
+        break;
+      case 'text':
+        this.drawTextSource(source);
+        break;
+      case 'image':
+        this.drawImageSource(source);
+        break;
+      case 'color_solid':
+        this.drawColorSolidSource(source);
+        break;
+      case 'browser_url':
+        this.drawBrowserSourcePlaceholder(source);
+        break;
+    }
+
+    ctx.restore();
+  }
+
+  // --- 1. Camera Source ---
+  private drawCameraSource(source: Source) {
+    if (source.type !== 'camera' || !this.videoElement || this.videoElement.readyState < 2) {
+      // If camera unavailable, draw elegant placeholder grid
+      this.ctx.fillStyle = '#090d16';
+      this.ctx.fillRect(source.x, source.y, source.width, source.height);
+      this.ctx.fillStyle = '#334155';
+      this.ctx.font = 'bold 24px sans-serif';
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(
+        'CONNECTING CAMERA...',
+        source.x + source.width / 2,
+        source.y + source.height / 2
+      );
+      return;
+    }
+
+    const { ctx } = this;
+    const vWidth = this.videoElement.videoWidth || 1920;
+    const vHeight = this.videoElement.videoHeight || 1080;
+
+    let sx = 0,
+      sy = 0,
+      sWidth = vWidth,
+      sHeight = vHeight;
+
+    if (source.fit === 'cover') {
+      const vAspect = vWidth / vHeight;
+      const tAspect = source.width / source.height;
+      if (vAspect > tAspect) {
+        sWidth = vHeight * tAspect;
+        sx = (vWidth - sWidth) / 2;
+      } else {
+        sHeight = vWidth / tAspect;
+        sy = (vHeight - sHeight) / 2;
+      }
+    }
+
+    ctx.drawImage(
+      this.videoElement,
+      sx,
+      sy,
+      sWidth,
+      sHeight,
+      source.x,
+      source.y,
+      source.width,
+      source.height
+    );
+  }
+
+  // --- 2. Scoreboard HUD Source ---
+  private drawScoreboardSource(source: Source) {
+    if (source.type !== 'scoreboard') return;
+    const { ctx } = this;
     const sb = this.scoreboard;
-    const barWidth = 960;
-    const barHeight = 84;
-    const barX = (this.width - barWidth) / 2;
-    const barY = 40;
-    const radius = 12;
+    const scale = source.scale || 1;
+    const barWidth = source.width;
+    const barHeight = source.height;
+    const barX = source.x;
+    const barY = source.y;
+    const radius = 12 * scale;
 
     ctx.save();
     // Shadow
     ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 6;
+    ctx.shadowBlur = 20 * scale;
+    ctx.shadowOffsetY = 5 * scale;
 
     // Scoreboard Container Background
     ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
     this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
     ctx.fill();
 
-    // Reset shadow
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
 
     // Border
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * scale;
     this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
     ctx.stroke();
 
-    // Division Line Positions
-    const awayX = barX;
-    const awayWidth = 320;
-    const clockX = barX + awayWidth;
-    const clockWidth = 320;
-    const homeX = clockX + clockWidth;
-    const homeWidth = 320;
+    const segW = barWidth / 3;
 
-    // --- Away Team Segment ---
+    // Away Team
     ctx.fillStyle = '#1e293b';
-    this.roundRect(ctx, awayX, barY, awayWidth, barHeight, [radius, 0, 0, radius]);
+    this.roundRect(ctx, barX, barY, segW, barHeight, [radius, 0, 0, radius]);
     ctx.fill();
 
-    // Possession indicator (Away)
     if (sb.possession === 'away') {
       ctx.fillStyle = '#eab308';
       ctx.beginPath();
-      ctx.moveTo(awayX + 16, barY + barHeight / 2 - 10);
-      ctx.lineTo(awayX + 26, barY + barHeight / 2);
-      ctx.lineTo(awayX + 16, barY + barHeight / 2 + 10);
+      ctx.moveTo(barX + 16 * scale, barY + barHeight / 2 - 8 * scale);
+      ctx.lineTo(barX + 26 * scale, barY + barHeight / 2);
+      ctx.lineTo(barX + 16 * scale, barY + barHeight / 2 + 8 * scale);
       ctx.fill();
     }
 
-    // Away Team Name
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = `bold ${Math.round(26 * scale)}px sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(sb.awayTeam.toUpperCase(), awayX + 36, barY + 44);
+    ctx.fillText(sb.awayTeam.toUpperCase(), barX + 36 * scale, barY + barHeight * 0.48);
 
-    // Away Team Fouls & Timeouts
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(`FLS: ${sb.awayFouls}  •  TO: ${sb.awayTimeouts}`, awayX + 36, barY + 68);
+    ctx.font = `600 ${Math.round(14 * scale)}px sans-serif`;
+    ctx.fillText(`FLS: ${sb.awayFouls} • TO: ${sb.awayTimeouts}`, barX + 36 * scale, barY + barHeight * 0.76);
 
-    // Away Score Badge
+    // Away Score
     ctx.fillStyle = '#0f172a';
-    this.roundRect(ctx, awayX + awayWidth - 90, barY + 8, 80, barHeight - 16, 8);
+    this.roundRect(ctx, barX + segW - 85 * scale, barY + 8 * scale, 75 * scale, barHeight - 16 * scale, 8 * scale);
     ctx.fill();
     ctx.fillStyle = '#38bdf8';
-    ctx.font = '900 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = `900 ${Math.round(38 * scale)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`${sb.awayScore}`, awayX + awayWidth - 50, barY + 56);
+    ctx.fillText(`${sb.awayScore}`, barX + segW - 47 * scale, barY + barHeight * 0.65);
 
-    // --- Center Clock & Period Segment ---
+    // Center Clock & Period
+    const clockX = barX + segW;
     ctx.fillStyle = '#090d16';
-    ctx.fillRect(clockX, barY, clockWidth, barHeight);
+    ctx.fillRect(clockX, barY, segW, barHeight);
 
-    // Period indicator
     ctx.fillStyle = '#f59e0b';
-    ctx.font = 'bold 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = `bold ${Math.round(18 * scale)}px sans-serif`;
     ctx.textAlign = 'center';
     const periodText = sb.period <= 4 ? `Q${sb.period}` : `OT${sb.period - 4}`;
-    ctx.fillText(periodText, clockX + clockWidth / 2, barY + 30);
+    ctx.fillText(periodText, clockX + segW / 2, barY + barHeight * 0.36);
 
-    // Game Clock
     ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
-    ctx.font = '900 38px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(sb.gameClock, clockX + clockWidth / 2, barY + 68);
+    ctx.font = `900 ${Math.round(34 * scale)}px monospace`;
+    ctx.fillText(sb.gameClock, clockX + segW / 2, barY + barHeight * 0.80);
 
-    // Clock running status dot
-    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ef4444';
-    ctx.beginPath();
-    ctx.arc(clockX + clockWidth / 2 + 75, barY + 58, 5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // --- Home Team Segment ---
+    // Home Team
+    const homeX = barX + segW * 2;
     ctx.fillStyle = '#1e293b';
-    this.roundRect(ctx, homeX, barY, homeWidth, barHeight, [0, radius, radius, 0]);
+    this.roundRect(ctx, homeX, barY, segW, barHeight, [0, radius, radius, 0]);
     ctx.fill();
 
-    // Home Score Badge
+    // Home Score
     ctx.fillStyle = '#0f172a';
-    this.roundRect(ctx, homeX + 10, barY + 8, 80, barHeight - 16, 8);
+    this.roundRect(ctx, homeX + 10 * scale, barY + 8 * scale, 75 * scale, barHeight - 16 * scale, 8 * scale);
     ctx.fill();
     ctx.fillStyle = '#f43f5e';
-    ctx.font = '900 42px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = `900 ${Math.round(38 * scale)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`${sb.homeScore}`, homeX + 50, barY + 56);
+    ctx.fillText(`${sb.homeScore}`, homeX + 47 * scale, barY + barHeight * 0.65);
 
-    // Home Team Name
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = `bold ${Math.round(26 * scale)}px sans-serif`;
     ctx.textAlign = 'right';
-    ctx.fillText(sb.homeTeam.toUpperCase(), homeX + homeWidth - 36, barY + 44);
+    ctx.fillText(sb.homeTeam.toUpperCase(), homeX + segW - 36 * scale, barY + barHeight * 0.48);
 
-    // Home Team Fouls & Timeouts
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText(`FLS: ${sb.homeFouls}  •  TO: ${sb.homeTimeouts}`, homeX + homeWidth - 36, barY + 68);
+    ctx.font = `600 ${Math.round(14 * scale)}px sans-serif`;
+    ctx.fillText(`FLS: ${sb.homeFouls} • TO: ${sb.homeTimeouts}`, homeX + segW - 36 * scale, barY + barHeight * 0.76);
 
-    // Possession indicator (Home)
     if (sb.possession === 'home') {
       ctx.fillStyle = '#eab308';
       ctx.beginPath();
-      ctx.moveTo(homeX + homeWidth - 16, barY + barHeight / 2 - 10);
-      ctx.lineTo(homeX + homeWidth - 26, barY + barHeight / 2);
-      ctx.lineTo(homeX + homeWidth - 16, barY + barHeight / 2 + 10);
+      ctx.moveTo(homeX + segW - 16 * scale, barY + barHeight / 2 - 8 * scale);
+      ctx.lineTo(homeX + segW - 26 * scale, barY + barHeight / 2);
+      ctx.lineTo(homeX + segW - 16 * scale, barY + barHeight / 2 + 8 * scale);
       ctx.fill();
     }
 
-    // Bottom Ticker Banner (Hoop Times live tournament banner)
-    const tickerY = barY + barHeight + 6;
-    const tickerHeight = 28;
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.85)';
-    this.roundRect(ctx, barX + 140, tickerY, barWidth - 280, tickerHeight, 6);
-    ctx.fill();
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '600 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.restore();
+  }
+
+  // --- 3. Text Source ---
+  private drawTextSource(source: Source) {
+    if (source.type !== 'text') return;
+    const { ctx } = this;
+    ctx.save();
+
+    if (source.backgroundColor && source.backgroundColor !== 'transparent') {
+      ctx.fillStyle = source.backgroundColor;
+      this.roundRect(ctx, source.x, source.y, source.width, source.height, source.borderRadius || 0);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = source.color || '#ffffff';
+    const weight = source.fontWeight || 'bold';
+    const size = source.fontSize || 24;
+    const family = source.fontFamily || 'sans-serif';
+    ctx.font = `${weight} ${size}px ${family}`;
     ctx.textAlign = 'center';
-    ctx.fillText(sb.bannerText || 'HOOP TIMES BASKETBALL LEAGUE • LIVE BROADCAST', barX + barWidth / 2, tickerY + 19);
+    ctx.textBaseline = 'middle';
+
+    ctx.fillText(
+      source.text,
+      source.x + source.width / 2,
+      source.y + source.height / 2
+    );
 
     ctx.restore();
   }
 
-  // --- Intro / Pregame Scene ---
-  private renderIntroScene(ctx: CanvasRenderingContext2D) {
+  // --- 4. Image Source ---
+  private drawImageSource(source: Source) {
+    if (source.type !== 'image' || !source.url) return;
+    let img = this.imageCache.get(source.url);
+
+    if (!img) {
+      img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = source.url;
+      this.imageCache.set(source.url, img);
+    }
+
+    if (!img.complete || img.naturalWidth === 0) return;
+
+    const { ctx } = this;
     ctx.save();
-    // Gradient overlay background
-    const grad = ctx.createLinearGradient(0, 0, this.width, this.height);
-    grad.addColorStop(0, 'rgba(15, 23, 42, 0.96)');
-    grad.addColorStop(0.5, 'rgba(30, 41, 59, 0.90)');
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.96)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    // Center Card
-    const cardW = 1000;
-    const cardH = 540;
-    const cardX = (this.width - cardW) / 2;
-    const cardY = (this.height - cardH) / 2;
-
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    ctx.shadowBlur = 40;
-    ctx.fillStyle = 'rgba(30, 41, 59, 0.8)';
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 24);
-    ctx.fill();
-
-    ctx.strokeStyle = '#38bdf8';
-    ctx.lineWidth = 3;
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 24);
-    ctx.stroke();
-
-    // League Title
-    ctx.shadowColor = 'transparent';
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('HOOP TIMES BROADCAST NETWORK', this.width / 2, cardY + 70);
-
-    // Main Matchup Title
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 64px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(`${this.scoreboard.awayTeam}  VS  ${this.scoreboard.homeTeam}`, this.width / 2, cardY + 160);
-
-    // Subtitle / Status
-    ctx.fillStyle = '#fbbf24';
-    ctx.font = 'bold 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('GAME STARTING SHORTLY', this.width / 2, cardY + 230);
-
-    // Court / Location Info
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = '500 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('Court 1 • Championship Showcase', this.width / 2, cardY + 280);
-
-    // Presentation sponsor
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('PRESENTED BY', this.width / 2, cardY + 380);
-
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(this.scoreboard.sponsorName || 'HOOP TIMES PARTNERS & SPONSORS', this.width / 2, cardY + 420);
-
+    ctx.drawImage(img, source.x, source.y, source.width, source.height);
     ctx.restore();
   }
 
-  // --- Interview Scene: Lower Third ---
-  private renderInterviewScene(ctx: CanvasRenderingContext2D) {
-    const boxW = 860;
-    const boxH = 130;
-    const boxX = 80;
-    const boxY = this.height - boxH - 80;
-    const radius = 16;
-
+  // --- 5. Color Solid Source ---
+  private drawColorSolidSource(source: Source) {
+    if (source.type !== 'color_solid') return;
+    const { ctx } = this;
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    ctx.shadowBlur = 24;
-
-    // Main Lower-Third Card
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
-    this.roundRect(ctx, boxX, boxY, boxW, boxH, radius);
-    ctx.fill();
-
-    // Accent Stripe
-    ctx.fillStyle = '#f59e0b';
-    this.roundRect(ctx, boxX, boxY, 14, boxH, [radius, 0, 0, radius]);
-    ctx.fill();
-
-    ctx.shadowColor = 'transparent';
-
-    // Speaker Name
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText(this.currentScene.lowerThirdTitle || 'COACH MARCUS STERLING', boxX + 40, boxY + 54);
-
-    // Speaker Role / Subtitle
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = '600 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(this.currentScene.lowerThirdSubtitle || 'Head Coach • Northside Ballers', boxX + 40, boxY + 92);
-
-    // Sponsor Tag
-    ctx.fillStyle = '#64748b';
-    ctx.font = '600 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('LIVE SIDELINE INTERVIEW', boxX + boxW - 30, boxY + 52);
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 18px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(this.scoreboard.sponsorName || 'EZ BROADCAST STUDIO', boxX + boxW - 30, boxY + 90);
-
+    ctx.fillStyle = source.color;
+    if (source.borderRadius) {
+      this.roundRect(ctx, source.x, source.y, source.width, source.height, source.borderRadius);
+      ctx.fill();
+    } else {
+      ctx.fillRect(source.x, source.y, source.width, source.height);
+    }
     ctx.restore();
   }
 
-  // --- Sponsor Spotlight Scene ---
-  private renderSponsorScene(ctx: CanvasRenderingContext2D) {
-    ctx.save();
-    ctx.fillStyle = '#090d16';
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    const cardW = 1100;
-    const cardH = 620;
-    const cardX = (this.width - cardW) / 2;
-    const cardY = (this.height - cardH) / 2;
-
-    const grad = ctx.createLinearGradient(cardX, cardY, cardX + cardW, cardY + cardH);
-    grad.addColorStop(0, '#1e293b');
-    grad.addColorStop(1, '#0f172a');
-
-    ctx.fillStyle = grad;
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 24);
-    ctx.fill();
-
-    ctx.strokeStyle = '#eab308';
-    ctx.lineWidth = 4;
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 24);
-    ctx.stroke();
-
-    // Spotlight Header
-    ctx.fillStyle = '#eab308';
-    ctx.font = '900 28px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('OFFICIAL SPONSOR SPOTLIGHT', this.width / 2, cardY + 90);
-
-    // Sponsor Brand
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 76px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(this.scoreboard.sponsorName || 'ELITE SPORTS HYDRATION', this.width / 2, cardY + 220);
-
-    // Tagline
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('Fueling The Next Generation Of Basketball Champions', this.width / 2, cardY + 310);
-
-    // Description text
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('Proud partner of the Hoop Times Basketball League', this.width / 2, cardY + 380);
-    ctx.fillText('Visit our booth at the main entrance for complimentary court-side drinks', this.width / 2, cardY + 430);
-
-    // Match status preview footer
-    ctx.fillStyle = '#334155';
-    this.roundRect(ctx, cardX + 100, cardY + 490, cardW - 200, 80, 16);
-    ctx.fill();
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = 'bold 26px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(`CURRENT SCORE:  ${this.scoreboard.awayTeam} ${this.scoreboard.awayScore}  —  ${this.scoreboard.homeScore} ${this.scoreboard.homeTeam}`, this.width / 2, cardY + 540);
-
-    ctx.restore();
+  // --- 6. Browser Source (Custom URL Overlay) ---
+  private drawBrowserSourcePlaceholder(source: Source) {
+    if (source.type !== 'browser_url') return;
+    // When syncDataBridge is active (e.g. scoreboard URL), draw the synced HUD onto the canvas
+    if (source.syncDataBridge) {
+      const mockScoreboardSource: Source = {
+        id: `${source.id}-hud`,
+        name: 'Synced HUD',
+        type: 'scoreboard',
+        visible: true,
+        locked: true,
+        x: source.x + (source.width - 960) / 2,
+        y: source.y + 40,
+        width: 960,
+        height: 110,
+        opacity: 1,
+        zIndex: source.zIndex,
+        theme: 'hooptimes',
+        scale: 1,
+      };
+      this.drawScoreboardSource(mockScoreboardSource);
+    }
   }
 
-  // --- Halftime / Break Scene ---
-  private renderHalftimeScene(ctx: CanvasRenderingContext2D) {
-    ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
-    ctx.fillRect(0, 0, this.width, this.height);
-
-    const cardW = 1050;
-    const cardH = 580;
-    const cardX = (this.width - cardW) / 2;
-    const cardY = (this.height - cardH) / 2;
-
-    ctx.fillStyle = '#1e293b';
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 20);
-    ctx.fill();
-
-    ctx.strokeStyle = '#64748b';
-    ctx.lineWidth = 2;
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 20);
-    ctx.stroke();
-
-    // Halftime Title
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('HALFTIME BREAK', this.width / 2, cardY + 90);
-
-    // Matchup Scores
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(`${this.scoreboard.awayTeam.toUpperCase()}`, cardX + 260, cardY + 200);
-    ctx.fillText(`${this.scoreboard.homeTeam.toUpperCase()}`, cardX + cardW - 260, cardY + 200);
-
-    ctx.font = '900 96px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#38bdf8';
-    ctx.fillText(`${this.scoreboard.awayScore}`, cardX + 260, cardY + 310);
-    ctx.fillStyle = '#f43f5e';
-    ctx.fillText(`${this.scoreboard.homeScore}`, cardX + cardW - 260, cardY + 310);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('VS', this.width / 2, cardY + 280);
-
-    // Timer or return notice
-    ctx.fillStyle = '#22c55e';
-    ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText('SECOND HALF WILL RESUME SHORTLY', this.width / 2, cardY + 410);
-
-    // Sponsor
-    ctx.fillStyle = '#cbd5e1';
-    ctx.font = '20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(`Presented by ${this.scoreboard.sponsorName || 'Hoop Times Media'}`, this.width / 2, cardY + 490);
-
-    ctx.restore();
-  }
-
-  // --- Corner Sponsor Watermark Bug ---
-  private renderSponsorWatermark(ctx: CanvasRenderingContext2D) {
-    const bugW = 280;
-    const bugH = 50;
-    const bugX = this.width - bugW - 40;
-    const bugY = 40;
-
-    ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-    this.roundRect(ctx, bugX, bugY, bugW, bugH, 10);
-    ctx.fill();
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
-    ctx.lineWidth = 1;
-    this.roundRect(ctx, bugX, bugY, bugW, bugH, 10);
-    ctx.stroke();
-
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = 'bold 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('OFFICIAL PARTNER', bugX + 16, bugY + 22);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-    ctx.fillText(this.scoreboard.sponsorName || 'HOOP TIMES', bugX + 16, bugY + 42);
-
-    ctx.restore();
-  }
-
-  // Helper for drawing rounded rectangles with cross-browser compatibility
   private roundRect(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -614,7 +484,10 @@ export class VideoCompositor {
     h: number,
     r: number | number[]
   ) {
-    let tl = 0, tr = 0, br = 0, bl = 0;
+    let tl = 0,
+      tr = 0,
+      br = 0,
+      bl = 0;
     if (typeof r === 'number') {
       tl = tr = br = bl = r;
     } else if (Array.isArray(r)) {

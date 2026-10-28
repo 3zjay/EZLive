@@ -1,7 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Camera, Link as LinkIcon, Radio, ShieldAlert, Check, HelpCircle } from 'lucide-react';
+import {
+  X,
+  Camera,
+  Link as LinkIcon,
+  Radio,
+  ShieldAlert,
+  Check,
+  HelpCircle,
+  FolderArchive,
+  Download,
+  Upload,
+  RotateCcw,
+} from 'lucide-react';
 import { StreamSettings } from '@/types/broadcast';
 
 interface SettingsModalProps {
@@ -15,6 +27,9 @@ interface SettingsModalProps {
   selectedAudioDeviceId: string;
   onSelectVideoDevice: (deviceId: string) => void;
   onSelectAudioDevice: (deviceId: string) => void;
+  onExportScenes: () => void;
+  onImportScenes: (jsonString: string) => void;
+  onResetScenes: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -28,11 +43,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   selectedAudioDeviceId,
   onSelectVideoDevice,
   onSelectAudioDevice,
+  onExportScenes,
+  onImportScenes,
+  onResetScenes,
 }) => {
-  const [activeTab, setActiveTab] = useState<'video' | 'overlay' | 'facebook'>('video');
+  const [activeTab, setActiveTab] = useState<'video' | 'overlay' | 'facebook' | 'scenes'>('video');
   const [localSettings, setLocalSettings] = useState<StreamSettings>(settings);
+  const [prevSettings, setPrevSettings] = useState<StreamSettings>(settings);
   const [showStreamKey, setShowStreamKey] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  if (settings !== prevSettings) {
+    setPrevSettings(settings);
+    setLocalSettings(settings);
+  }
 
   if (!isOpen) return null;
 
@@ -45,15 +69,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }, 600);
   };
 
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        onImportScenes(content);
+        onClose();
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 select-none">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-xs">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-sky-500" />
-            <h2 className="text-base font-extrabold text-white tracking-wide">
-              STUDIO & BROADCAST SETTINGS
+            <h2 className="text-sm font-extrabold text-white tracking-wide uppercase">
+              STUDIO & OBS BROADCAST SETTINGS
             </h2>
           </div>
           <button
@@ -68,7 +106,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex border-b border-slate-800 bg-slate-950/60 px-6">
           <button
             onClick={() => setActiveTab('video')}
-            className={`py-3 px-4 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
+            className={`py-3 px-3.5 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
               activeTab === 'video'
                 ? 'border-sky-500 text-sky-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -79,29 +117,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <button
             onClick={() => setActiveTab('overlay')}
-            className={`py-3 px-4 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
+            className={`py-3 px-3.5 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
               activeTab === 'overlay'
                 ? 'border-sky-500 text-sky-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <LinkIcon size={14} /> Scoreboard Overlay
+            <LinkIcon size={14} /> Scoreboard Sync
           </button>
 
           <button
             onClick={() => setActiveTab('facebook')}
-            className={`py-3 px-4 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
+            className={`py-3 px-3.5 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
               activeTab === 'facebook'
                 ? 'border-sky-500 text-sky-400'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Radio size={14} /> Facebook Live (RTMPS)
+            <Radio size={14} /> Facebook Live
+          </button>
+
+          <button
+            onClick={() => setActiveTab('scenes')}
+            className={`py-3 px-3.5 font-bold text-xs uppercase tracking-wider border-b-2 flex items-center gap-2 transition ${
+              activeTab === 'scenes'
+                ? 'border-sky-500 text-sky-400'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FolderArchive size={14} /> Scene Collections
           </button>
         </div>
 
         {/* Tab Content Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-5 text-sm text-slate-300">
+        <div className="p-6 overflow-y-auto flex-1 space-y-5 text-slate-300">
           {/* TAB 1: Camera & Audio */}
           {activeTab === 'video' && (
             <div className="space-y-4">
@@ -114,16 +163,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) => onSelectVideoDevice(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-medium focus:outline-none focus:border-sky-500"
                 >
-                  <option value="">Default Environment (Rear Camera)</option>
+                  <option value="">Default Environment (Rear Court Camera)</option>
                   {videoDevices.map((dev) => (
                     <option key={dev.deviceId} value={dev.deviceId}>
                       {dev.label || `Camera ${dev.deviceId.slice(0, 5)}...`}
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Mount iPad on tripod facing center court. Safari automatically requests 1080p landscape framing.
-                </p>
               </div>
 
               <div>
@@ -170,12 +216,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: Scoreboard Overlay */}
+          {/* TAB 2: Scoreboard Sync */}
           {activeTab === 'overlay' && (
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
-                  Existing Vercel Scoreboard Overlay URL
+                  Default Vercel Scoreboard Overlay URL
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -189,12 +235,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onClick={() => setLocalSettings({ ...localSettings, overlayUrl: '/scoreboard' })}
                     className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-bold rounded-xl border border-slate-700 text-slate-200"
                   >
-                    Use Built-in Demo
+                    Demo URL
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Loads your existing scoreboard. The second tablet updates this URL during the game.
-                </p>
               </div>
 
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
@@ -218,7 +261,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="text-xs text-sky-300/90 bg-sky-950/40 p-3 rounded-lg border border-sky-800/40 flex items-start gap-2">
                   <HelpCircle size={16} className="shrink-0 mt-0.5 text-sky-400" />
                   <span>
-                    When your scoreboard changes (via the 2nd tablet), it emits updates via PostMessage or Firebase, which the video compositor bakes into every recorded frame at 60 FPS.
+                    You can add any number of custom Browser Sources inside each scene. If the page sends postMessage updates, EZ Studio bakes them into every frame at 60 FPS.
                   </span>
                 </div>
               </div>
@@ -270,9 +313,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {showStreamKey ? 'Hide' : 'Show'}
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Obtain from Facebook Live Producer (Page / Group live dashboard). Stream keys should never be shared publicly.
-                </p>
               </div>
 
               <div>
@@ -286,6 +326,50 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   placeholder="https://relay.yourdomain.com/whip or local relay"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 text-xs font-mono focus:outline-none focus:border-sky-500"
                 />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Scene Collections */}
+          {activeTab === 'scenes' && (
+            <div className="space-y-4">
+              <div className="font-bold text-slate-200 text-xs uppercase tracking-wider">
+                OBS Scene Collection Management
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={onExportScenes}
+                  className="p-4 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-200 transition"
+                >
+                  <Download size={22} className="text-sky-400" />
+                  <span className="font-bold">Export Scene Collection</span>
+                  <span className="text-[10px] text-slate-500">Download scenes and layouts as JSON</span>
+                </button>
+
+                <label className="p-4 bg-slate-950 hover:bg-slate-850 border border-slate-800 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-200 transition cursor-pointer">
+                  <Upload size={22} className="text-emerald-400" />
+                  <span className="font-bold">Import Scene Collection</span>
+                  <span className="text-[10px] text-slate-500">Load previously saved scene JSON</span>
+                  <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+                </label>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Reset all scenes and sources to default basketball setup?')) {
+                      onResetScenes();
+                      onClose();
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded-xl font-bold text-rose-300 flex items-center justify-center gap-2 transition"
+                >
+                  <RotateCcw size={14} />
+                  <span>Reset to Default Basketball Layout</span>
+                </button>
               </div>
             </div>
           )}
