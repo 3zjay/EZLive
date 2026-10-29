@@ -168,21 +168,40 @@ export default function StudioPage() {
         'https://ezlive-relay.onrender.com';
 
       // Determine optimal browser MediaRecorder container & codec
-      // Chrome/Android: WebM (VP8/Opus) provides maximum stability and monotonic chunk timestamps
-      // iPad/Safari/iOS: MP4 (AVC1 H.264)
+      // Hardware H.264 is MANDATORY for zero-CPU passthrough copy on the cloud relay.
+      // iPad/Safari/iOS: video/mp4;codecs=avc1.42E01E,mp4a.40.2
+      // Android/Chrome/Edge: video/mp4;codecs=avc1 or video/mp4 or video/webm;codecs=h264
       let mime = '';
+      let isH264 = false;
       if (typeof MediaRecorder !== 'undefined') {
-        const mimePriorities = [
-          'video/webm;codecs=vp8,opus',
-          'video/webm',
+        const h264Priorities = [
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=avc1',
           'video/mp4',
+          'video/webm;codecs=h264,opus',
+          'video/webm;codecs=h264',
+          'video/webm;codecs=avc1',
         ];
-        for (const candidate of mimePriorities) {
+        for (const candidate of h264Priorities) {
           if (MediaRecorder.isTypeSupported(candidate)) {
             mime = candidate;
+            isH264 = true;
             break;
+          }
+        }
+        if (!mime) {
+          // Fallback only if device hardware lacks H.264 container in MediaRecorder
+          const fallbackPriorities = [
+            'video/webm;codecs=vp8,opus',
+            'video/webm;codecs=vp9,opus',
+            'video/webm',
+          ];
+          for (const candidate of fallbackPriorities) {
+            if (MediaRecorder.isTypeSupported(candidate)) {
+              mime = candidate;
+              isH264 = false;
+              break;
+            }
           }
         }
       }
@@ -221,6 +240,7 @@ export default function StudioPage() {
       query.set('bitrate', String(Math.min(bitrateKbps, 3000)));
       query.set('fps', String(streamFps));
       query.set('preset', 'ultrafast');
+      query.set('isH264', isH264 ? '1' : '0');
 
       const wsUrl = `${wsProtocol}//${cleanRelay}/live?${query.toString()}`;
 

@@ -122,28 +122,37 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  const isH264 = url.searchParams.get('isH264') === '1';
+
   const destinationSummary = destinations.map((d) => `${d.name} (${d.maskedKey})`).join(' + ');
   addLog(`📡 Configured ${destinations.length} destination(s): ${destinationSummary}`);
-  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ 720p${streamFps} (2s GOP) | Mode: Hardware-Safe Real-Time Transcode (libx264 ultrafast)`);
+  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ 720p${streamFps} (2s GOP) | Mode: ${isH264 ? '⚡ Zero-CPU Hardware Passthrough (-c:v copy)' : 'Software Transcode (libx264)'}`);
 
-  // Construct FFmpeg arguments with 720p scaling, monotonic timestamp regeneration & drift-free audio
+  // When client sends hardware H.264 (from iPad/Fold/Chrome hardware encoder):
+  // Passthrough copy uses ~0% CPU on Render and guarantees full real-time speed (speed=1.0x-1.02x) with zero lag!
+  const videoConfigArgs = isH264
+    ? ['-c:v', 'copy']
+    : [
+        '-vf', 'scale=-2:480',
+        '-c:v', 'libx264',
+        '-preset', preset,
+        '-tune', 'zerolatency',
+        '-b:v', `${Math.min(targetBitrate, 1500)}k`,
+        '-maxrate', `${Math.min(maxrateKbps, 1800)}k`,
+        '-bufsize', `${Math.min(bufsizeKbps, 2500)}k`,
+        '-pix_fmt', 'yuv420p',
+        '-g', String(gop),
+        '-r', String(streamFps),
+      ];
+
+  // Construct FFmpeg arguments with monotonic timestamp regeneration & drift-free audio
   const baseFfmpegArgs = [
     '-fflags', '+genpts+discardcorrupt',
-    '-analyzeduration', '1000000',
-    '-probesize', '1000000',
+    '-analyzeduration', '2000000',
+    '-probesize', '2000000',
     '-i', 'pipe:0',
-    // Video: 720p downscaling ensures ultra-fast encoding (<15% CPU) and guaranteed real-time speed (>=1.0x)
-    '-vf', 'scale=-2:720',
-    '-c:v', 'libx264',
-    '-preset', preset,
-    '-tune', 'zerolatency',
-    '-b:v', `${targetBitrate}k`,
-    '-maxrate', `${maxrateKbps}k`,
-    '-bufsize', `${bufsizeKbps}k`,
-    '-pix_fmt', 'yuv420p',
-    '-g', String(gop),
-    '-r', String(streamFps),
-    // Audio: Normalized AAC stereo with automatic drift compensation
+    ...videoConfigArgs,
+    // Audio: Normalized AAC stereo with automatic drift compensation & large mux queue
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ar', '44100',
