@@ -300,7 +300,11 @@ export default function StudioPage() {
           } else if (msg.type === 'FFMPEG_EXIT') {
             console.error('Relay FFmpeg exit:', msg);
             if (msg.code !== 0 && isStreamingRef.current) {
-              alert(`Stream interrupted (FFmpeg code ${msg.code}):\n${msg.message}\n\nPlease check Facebook Live Producer or Stream Key.`);
+              const explanation =
+                msg.code === 251
+                  ? 'Facebook ended the live session or the Stream Key expired/was already consumed.\n\nTip: Copy a fresh Stream Key from Facebook Live Producer, or turn ON "Persistent Stream Key" in Facebook Live Producer settings.'
+                  : `FFmpeg terminated (exit code ${msg.code}):\n${msg.message}\n\nPlease check Facebook Live Producer or Stream Key.`;
+              alert(`Stream interrupted (FFmpeg code ${msg.code}):\n\n${explanation}`);
               stopRelayPipeline();
               setIsStreaming(false);
               isStreamingRef.current = false;
@@ -441,6 +445,7 @@ export default function StudioPage() {
   const [fps, setFps] = useState(60);
   const [micVolume, setMicVolume] = useState(100);
   const [micMuted, setMicMuted] = useState(false);
+  const micMutedRef = useRef(false);
 
   // State: Devices & Modals
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
@@ -761,6 +766,13 @@ export default function StudioPage() {
 
         mediaStreamRef.current = stream;
 
+        // Apply active microphone mute state to physical stream tracks
+        if (stream.getAudioTracks().length > 0) {
+          stream.getAudioTracks().forEach((track) => {
+            track.enabled = !micMutedRef.current;
+          });
+        }
+
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.muted = true;
@@ -809,6 +821,22 @@ export default function StudioPage() {
     setSelectedVideoDeviceId('');
     startCamera(nextFacing);
   };
+
+  const handleToggleMicMute = useCallback(() => {
+    setMicMuted((prev) => {
+      const next = !prev;
+      micMutedRef.current = next;
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getAudioTracks().forEach((track) => {
+          track.enabled = !next;
+        });
+      }
+      if (next) {
+        setAudioLevel(0);
+      }
+      return next;
+    });
+  }, []);
 
   // Screen Share Toggle
   const handleToggleScreenShare = async () => {
@@ -1384,6 +1412,8 @@ export default function StudioPage() {
       <StreamlabsTopBar
         hasCamera={hasCamera}
         hasAudio={hasAudio}
+        micMuted={micMuted}
+        onToggleMicMute={handleToggleMicMute}
         audioLevel={audioLevel}
         recordingState={recordingState}
         isStreaming={isStreaming}
@@ -1464,7 +1494,7 @@ export default function StudioPage() {
                 micVolume={micVolume}
                 micMuted={micMuted}
                 onChangeMicVolume={setMicVolume}
-                onToggleMicMute={() => setMicMuted(!micMuted)}
+                onToggleMicMute={handleToggleMicMute}
                 onClose={() => setIsSidebarOpen(false)}
               />
             </div>

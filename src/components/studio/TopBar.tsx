@@ -1,12 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Camera, Mic, Radio, Circle, Settings, Download, Video, Activity } from 'lucide-react';
+import { Camera, Mic, MicOff, Radio, Circle, Settings, Download, Video, Activity } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 
 interface TopBarProps {
   hasCamera: boolean;
   hasAudio: boolean;
+  micMuted?: boolean;
+  onToggleMicMute?: () => void;
   audioLevel: number;
   recordingState: RecordingState;
   isStreaming: boolean;
@@ -24,6 +26,8 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   hasCamera,
   hasAudio,
+  micMuted = false,
+  onToggleMicMute,
   audioLevel,
   recordingState,
   isStreaming,
@@ -99,20 +103,33 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           <div className="w-px h-4 bg-slate-800" />
 
-          {/* Microphone Level */}
-          <div className="flex items-center gap-2 text-xs">
-            <div className={`p-1 rounded-md ${hasAudio ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
-              <Mic size={15} />
+          {/* Microphone Level & Mute Toggle */}
+          <button
+            type="button"
+            onClick={onToggleMicMute}
+            className={`flex items-center gap-2 text-xs p-1 rounded-lg border transition ${
+              micMuted
+                ? 'bg-rose-950/70 border-rose-500 text-rose-300'
+                : 'bg-transparent border-transparent text-slate-300 hover:bg-slate-800'
+            }`}
+            title={micMuted ? 'Microphone MUTED (Click to Unmute)' : 'Microphone LIVE (Click to Mute)'}
+          >
+            <div className={`p-1 rounded-md ${micMuted ? 'bg-rose-500/20 text-rose-400' : hasAudio ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-400'}`}>
+              {micMuted ? <MicOff size={15} /> : <Mic size={15} />}
             </div>
-            <div className="w-16 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
-              <div
-                className={`h-full rounded-full transition-all duration-75 ${
-                  audioLevel > 80 ? 'bg-rose-500' : audioLevel > 50 ? 'bg-amber-400' : 'bg-emerald-400'
-                }`}
-                style={{ width: `${Math.min(100, audioLevel)}%` }}
-              />
-            </div>
-          </div>
+            {micMuted ? (
+              <span className="text-[10px] font-black text-rose-400 tracking-wider">MUTED</span>
+            ) : (
+              <div className="w-16 h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                <div
+                  className={`h-full rounded-full transition-all duration-75 ${
+                    audioLevel > 80 ? 'bg-rose-500' : audioLevel > 50 ? 'bg-amber-400' : 'bg-emerald-400'
+                  }`}
+                  style={{ width: `${Math.min(100, audioLevel)}%` }}
+                />
+              </div>
+            )}
+          </button>
         </div>
 
         {/* Live Scoreboard Sync Indicator Pill */}

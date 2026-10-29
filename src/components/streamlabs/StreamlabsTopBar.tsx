@@ -17,6 +17,8 @@ import {
   ChevronDown,
   LogIn,
   Users,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 import { StreamDestinations } from '@/types/streamlabs';
@@ -26,6 +28,8 @@ import { UserSessionProfile } from '@/services/firebase';
 interface StreamlabsTopBarProps {
   hasCamera: boolean;
   hasAudio: boolean;
+  micMuted?: boolean;
+  onToggleMicMute?: () => void;
   audioLevel: number;
   recordingState: RecordingState;
   isStreaming: boolean;
@@ -59,6 +63,8 @@ interface StreamlabsTopBarProps {
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   hasCamera,
   hasAudio,
+  micMuted = false,
+  onToggleMicMute,
   audioLevel,
   recordingState,
   isStreaming,
@@ -238,7 +244,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
         {hasCamera && (
           <button
             onClick={onFlipCamera}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-[#140f0c] hover:bg-[#1f1712] border border-[#ff6b1a]/40 text-[#ff6b1a] rounded-lg text-xs font-bold transition shadow-sm active:scale-95"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-[#140f0c] hover:bg-[#1f1712] border border-[#ff6b1a]/40 text-[#ff6b1a] rounded-lg text-xs font-bold transition shadow-sm active:scale-95"
             title="Flip Camera (Front / Rear Court)"
           >
             <RotateCcw size={12} className="text-[#ff6b1a]" />
@@ -246,18 +252,43 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
           </button>
         )}
 
-        {/* Mic Level VU */}
-        <div className="hidden xl:flex items-center gap-1.5 bg-[#100d0a] border border-[#2a1e14] px-2 py-1 rounded-lg">
-          <div className="w-12 h-1.5 bg-[#080605] rounded-full overflow-hidden p-0.2">
-            <div
-              className={`h-full rounded-full transition-all duration-75 ${
-                audioLevel > 80 ? 'bg-rose-500' : audioLevel > 50 ? 'bg-amber-400' : 'bg-emerald-400'
-              }`}
-              style={{ width: `${Math.min(100, audioLevel)}%` }}
-            />
-          </div>
-          <span className="text-[9px] font-mono text-slate-500">MIC</span>
-        </div>
+        {/* Mute / Unmute Microphone Toggle Button */}
+        {onToggleMicMute && (
+          <button
+            onClick={onToggleMicMute}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition shadow-sm active:scale-95 ${
+              micMuted
+                ? 'bg-rose-950/90 hover:bg-rose-900 border border-rose-500 text-rose-300 shadow-rose-950/60'
+                : 'bg-[#140f0c] hover:bg-[#1f1712] border border-emerald-500/40 text-emerald-300'
+            }`}
+            title={micMuted ? 'Microphone is MUTED (Click to unmute)' : 'Microphone is LIVE (Click to mute)'}
+          >
+            {micMuted ? (
+              <>
+                <MicOff size={13} className="text-rose-400 animate-pulse" />
+                <span className="text-[11px] font-black uppercase tracking-wider text-rose-300">
+                  MUTED
+                </span>
+              </>
+            ) : (
+              <>
+                <Mic size={13} className="text-emerald-400" />
+                <span className="text-[11px] font-medium text-slate-300 hidden sm:inline">
+                  Mute
+                </span>
+                {/* Mini VU Meter Bar */}
+                <div className="w-8 h-1.5 bg-[#080605] rounded-full overflow-hidden p-0.2 border border-slate-800 hidden xs:block">
+                  <div
+                    className={`h-full rounded-full transition-all duration-75 ${
+                      audioLevel > 80 ? 'bg-rose-500' : audioLevel > 50 ? 'bg-amber-400' : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${Math.min(100, audioLevel)}%` }}
+                  />
+                </div>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* RIGHT: Record, Go Live, Operator Account & Settings */}
