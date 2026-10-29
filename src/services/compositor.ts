@@ -72,6 +72,7 @@ export class VideoCompositor {
   // Ticker offset tracking
   private tickerOffset: number = 0;
   private lastTickerTimestamp: number = performance.now();
+  private lastStreamFrameTime: number = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -116,7 +117,20 @@ export class VideoCompositor {
   }
 
   public setTargetFps(fps: number) {
-    this.targetFps = fps > 0 ? fps : 30;
+    const newFps = fps > 0 ? fps : 30;
+    if (this.targetFps !== newFps) {
+      this.targetFps = newFps;
+      this.resetCompositeStream();
+    }
+  }
+
+  public resetCompositeStream() {
+    if (this.compositeStream) {
+      try {
+        this.compositeStream.getTracks().forEach((t) => t.stop());
+      } catch {}
+      this.compositeStream = null;
+    }
   }
 
   public setScene(scene: Scene, durationMs: number = 400) {
@@ -173,16 +187,17 @@ export class VideoCompositor {
       }
     }
 
-    const targetCanvas = this.streamCanvas || this.canvas;
+    const targetCanvas = (this.streamCanvas && this.streamCanvas.width > 0) ? this.streamCanvas : this.canvas;
     const canvasWithCapture = targetCanvas as HTMLCanvasElement & {
       captureStream?(fps?: number): MediaStream;
       mozCaptureStream?(fps?: number): MediaStream;
     };
 
+    const streamFps = this.targetFps || 30;
     const canvasStream = canvasWithCapture.captureStream
-      ? canvasWithCapture.captureStream(this.targetFps)
+      ? canvasWithCapture.captureStream(streamFps)
       : canvasWithCapture.mozCaptureStream
-        ? canvasWithCapture.mozCaptureStream(this.targetFps)
+        ? canvasWithCapture.mozCaptureStream(streamFps)
         : new MediaStream();
 
     const videoTrack = canvasStream.getVideoTracks()[0];
@@ -241,22 +256,29 @@ export class VideoCompositor {
     this.renderStage(false, timestamp);
 
     // 2. Render Broadcast Stream Stage (off-screen canvas captured for Facebook Live: camera + synced HUD)
-    // Downscales 1920x1080 stage seamlessly to 1280x720 on the GPU for stable ~3.0 Mbps Facebook Live streaming
+    // Strictly throttled to targetFps (e.g. 30 FPS) so high-refresh screens (90Hz/120Hz) do not flood Facebook with 72-120 FPS
+    const streamIntervalMs = 1000 / (this.targetFps || 30);
     if (this.streamCtx && this.streamCtx !== this.previewCtx) {
-      this.activeCtx = this.streamCtx;
-      this.streamCtx.save();
-      this.streamCtx.scale(this.streamWidth / this.width, this.streamHeight / this.height);
-      this.renderStage(true, timestamp);
-      this.streamCtx.restore();
+      if (timestamp - this.lastStreamFrameTime >= streamIntervalMs - 3) {
+        this.lastStreamFrameTime = timestamp;
+        this.activeCtx = this.streamCtx;
+        this.streamCtx.save();
+        this.streamCtx.scale(this.streamWidth / this.width, this.streamHeight / this.height);
+        this.renderStage(true, timestamp);
+        this.streamCtx.restore();
+      }
     }
   }
 
   public setStreamResolution(width: number, height: number) {
-    this.streamWidth = width;
-    this.streamHeight = height;
-    if (this.streamCanvas) {
-      this.streamCanvas.width = width;
-      this.streamCanvas.height = height;
+    if (this.streamWidth !== width || this.streamHeight !== height) {
+      this.streamWidth = width;
+      this.streamHeight = height;
+      if (this.streamCanvas) {
+        this.streamCanvas.width = width;
+        this.streamCanvas.height = height;
+      }
+      this.resetCompositeStream();
     }
   }
 
