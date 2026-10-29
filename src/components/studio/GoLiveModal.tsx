@@ -39,6 +39,8 @@ interface GoLiveModalProps {
     bandwidthPreset: StreamBandwidthPreset;
     bitrateKbps: number;
     fps: number;
+    width?: number;
+    height?: number;
   }) => void;
 }
 
@@ -47,40 +49,48 @@ const QUALITY_PRESETS: {
   name: string;
   badge: string;
   resolution: string;
+  width: number;
+  height: number;
   fps: number;
   bitrateKbps: number;
   description: string;
   dataUsage: string;
 }[] = [
   {
-    id: 'balanced_720',
-    name: '🏀 Sports Broadcast HD (Recommended)',
-    badge: '720p @ 30 FPS',
-    resolution: '720p @ 30fps • 2.5 Mbps',
-    fps: 30,
-    bitrateKbps: 2500,
-    description: 'Rock-solid Facebook Live standard. Zero buffering, perfectly synced audio, and razor-sharp scoreboard readability.',
-    dataUsage: '~1.1 GB / hour',
+    id: 'high_1080',
+    name: '🏆 Pro Broadcast 1080p 60 FPS (Recommended)',
+    badge: '1080p @ 60 FPS',
+    resolution: '1080p @ 60fps • 6.0 Mbps',
+    width: 1920,
+    height: 1080,
+    fps: 60,
+    bitrateKbps: 6000,
+    description: 'Pristine Full HD sports broadcast at 60 FPS. Crisp hardwood court, crystal-clear scoreboard HUD, and ultra-smooth fast-break motion.',
+    dataUsage: '~2.6 GB / hour',
   },
   {
-    id: 'high_1080',
-    name: '⚡ High Frame Rate 60 FPS',
-    badge: '720p @ 60 FPS',
-    resolution: '720p @ 60fps • 3.2 Mbps',
-    fps: 60,
-    bitrateKbps: 3200,
-    description: 'High frame-rate 60 FPS motion for fast-break basketball on stable high-speed Wi-Fi.',
-    dataUsage: '~1.4 GB / hour',
+    id: 'balanced_720',
+    name: '🏀 Sports Broadcast 1080p 30 FPS',
+    badge: '1080p @ 30 FPS',
+    resolution: '1080p @ 30fps • 4.0 Mbps',
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    bitrateKbps: 4000,
+    description: 'Full HD 1080p sports clarity with lower bandwidth requirement for standard venue Wi-Fi.',
+    dataUsage: '~1.8 GB / hour',
   },
   {
     id: 'eco_720',
-    name: '🌿 Eco / Weak Gym Cellular',
-    badge: '540p @ 30 FPS',
-    resolution: '540p @ 30fps • 1.5 Mbps',
-    fps: 30,
-    bitrateKbps: 1500,
-    description: 'Low-bandwidth fallback mode for crowded gym Wi-Fi or weak gym basement cellular.',
-    dataUsage: '~0.7 GB / hour',
+    name: '⚡ High-Speed 720p 60 FPS',
+    badge: '720p @ 60 FPS',
+    resolution: '720p @ 60fps • 3.2 Mbps',
+    width: 1280,
+    height: 720,
+    fps: 60,
+    bitrateKbps: 3200,
+    description: 'High frame-rate 60 FPS fast-motion broadcast for cellular hotspot connections.',
+    dataUsage: '~1.4 GB / hour',
   },
 ];
 
@@ -147,9 +157,9 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   const [ytKey, setYtKey] = useState(initialYtKey);
   const [showYtKey, setShowYtKey] = useState(false);
 
-  // Bandwidth & Quality (defaults to rock-solid Facebook Live 720p standard)
+  // Bandwidth & Quality (defaults to Full HD 1080p 60 FPS sports broadcast)
   const [qualityPreset, setQualityPreset] = useState<StreamBandwidthPreset>(
-    settings.bandwidthPreset || 'balanced_720'
+    settings.bandwidthPreset || 'high_1080'
   );
 
   // Cloud Relay Health Telemetry (render awake check)
@@ -320,6 +330,8 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       bandwidthPreset: qualityPreset,
       bitrateKbps: selectedPresetObj.bitrateKbps,
       fps: selectedPresetObj.fps,
+      width: selectedPresetObj.width,
+      height: selectedPresetObj.height,
     });
   };
 

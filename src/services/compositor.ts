@@ -18,9 +18,9 @@ export class VideoCompositor {
   private targetFps: number = 60; // 60 FPS sports broadcast default
   private width: number = 1920;
   private height: number = 1080;
-  // Dedicated stream broadcast resolution (1280x720 @ 60fps is the Facebook Live standard, keeping bitrate locked at ~3.0 Mbps)
-  private streamWidth: number = 1280;
-  private streamHeight: number = 720;
+  // Dedicated stream broadcast resolution (defaults to Full HD 1080p @ 60 FPS sports broadcast standard)
+  private streamWidth: number = 1920;
+  private streamHeight: number = 1080;
 
   // Scene transition state
   private currentScene: Scene;

@@ -140,6 +140,8 @@ export default function StudioPage() {
           youtubeKey?: string;
           bitrateKbps?: number;
           fps?: number;
+          width?: number;
+          height?: number;
         }
       | string,
     fallbackKey?: string
@@ -148,8 +150,10 @@ export default function StudioPage() {
       let fbKey = '';
       let ytKey = '';
       let targetRtmps = settings.rtmpsUrl;
-      let bitrateKbps = 2500;
-      let streamFps = 30; // 30 FPS rock-solid Facebook broadcast standard
+      let bitrateKbps = 6000; // 6 Mbps Meta official standard for 1080p60
+      let streamFps = 60;     // 60 FPS buttery-smooth sports broadcast standard
+      let streamWidth = 1920; // 1080p Full HD
+      let streamHeight = 1080;
 
       if (typeof options === 'string') {
         targetRtmps = options;
@@ -158,8 +162,10 @@ export default function StudioPage() {
         targetRtmps = options.targetRtmps || settings.rtmpsUrl;
         fbKey = options.facebookKey || options.targetKey || '';
         ytKey = options.youtubeKey || '';
-        bitrateKbps = options.bitrateKbps || 2500;
-        streamFps = options.fps || 30;
+        bitrateKbps = options.bitrateKbps || 6000;
+        streamFps = options.fps || 60;
+        streamWidth = options.width || 1920;
+        streamHeight = options.height || 1080;
       }
 
       const relayUrl =
@@ -208,7 +214,7 @@ export default function StudioPage() {
 
       if (compositorRef.current) {
         compositorRef.current.setTargetFps(streamFps);
-        compositorRef.current.setStreamResolution(1280, 720);
+        compositorRef.current.setStreamResolution(streamWidth, streamHeight);
       }
 
       const compositeStream = compositorRef.current?.getCompositeStream(mediaStreamRef.current);
@@ -237,7 +243,7 @@ export default function StudioPage() {
           query.set('rtmpsUrl', 'rtmp://a.rtmp.youtube.com/live2/');
         }
       }
-      query.set('bitrate', String(Math.min(bitrateKbps, 3000)));
+      query.set('bitrate', String(bitrateKbps));
       query.set('fps', String(streamFps));
       query.set('preset', 'ultrafast');
       query.set('isH264', isH264 ? '1' : '0');
@@ -255,7 +261,7 @@ export default function StudioPage() {
         setRelayStats((prev) => ({ ...prev, connected: true, status: 'streaming' }));
 
         try {
-          const safeClientBitrate = Math.min(bitrateKbps, 2500);
+          const safeClientBitrate = Math.min(bitrateKbps, 6500);
           const rec = new MediaRecorder(compositeStream, {
             ...(mime ? { mimeType: mime } : {}),
             videoBitsPerSecond: safeClientBitrate * 1000,
@@ -1182,6 +1188,8 @@ export default function StudioPage() {
     bandwidthPreset: StreamBandwidthPreset;
     bitrateKbps: number;
     fps: number;
+    width?: number;
+    height?: number;
   }) => {
     setIsGoLiveModalOpen(false);
 
@@ -1326,6 +1334,8 @@ export default function StudioPage() {
       youtubeKey: config.youtubeEnabled ? config.youtubeKey : '',
       bitrateKbps: config.bitrateKbps,
       fps: config.fps,
+      width: config.width,
+      height: config.height,
     });
 
     setIsStreaming(true);

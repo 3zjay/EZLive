@@ -78,17 +78,15 @@ wss.on('connection', (ws, req) => {
   const ytKey = url.searchParams.get('ytKey') || url.searchParams.get('youtubeKey');
   const ytRtmpUrl = url.searchParams.get('ytRtmpUrl') || 'rtmp://a.rtmp.youtube.com/live2/';
 
-  // Bandwidth & Transcoding Control
-  // Facebook Live official standard is 720p at 2500-3000k @ 30fps.
-  // Transcoding at 720p30 guarantees rock-solid real-time speed (speed=1.2x+), 0 dropped frames, and zero Broken Pipe.
-  const requestedBitrate = parseInt(url.searchParams.get('bitrate'), 10) || 3000;
-  const targetBitrate = Math.min(requestedBitrate, 3000);
-  const maxrateKbps = Math.round(targetBitrate * 1.15); // e.g. 3450k
-  const bufsizeKbps = Math.round(targetBitrate * 1.5);  // e.g. 4500k
-  const preset = url.searchParams.get('preset') || 'ultrafast'; // 'ultrafast' drastically saves CPU on Render Free tier
-  const fps = parseInt(url.searchParams.get('fps'), 10) || 30;
-  const streamFps = Math.min(fps, 30); // 30 FPS ensures real-time encoding on Render without buffer lag
-  const gop = streamFps * 2; // Strict 2-second keyframe interval required by Facebook & YouTube (60 at 30fps)
+  // Bandwidth & Profile Control (Full 1080p 60 FPS sports broadcast support)
+  const requestedBitrate = parseInt(url.searchParams.get('bitrate'), 10) || 6000;
+  const targetBitrate = Math.min(requestedBitrate, 8000);
+  const maxrateKbps = Math.round(targetBitrate * 1.15); // e.g. 6900k
+  const bufsizeKbps = Math.round(targetBitrate * 1.5);  // e.g. 9000k
+  const preset = url.searchParams.get('preset') || 'ultrafast';
+  const fps = parseInt(url.searchParams.get('fps'), 10) || 60;
+  const streamFps = Math.min(fps, 60);
+  const gop = streamFps * 2; // Strict 2-second keyframe interval required by Facebook & YouTube (120 at 60fps)
 
   const destinations = [];
 
@@ -126,7 +124,7 @@ wss.on('connection', (ws, req) => {
 
   const destinationSummary = destinations.map((d) => `${d.name} (${d.maskedKey})`).join(' + ');
   addLog(`📡 Configured ${destinations.length} destination(s): ${destinationSummary}`);
-  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ 720p${streamFps} (2s GOP) | Mode: ${isH264 ? '⚡ Zero-CPU Hardware Passthrough (-c:v copy)' : 'Software Transcode (libx264)'}`);
+  addLog(`⚙️ Stream Profile: ${targetBitrate} kbps @ ${streamFps}fps (2s GOP) | Mode: ${isH264 ? '⚡ Zero-CPU Hardware Passthrough (-c:v copy)' : 'Software Transcode (libx264)'}`);
 
   // When client sends hardware H.264 (from iPad/Fold/Chrome hardware encoder):
   // Passthrough copy uses ~0% CPU on Render and guarantees full real-time speed (speed=1.0x-1.02x) with zero lag!
