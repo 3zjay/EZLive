@@ -148,8 +148,8 @@ export default function StudioPage() {
       let fbKey = '';
       let ytKey = '';
       let targetRtmps = settings.rtmpsUrl;
-      let bitrateKbps = 4500;
-      let streamFps = 60; // 60 FPS sports broadcast default
+      let bitrateKbps = 2500;
+      let streamFps = 30; // 30 FPS rock-solid Facebook broadcast standard
 
       if (typeof options === 'string') {
         targetRtmps = options;
@@ -158,8 +158,8 @@ export default function StudioPage() {
         targetRtmps = options.targetRtmps || settings.rtmpsUrl;
         fbKey = options.facebookKey || options.targetKey || '';
         ytKey = options.youtubeKey || '';
-        bitrateKbps = options.bitrateKbps || 4500;
-        streamFps = options.fps || (bitrateKbps <= 1800 ? 30 : 60);
+        bitrateKbps = options.bitrateKbps || 2500;
+        streamFps = options.fps || 30;
       }
 
       const relayUrl =
@@ -168,43 +168,28 @@ export default function StudioPage() {
         'https://ezlive-relay.onrender.com';
 
       // Determine optimal browser MediaRecorder container & codec
-      // Prioritize hardware H.264 (Apple VideoToolbox on iPad/iOS / Snapdragon/MediaTek on Android / NVENC on PC)
-      // Hardware H.264 enables 0% CPU passthrough on the relay for silky-smooth 60fps with ZERO lag!
+      // Chrome/Android: WebM (VP8/Opus) provides maximum stability and monotonic chunk timestamps
+      // iPad/Safari/iOS: MP4 (AVC1 H.264)
       let mime = '';
-      let isH264 = false;
       if (typeof MediaRecorder !== 'undefined') {
-        const h264Candidates = [
+        const mimePriorities = [
+          'video/webm;codecs=vp8,opus',
+          'video/webm',
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-          'video/mp4;codecs=avc1,opus',
           'video/mp4;codecs=avc1',
           'video/mp4',
-          'video/webm;codecs=h264,opus',
-          'video/webm;codecs=h264',
         ];
-        for (const candidate of h264Candidates) {
+        for (const candidate of mimePriorities) {
           if (MediaRecorder.isTypeSupported(candidate)) {
             mime = candidate;
-            isH264 = true;
             break;
-          }
-        }
-        if (!isH264) {
-          // Fallback to VP8 only if device cannot hardware encode H.264
-          if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-            mime = 'video/webm;codecs=vp8,opus';
-          } else if (MediaRecorder.isTypeSupported('video/webm')) {
-            mime = 'video/webm';
           }
         }
       }
 
       if (compositorRef.current) {
         compositorRef.current.setTargetFps(streamFps);
-        if (bitrateKbps >= 5000) {
-          compositorRef.current.setStreamResolution(1920, 1080);
-        } else {
-          compositorRef.current.setStreamResolution(1280, 720);
-        }
+        compositorRef.current.setStreamResolution(1280, 720);
       }
 
       const compositeStream = compositorRef.current?.getCompositeStream(mediaStreamRef.current);
@@ -233,9 +218,8 @@ export default function StudioPage() {
           query.set('rtmpsUrl', 'rtmp://a.rtmp.youtube.com/live2/');
         }
       }
-      query.set('bitrate', String(Math.min(bitrateKbps, 3500)));
+      query.set('bitrate', String(Math.min(bitrateKbps, 3000)));
       query.set('fps', String(streamFps));
-      query.set('isH264', isH264 ? '1' : '0');
       query.set('preset', 'ultrafast');
 
       const wsUrl = `${wsProtocol}//${cleanRelay}/live?${query.toString()}`;
@@ -247,11 +231,11 @@ export default function StudioPage() {
       ws.onopen = () => {
         const destLabel =
           fbKey && ytKey ? 'Facebook + YouTube (Dual Stream)' : fbKey ? 'Facebook Live' : 'YouTube Live';
-        console.log(`📡 Connected to EZLive Cloud Relay! Streaming canvas to ${destLabel} (${mime || 'default'}, ${streamFps}fps, isH264=${isH264})...`);
+        console.log(`📡 Connected to EZLive Cloud Relay! Streaming canvas to ${destLabel} (${mime || 'default'}, ${streamFps}fps)...`);
         setRelayStats((prev) => ({ ...prev, connected: true, status: 'streaming' }));
 
         try {
-          const safeClientBitrate = Math.min(bitrateKbps, 3500);
+          const safeClientBitrate = Math.min(bitrateKbps, 2500);
           const rec = new MediaRecorder(compositeStream, {
             ...(mime ? { mimeType: mime } : {}),
             videoBitsPerSecond: safeClientBitrate * 1000,
