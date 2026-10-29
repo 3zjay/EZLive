@@ -78,11 +78,11 @@ wss.on('connection', (ws, req) => {
   const ytKey = url.searchParams.get('ytKey') || url.searchParams.get('youtubeKey');
   const ytRtmpUrl = url.searchParams.get('ytRtmpUrl') || 'rtmp://a.rtmp.youtube.com/live2/';
 
-  // Bandwidth & Profile Control (Full 1080p 60 FPS sports broadcast support)
-  const requestedBitrate = parseInt(url.searchParams.get('bitrate'), 10) || 6000;
-  const targetBitrate = Math.min(requestedBitrate, 8000);
-  const maxrateKbps = Math.round(targetBitrate * 1.15); // e.g. 6900k
-  const bufsizeKbps = Math.round(targetBitrate * 1.5);  // e.g. 9000k
+  // Bandwidth & Profile Control (Capped sports broadcast standard)
+  const requestedBitrate = parseInt(url.searchParams.get('bitrate'), 10) || 4200;
+  const targetBitrate = Math.min(requestedBitrate, 5000);
+  const maxrateKbps = Math.round(targetBitrate * 1.15); // e.g. 4830k
+  const bufsizeKbps = Math.round(targetBitrate * 1.5);  // e.g. 6300k
   const preset = url.searchParams.get('preset') || 'ultrafast';
   const fps = parseInt(url.searchParams.get('fps'), 10) || 60;
   const streamFps = Math.min(fps, 60);

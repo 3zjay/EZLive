@@ -58,39 +58,39 @@ const QUALITY_PRESETS: {
 }[] = [
   {
     id: 'high_1080',
-    name: '🏆 Pro Broadcast 1080p 60 FPS (Recommended)',
+    name: '🏆 Pro Broadcast 1080p 60 FPS (Capped at 4.2 Mbps)',
     badge: '1080p @ 60 FPS',
-    resolution: '1080p @ 60fps • 6.0 Mbps',
+    resolution: '1080p @ 60fps • 4.2 Mbps Cap',
     width: 1920,
     height: 1080,
     fps: 60,
-    bitrateKbps: 6000,
-    description: 'Pristine Full HD sports broadcast at 60 FPS. Crisp hardwood court, crystal-clear scoreboard HUD, and ultra-smooth fast-break motion.',
-    dataUsage: '~2.6 GB / hour',
-  },
-  {
-    id: 'balanced_720',
-    name: '🏀 Sports Broadcast 1080p 30 FPS',
-    badge: '1080p @ 30 FPS',
-    resolution: '1080p @ 30fps • 4.0 Mbps',
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    bitrateKbps: 4000,
-    description: 'Full HD 1080p sports clarity with lower bandwidth requirement for standard venue Wi-Fi.',
+    bitrateKbps: 4200,
+    description: 'Pristine Full HD 1080p at 60 FPS capped strictly at 4.2 Mbps. Eliminates bloated bandwidth while preserving razor-sharp hardwood lines and scoreboard clarity.',
     dataUsage: '~1.8 GB / hour',
   },
   {
-    id: 'eco_720',
-    name: '⚡ High-Speed 720p 60 FPS',
+    id: 'balanced_720',
+    name: '⚡ High-Speed 720p 60 FPS (Capped at 3.0 Mbps)',
     badge: '720p @ 60 FPS',
-    resolution: '720p @ 60fps • 3.2 Mbps',
+    resolution: '720p @ 60fps • 3.0 Mbps Cap',
     width: 1280,
     height: 720,
     fps: 60,
-    bitrateKbps: 3200,
-    description: 'High frame-rate 60 FPS fast-motion broadcast for cellular hotspot connections.',
-    dataUsage: '~1.4 GB / hour',
+    bitrateKbps: 3000,
+    description: 'Fluid 60 FPS sports motion with a light 3.0 Mbps footprint. Ideal for venue Wi-Fi or LTE hotspots.',
+    dataUsage: '~1.3 GB / hour',
+  },
+  {
+    id: 'eco_720',
+    name: '🌿 Eco 720p 30 FPS (Capped at 2.0 Mbps)',
+    badge: '720p @ 30 FPS',
+    resolution: '720p @ 30fps • 2.0 Mbps Cap',
+    width: 1280,
+    height: 720,
+    fps: 30,
+    bitrateKbps: 2000,
+    description: 'Conservative bandwidth mode for crowded gyms or weak cellular connections.',
+    dataUsage: '~0.9 GB / hour',
   },
 ];
 
@@ -161,6 +161,14 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   const [qualityPreset, setQualityPreset] = useState<StreamBandwidthPreset>(
     settings.bandwidthPreset || 'high_1080'
   );
+  const selectedPresetObj = QUALITY_PRESETS.find((p) => p.id === qualityPreset) || QUALITY_PRESETS[0];
+  const [bitrateCapKbps, setBitrateCapKbps] = useState<number>(selectedPresetObj.bitrateKbps);
+
+  const handleSelectPreset = (presetId: StreamBandwidthPreset) => {
+    setQualityPreset(presetId);
+    const found = QUALITY_PRESETS.find((p) => p.id === presetId);
+    if (found) setBitrateCapKbps(found.bitrateKbps);
+  };
 
   // Cloud Relay Health Telemetry (render awake check)
   const [relayStatus, setRelayStatus] = useState<'checking' | 'ready' | 'waking'>('checking');
@@ -278,7 +286,6 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
     );
   };
 
-  const selectedPresetObj = QUALITY_PRESETS.find((p) => p.id === qualityPreset) || QUALITY_PRESETS[0];
 
   const selectedPage = pages.find((p) => p.id === selectedPageId);
   const selectedGroup = groups.find((g) => g.id === selectedGroupId);
@@ -328,7 +335,7 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       youtubeEnabled: ytEnabled && ytKey.trim().length > 0,
       youtubeKey: ytKey.trim(),
       bandwidthPreset: qualityPreset,
-      bitrateKbps: selectedPresetObj.bitrateKbps,
+      bitrateKbps: bitrateCapKbps || selectedPresetObj.bitrateKbps,
       fps: selectedPresetObj.fps,
       width: selectedPresetObj.width,
       height: selectedPresetObj.height,
@@ -744,14 +751,14 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {QUALITY_PRESETS.map((preset) => {
                 const isSelected = qualityPreset === preset.id;
                 return (
                   <button
                     key={preset.id}
                     type="button"
-                    onClick={() => setQualityPreset(preset.id)}
+                    onClick={() => handleSelectPreset(preset.id)}
                     className={`text-left p-2.5 rounded-xl border transition ${
                       isSelected
                         ? 'bg-emerald-950/20 border-emerald-500/80 shadow-md ring-1 ring-emerald-500/40'
@@ -777,6 +784,34 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                   </button>
                 );
               })}
+            </div>
+
+            {/* Quick Bitrate Ceiling Caps */}
+            <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5">
+                  <Radio size={12} className="text-emerald-400" /> Bitrate Ceiling Cap:
+                </span>
+                <span className="text-[11px] font-mono font-bold text-emerald-400">
+                  {bitrateCapKbps} kbps ({(bitrateCapKbps / 1000).toFixed(1)} Mbps)
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[2200, 3000, 4200, 5000].map((bps) => (
+                  <button
+                    key={bps}
+                    type="button"
+                    onClick={() => setBitrateCapKbps(bps)}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition ${
+                      bitrateCapKbps === bps
+                        ? 'bg-emerald-500 text-black border-emerald-400 shadow'
+                        : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    {(bps / 1000).toFixed(1)} Mbps
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

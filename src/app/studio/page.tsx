@@ -175,15 +175,15 @@ export default function StudioPage() {
 
       // Determine optimal browser MediaRecorder container & codec
       // Hardware H.264 is MANDATORY for zero-CPU passthrough copy on the cloud relay.
-      // iPad/Safari/iOS: video/mp4;codecs=avc1.42E01E,mp4a.40.2
-      // Android/Chrome/Edge: video/mp4;codecs=avc1 or video/mp4 or video/webm;codecs=h264
+      // iPad/Safari/iOS: video/mp4 (clean container ensures WebKit respects bitrate constraints)
+      // Android/Chrome/Edge: video/mp4 or video/webm;codecs=h264
       let mime = '';
       let isH264 = false;
       if (typeof MediaRecorder !== 'undefined') {
         const h264Priorities = [
-          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-          'video/mp4;codecs=avc1',
           'video/mp4',
+          'video/mp4;codecs=avc1',
+          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/webm;codecs=h264,opus',
           'video/webm;codecs=h264',
           'video/webm;codecs=avc1',
@@ -261,10 +261,11 @@ export default function StudioPage() {
         setRelayStats((prev) => ({ ...prev, connected: true, status: 'streaming' }));
 
         try {
-          const safeClientBitrate = Math.min(bitrateKbps, 6500);
+          const targetVideoBps = Math.min(bitrateKbps, 5000) * 1000;
           const rec = new MediaRecorder(compositeStream, {
             ...(mime ? { mimeType: mime } : {}),
-            videoBitsPerSecond: safeClientBitrate * 1000,
+            bitsPerSecond: targetVideoBps + 128000,
+            videoBitsPerSecond: targetVideoBps,
             audioBitsPerSecond: 128000,
           });
 
