@@ -462,9 +462,17 @@ export default function StudioPage() {
   const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [isSourcePropsOpen, setIsSourcePropsOpen] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isObsDockCollapsed, setIsObsDockCollapsed] = useState(false);
   const [isCourtDropdownOpen, setIsCourtDropdownOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Auto-open right sidebar only on large desktop monitors (>= 1280px); keep closed on phones/iPads for full camera view
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth >= 1280) {
+      setIsSidebarOpen(true);
+    }
+  }, []);
 
   // Screen Wake Lock API ref for continuous iPad streaming
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1623,20 +1631,20 @@ export default function StudioPage() {
       />
 
       {/* Main Studio Middle Zone: Program Preview Stage + Streamlabs Right Sidebar */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-hidden relative">
         {/* Main 16:9 Broadcast Stage Canvas with Bounding Box & Interactive Layers (or Dual Studio Mode) */}
-        <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
+        <div className="flex-1 min-h-0 min-w-0 relative flex items-center justify-center bg-black overflow-hidden">
           {isStudioMode ? (
-            <div className="w-full h-full grid grid-cols-1 lg:grid-cols-11 gap-2 p-3 items-center bg-[#090705]">
+            <div className="w-full h-full grid grid-cols-1 lg:grid-cols-11 gap-2 p-2 sm:p-3 items-center bg-[#090705] overflow-y-auto">
               {/* Left: PREVIEW Scene Inspector */}
-              <div className="lg:col-span-5 flex flex-col bg-[#120d0a] border border-emerald-500/40 rounded-xl overflow-hidden shadow-xl h-full max-h-[65vh]">
+              <div className="lg:col-span-5 flex flex-col bg-[#120d0a] border border-emerald-500/40 rounded-xl overflow-hidden shadow-xl h-full max-h-[45vh] lg:max-h-[65vh]">
                 <div className="px-3 py-1.5 bg-emerald-950/50 border-b border-emerald-500/30 flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
                     PREVIEW — {previewScene.name}
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono">{previewScene.sources.length} sources</span>
                 </div>
-                <div className="flex-1 p-3 flex flex-col justify-between bg-[#080605]">
+                <div className="flex-1 p-3 flex flex-col justify-between bg-[#080605] min-h-0">
                   <div className="space-y-1.5 overflow-y-auto">
                     <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">
                       Preview Scene Layer Stack (Click Transition to push Live):
@@ -1662,10 +1670,10 @@ export default function StudioPage() {
               </div>
 
               {/* Center Transition Bar */}
-              <div className="lg:col-span-1 flex flex-col items-center justify-center gap-2">
+              <div className="lg:col-span-1 flex flex-row lg:flex-col items-center justify-center gap-2">
                 <button
                   onClick={handleTriggerTransition}
-                  className="px-3 py-3 rounded-xl bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:from-[#ff6b1a] hover:to-[#ff8533] text-white font-black uppercase text-[10px] tracking-wider shadow-lg flex flex-col items-center gap-1 transition active:scale-95"
+                  className="px-3 py-2 lg:py-3 rounded-xl bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:from-[#ff6b1a] hover:to-[#ff8533] text-white font-black uppercase text-[10px] tracking-wider shadow-lg flex lg:flex-col items-center gap-1 transition active:scale-95"
                 >
                   <span>Cut / Fade</span>
                   <ArrowRight size={14} />
@@ -1673,14 +1681,14 @@ export default function StudioPage() {
               </div>
 
               {/* Right: PROGRAM (LIVE OUTPUT) */}
-              <div className="lg:col-span-5 flex flex-col bg-[#120d0a] border border-[#e8430a]/60 rounded-xl overflow-hidden shadow-xl h-full max-h-[65vh]">
+              <div className="lg:col-span-5 flex flex-col bg-[#120d0a] border border-[#e8430a]/60 rounded-xl overflow-hidden shadow-xl h-full max-h-[45vh] lg:max-h-[65vh]">
                 <div className="px-3 py-1.5 bg-[#e8430a]/20 border-b border-[#e8430a]/40 flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6b1a]">
                     PROGRAM (LIVE OUTPUT) — {activeScene.name}
                   </span>
                   <span className="text-[10px] font-mono text-emerald-400">{fps} FPS</span>
                 </div>
-                <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+                <div className="flex-1 min-h-0 relative flex items-center justify-center overflow-hidden">
                   <PreviewStage
                     canvasRef={canvasRef}
                     videoRef={videoRef}
@@ -1704,15 +1712,15 @@ export default function StudioPage() {
           )}
         </div>
 
-        {/* Streamlabs Toolset Sidebar (Desktop Side Panel or Mobile/Tablet Overlay Drawer) */}
+        {/* Streamlabs Toolset Sidebar (Desktop XL Side Panel or Mobile/Tablet Slide-Over Drawer) */}
         {isSidebarOpen && (
-          <div className="fixed inset-y-0 right-0 z-40 md:relative md:inset-auto md:w-80 h-full shadow-2xl flex">
+          <div className="fixed inset-y-0 right-0 z-40 xl:relative xl:inset-auto xl:w-80 h-full shadow-2xl flex">
             {/* Mobile / Tablet Backdrop click to close */}
             <div
-              className="fixed inset-0 bg-black/60 md:hidden z-30"
+              className="fixed inset-0 bg-black/60 xl:hidden z-30"
               onClick={() => setIsSidebarOpen(false)}
             />
-            <div className="relative z-40 w-80 max-w-[85vw] h-full flex flex-col bg-[#100d0a] border-l border-[#2a1e14]">
+            <div className="relative z-40 w-80 max-w-[88vw] h-full flex flex-col bg-[#100d0a] border-l border-[#2a1e14]">
               <SidebarTabs
                 chatMessages={chatMessages}
                 highlightedChat={highlightedChat}
@@ -1752,12 +1760,12 @@ export default function StudioPage() {
       </div>
 
       {/* Streamlabs Dedicated Scenes Toolbar (Below Stage, 0% Video Occlusion) */}
-      <div className="bg-[#0e0a08] border-t border-[#2a1e14] px-3 py-1.5 flex items-center justify-between text-xs select-none shrink-0 overflow-x-auto no-scrollbar">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+      <div className="bg-[#0e0a08] border-t border-[#2a1e14] px-2 sm:px-3 py-1 flex items-center justify-between text-xs select-none shrink-0 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
             <span>SCENES</span>
           </span>
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto no-scrollbar">
             {scenes.map((sc) => {
               const isActive = sc.id === activeSceneId;
               let shortName = sc.name;
@@ -1771,7 +1779,7 @@ export default function StudioPage() {
                 <button
                   key={sc.id}
                   onClick={() => handleSelectScene(sc.id)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 ${
+                  className={`px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition flex items-center gap-1 ${
                     isActive
                       ? 'bg-[#e8430a] text-white shadow-sm ring-1 ring-[#ff6b1a]'
                       : 'bg-[#140f0c] text-slate-300 hover:text-white hover:bg-[#1f1712] border border-[#2a1e14]'
@@ -1787,19 +1795,19 @@ export default function StudioPage() {
 
         {/* Live Broadcast Facebook Link when streaming */}
         {isStreaming && (
-          <div className="flex items-center gap-2 pl-2">
-            <span className="flex items-center gap-1.5 text-rose-400 font-bold text-[11px] animate-pulse">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>LIVE ON FACEBOOK</span>
+          <div className="flex items-center gap-2 pl-2 shrink-0">
+            <span className="flex items-center gap-1 text-rose-400 font-bold text-[10px] sm:text-[11px] animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              <span>LIVE</span>
             </span>
             {settings.fbSettings?.permalinkUrl && (
               <a
                 href={settings.fbSettings.permalinkUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="px-2.5 py-0.5 bg-[#1877f2] hover:bg-[#166fe5] text-white rounded-lg text-[10px] font-bold shadow transition flex items-center gap-1"
+                className="px-2 py-0.5 bg-[#1877f2] hover:bg-[#166fe5] text-white rounded-lg text-[10px] font-bold shadow transition flex items-center gap-1"
               >
-                <span>View Group Post ↗</span>
+                <span>View ↗</span>
               </a>
             )}
           </div>
@@ -1847,6 +1855,8 @@ export default function StudioPage() {
           onTriggerInstantReplay={handleTriggerInstantReplay}
           onToggleStudioMode={() => setIsStudioMode(!isStudioMode)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          isCollapsed={isObsDockCollapsed}
+          onToggleCollapsed={() => setIsObsDockCollapsed(!isObsDockCollapsed)}
         />
       ) : (
         <BackstageStrip

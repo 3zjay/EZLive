@@ -144,7 +144,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 bg-black flex items-center justify-center overflow-hidden select-none"
+      className="relative flex-1 w-full h-full min-h-0 min-w-0 bg-black flex items-center justify-center overflow-hidden select-none p-1 sm:p-2"
       onClick={() => onSelectSource(null)}
     >
       {/* Hidden Source Video Element (keeps decoding frames actively on Android Blink / iOS Safari WebKit) */}
@@ -165,10 +165,11 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
         }}
       />
 
-      {/* 16:9 Stage Viewport Container */}
+      {/* 16:9 Stage Viewport Container — Responsive for Phone, iPad & Desktop */}
       <div
         ref={stageBoxRef}
-        className="relative w-full h-full max-w-[1920px] max-h-[1080px] aspect-video flex items-center justify-center bg-slate-950 shadow-2xl touch-none" style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+        className="relative aspect-video w-full max-w-full max-h-full flex items-center justify-center bg-slate-950 shadow-2xl touch-none rounded-lg overflow-hidden border border-[#2a1e14]"
+        style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
@@ -177,7 +178,8 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           ref={canvasRef}
           width={1920}
           height={1080}
-          className="w-full h-full object-contain pointer-events-none" style={{ transform: "translateZ(0)", backfaceVisibility: "hidden" }}
+          className="w-full h-full object-contain pointer-events-none"
+          style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         />
 
         {/* Official Hoop Culture Scoreboard Overlays Layered on Stage */}
@@ -275,18 +277,18 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
         )}
 
         {/* Program Active Scene Badge */}
-        <div className="absolute top-3 left-3 flex items-center gap-2 z-20 pointer-events-none">
-          <div className="px-2.5 py-1 bg-red-600 text-white text-[11px] font-black uppercase tracking-widest rounded-md shadow flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+        <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1.5 sm:gap-2 z-20 pointer-events-none">
+          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-red-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-widest rounded-md shadow flex items-center gap-1">
+            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-white animate-pulse" />
             PROGRAM
           </div>
-          <div className="px-2.5 py-1 bg-slate-900/90 text-slate-200 text-xs font-bold rounded-md border border-slate-700/80 backdrop-blur-sm">
+          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-900/90 text-slate-200 text-[10px] sm:text-xs font-bold rounded-md border border-slate-700/80 backdrop-blur-sm truncate max-w-[140px] sm:max-w-none">
             {activeScene.name}
           </div>
         </div>
 
         {/* Viewport Control Buttons */}
-        <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 sm:gap-2 z-20">
           <button
             onClick={() => setShowGrid(!showGrid)}
             className={`p-1.5 rounded-lg border backdrop-blur-sm transition ${
@@ -296,7 +298,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
             }`}
             title="Toggle Basketball Court Alignment Grid"
           >
-            <Grid size={15} />
+            <Grid size={14} />
           </button>
 
           <button
@@ -304,7 +306,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
             className="p-1.5 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700 backdrop-blur-sm transition"
             title="Toggle Fullscreen"
           >
-            {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
         </div>
       </div>
