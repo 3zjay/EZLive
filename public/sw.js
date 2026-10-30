@@ -1,17 +1,13 @@
-// EZ Web Broadcast Studio Service Worker
-
+// EZLive Studio Service Worker (Network-Only, No Stale Caching)
 self.addEventListener('install', () => {
-  if (typeof self.skipWaiting === 'function') {
-    self.skipWaiting();
-  }
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });

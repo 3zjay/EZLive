@@ -455,6 +455,7 @@ export default function StudioPage() {
   // State: Hardware & Status
   const [hasCamera, setHasCamera] = useState(false);
   const [hasAudio, setHasAudio] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [fps, setFps] = useState(60);
@@ -785,6 +786,7 @@ export default function StudioPage() {
   const startCamera = useCallback(
     async (facing: 'environment' | 'user' = 'environment', videoDevId?: string, audioDevId?: string) => {
       try {
+        setCameraError(null);
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         }
@@ -814,7 +816,7 @@ export default function StudioPage() {
                   : {}),
               width: { ideal: is1080p ? 1920 : 1280 },
               height: { ideal: is1080p ? 1080 : 720 },
-              frameRate: { ideal: is60fps ? 60 : 30, max: is60fps ? 60 : 30 },
+              frameRate: { ideal: is60fps ? 60 : 30 },
             },
             audio: audioDevId
               ? { deviceId: { exact: audioDevId } }
@@ -830,11 +832,25 @@ export default function StudioPage() {
             });
           } catch (audioErr) {
             console.warn('Audio+video rejected, attempting video-only mode:', audioErr);
-            // Attempt 3: Video only (if laptop/phone has no mic or mic permission denied)
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
+            try {
+              // Attempt 3: Video only (if laptop/phone has no mic or mic permission denied)
+              stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: false,
+              });
+            } catch (videoOnlyErr) {
+              // Attempt 4: Enumerate available video devices and pick the first one explicitly
+              const allDevs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+              const vDevs = allDevs.filter((d) => d.kind === 'videoinput');
+              if (vDevs.length > 0 && vDevs[0].deviceId) {
+                stream = await navigator.mediaDevices.getUserMedia({
+                  video: { deviceId: { ideal: vDevs[0].deviceId } },
+                  audio: false,
+                });
+              } else {
+                throw videoOnlyErr;
+              }
+            }
           }
         }
 
@@ -873,14 +889,32 @@ export default function StudioPage() {
 
         setHasCamera(stream.getVideoTracks().length > 0);
         setHasAudio(stream.getAudioTracks().length > 0);
+        setCameraError(null);
 
         setupAudioMeter(stream);
 
         const devices = await navigator.mediaDevices.enumerateDevices();
         setVideoDevices(devices.filter((d) => d.kind === 'videoinput'));
         setAudioDevices(devices.filter((d) => d.kind === 'audioinput'));
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Camera access error:', err);
+        setHasCamera(false);
+        const errName = (err as { name?: string })?.name || '';
+        if (errName === 'NotReadableError' || errName === 'TrackStartError') {
+          setCameraError('Webcam is currently in use by another app (e.g., OBS, Zoom, or another browser tab). Close the other app or select a different camera.');
+        } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+          setCameraError('Camera permission was blocked by your browser. Click the camera/tune icon in your browser address bar to allow access.');
+        } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+          setCameraError('No physical webcam detected on this laptop. You can plug in a USB webcam/capture card or click "Share Screen" to broadcast.');
+        } else {
+          setCameraError('Camera not connected yet. Click Retry Camera or choose a webcam device.');
+        }
+        // Still enumerate devices so user can see what is plugged in
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          setVideoDevices(devices.filter((d) => d.kind === 'videoinput'));
+          setAudioDevices(devices.filter((d) => d.kind === 'audioinput'));
+        } catch {}
       }
     },
     [settings.targetResolution, settings.performanceProfile, settings.enableReplayBuffer, setupAudioMeter]
@@ -1618,7 +1652,7 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="flex flex-col h-full h-[100dvh] w-screen bg-[#080605] overflow-hidden font-sans select-none text-[#f2ede8]">
+    <div className="fixed inset-0 flex flex-col bg-[#080605] overflow-hidden font-sans select-none text-[#f2ede8] z-10">
       {/* Hidden Source Elements */}
       <video
         ref={screenShareVideoRef}
@@ -1734,6 +1768,17 @@ export default function StudioPage() {
                     selectedSourceId={selectedSourceId}
                     onSelectSource={setSelectedSourceId}
                     onUpdateSourceTransform={handleUpdateSourceTransform}
+                    hasCamera={hasCamera}
+                    isScreenSharing={isScreenSharing}
+                    cameraError={cameraError}
+                    videoDevices={videoDevices}
+                    selectedVideoDeviceId={selectedVideoDeviceId}
+                    onSelectVideoDevice={(id) => {
+                      setSelectedVideoDeviceId(id);
+                      startCamera(facingMode, id, selectedAudioDeviceId);
+                    }}
+                    onRetryCamera={() => startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined)}
+                    onToggleScreenShare={handleToggleScreenShare}
                   />
                 </div>
               </div>
@@ -1746,6 +1791,17 @@ export default function StudioPage() {
               selectedSourceId={selectedSourceId}
               onSelectSource={setSelectedSourceId}
               onUpdateSourceTransform={handleUpdateSourceTransform}
+              hasCamera={hasCamera}
+              isScreenSharing={isScreenSharing}
+              cameraError={cameraError}
+              videoDevices={videoDevices}
+              selectedVideoDeviceId={selectedVideoDeviceId}
+              onSelectVideoDevice={(id) => {
+                setSelectedVideoDeviceId(id);
+                startCamera(facingMode, id, selectedAudioDeviceId);
+              }}
+              onRetryCamera={() => startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined)}
+              onToggleScreenShare={handleToggleScreenShare}
             />
           )}
         </div>

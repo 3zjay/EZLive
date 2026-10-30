@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Maximize2, Minimize2, Grid, Lock } from 'lucide-react';
+import { Maximize2, Minimize2, Grid, Lock, Camera, Monitor, RefreshCw } from 'lucide-react';
 import { Scene, Source } from '@/types/broadcast';
 
 interface PreviewStageProps {
@@ -11,6 +11,14 @@ interface PreviewStageProps {
   selectedSourceId: string | null;
   onSelectSource: (id: string | null) => void;
   onUpdateSourceTransform: (id: string, update: { x: number; y: number; width: number; height: number }) => void;
+  hasCamera?: boolean;
+  isScreenSharing?: boolean;
+  cameraError?: string | null;
+  videoDevices?: MediaDeviceInfo[];
+  selectedVideoDeviceId?: string;
+  onSelectVideoDevice?: (deviceId: string) => void;
+  onRetryCamera?: () => void;
+  onToggleScreenShare?: () => void;
 }
 
 const PreviewStageComponent: React.FC<PreviewStageProps> = ({
@@ -20,6 +28,14 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   selectedSourceId,
   onSelectSource,
   onUpdateSourceTransform,
+  hasCamera = true,
+  isScreenSharing = false,
+  cameraError,
+  videoDevices = [],
+  selectedVideoDeviceId = '',
+  onSelectVideoDevice,
+  onRetryCamera,
+  onToggleScreenShare,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageBoxRef = useRef<HTMLDivElement>(null);
@@ -33,6 +49,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
 
   const sources = activeScene?.sources || [];
   const selectedSource = sources.find((s) => s.id === selectedSourceId);
+  const hasCameraSourceInScene = sources.some((s) => s.type === 'camera' && s.visible);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -90,27 +107,22 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
     let newH = startH;
 
     if (dragHandle === 'body') {
-      // Reposition source
       newX = Math.round(startX + dx);
       newY = Math.round(startY + dy);
     } else if (dragHandle === 'br') {
-      // Bottom-Right resize
       newW = Math.max(40, Math.round(startW + dx));
       newH = Math.max(30, Math.round(startH + dy));
     } else if (dragHandle === 'bl') {
-      // Bottom-Left resize
       const possibleW = Math.max(40, Math.round(startW - dx));
       newX = Math.round(startX + (startW - possibleW));
       newW = possibleW;
       newH = Math.max(30, Math.round(startH + dy));
     } else if (dragHandle === 'tr') {
-      // Top-Right resize
       newW = Math.max(40, Math.round(startW + dx));
       const possibleH = Math.max(30, Math.round(startH - dy));
       newY = Math.round(startY + (startH - possibleH));
       newH = possibleH;
     } else if (dragHandle === 'tl') {
-      // Top-Left resize
       const possibleW = Math.max(40, Math.round(startW - dx));
       const possibleH = Math.max(30, Math.round(startH - dy));
       newX = Math.round(startX + (startW - possibleW));
@@ -173,14 +185,72 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        {/* Main Composited 60 FPS Canvas */}
+        {/* Main Composited Canvas */}
         <canvas
           ref={canvasRef}
-          width={1920}
-          height={1080}
+          width={1280}
+          height={720}
           className="w-full h-full object-contain pointer-events-none"
           style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         />
+
+        {/* Interactive Camera / Screen Share Quick-Connect Card when no camera feed is active */}
+        {hasCameraSourceInScene && !hasCamera && !isScreenSharing && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-0 z-10 flex items-center justify-center p-4 pointer-events-auto"
+          >
+            <div className="bg-[#120d0a]/95 border border-[#3a2818] rounded-2xl p-4 sm:p-5 max-w-md w-full text-center shadow-2xl backdrop-blur-md space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-[#e8430a]/20 border border-[#e8430a]/40 text-[#ff6b1a] flex items-center justify-center mx-auto">
+                <Camera size={20} />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                  Connect Video Source
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                  {cameraError || 'Select a webcam / USB capture card below, or share your screen to start broadcasting.'}
+                </p>
+              </div>
+
+              {videoDevices.length > 0 && onSelectVideoDevice && (
+                <select
+                  value={selectedVideoDeviceId}
+                  onChange={(e) => onSelectVideoDevice(e.target.value)}
+                  className="w-full bg-[#080605] border border-[#2a1e14] rounded-xl px-3 py-2 text-xs text-slate-200 font-bold focus:outline-none focus:border-[#ff6b1a]"
+                >
+                  <option value="">Default Camera / Webcam</option>
+                  {videoDevices.map((dev, idx) => (
+                    <option key={dev.deviceId || idx} value={dev.deviceId}>
+                      {dev.label || `Camera ${idx + 1}`}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {onRetryCamera && (
+                  <button
+                    onClick={onRetryCamera}
+                    className="px-3.5 py-2 rounded-xl bg-[#e8430a] hover:bg-[#ff6b1a] text-white font-black text-xs flex items-center gap-1.5 shadow transition active:scale-95"
+                  >
+                    <RefreshCw size={13} />
+                    <span>Connect Camera</span>
+                  </button>
+                )}
+                {onToggleScreenShare && (
+                  <button
+                    onClick={onToggleScreenShare}
+                    className="px-3.5 py-2 rounded-xl bg-[#1b1410] hover:bg-[#261c16] border border-[#3a2818] text-amber-300 font-bold text-xs flex items-center gap-1.5 transition active:scale-95"
+                  >
+                    <Monitor size={13} />
+                    <span>Share Screen Instead</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Custom External Browser URL Overlays (Hoop Culture Scoreboard URLs are already natively rendered on the GPU canvas with 0 DOM lag) */}
         {sources

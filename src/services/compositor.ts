@@ -511,23 +511,26 @@ export class VideoCompositor {
       this.videoElement &&
       (this.videoElement.videoWidth > 0 || this.videoElement.readyState >= 2);
 
-    if (!this.videoElement || !hasCameraFeed) {
+    const hasScreenShareFeed =
+      this.screenShareElement &&
+      (this.screenShareElement.videoWidth > 0 || this.screenShareElement.readyState >= 2);
+
+    // If laptop/phone has no physical camera active, but Screen Share is active, draw the Screen Share feed!
+    const primaryVideo = hasCameraFeed
+      ? this.videoElement
+      : hasScreenShareFeed
+        ? this.screenShareElement
+        : null;
+
+    if (!primaryVideo) {
       ctx.fillStyle = '#090d16';
       ctx.fillRect(source.x, source.y, source.width, source.height);
-      ctx.fillStyle = '#334155';
-      ctx.font = 'bold 24px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(
-        'CONNECTING CAMERA...',
-        source.x + source.width / 2,
-        source.y + source.height / 2
-      );
       return;
     }
 
     // Layout Mode: SOLO
     if (this.layout === 'solo') {
-      this.drawVideoAspectFit(this.videoElement, source.x, source.y, source.width, source.height, source.fit);
+      this.drawVideoAspectFit(primaryVideo, source.x, source.y, source.width, source.height, source.fit);
       return;
     }
 
@@ -535,10 +538,10 @@ export class VideoCompositor {
     if (this.layout === 'split') {
       const halfW = source.width / 2 - 12;
       // Feed 1 (Host Camera)
-      this.drawVideoAspectFit(this.videoElement, source.x + 8, source.y + 40, halfW, source.height - 80, 'cover');
+      this.drawVideoAspectFit(primaryVideo, source.x + 8, source.y + 40, halfW, source.height - 80, 'cover');
 
       // Feed 2 (Screen share or secondary guest feed)
-      const feed2 = this.screenShareElement && this.screenShareElement.readyState >= 2 ? this.screenShareElement : this.videoElement;
+      const feed2 = this.screenShareElement && this.screenShareElement.readyState >= 2 ? this.screenShareElement : primaryVideo;
       this.drawVideoAspectFit(feed2, source.x + halfW + 24, source.y + 40, halfW, source.height - 80, 'cover');
       return;
     }
@@ -546,7 +549,7 @@ export class VideoCompositor {
     // Layout Mode: PIP (Picture-In-Picture in corner)
     if (this.layout === 'pip') {
       // Main background (e.g. court or screen)
-      const bgVideo = this.screenShareElement && this.screenShareElement.readyState >= 2 ? this.screenShareElement : this.videoElement;
+      const bgVideo = this.screenShareElement && this.screenShareElement.readyState >= 2 ? this.screenShareElement : primaryVideo;
       this.drawVideoAspectFit(bgVideo, source.x, source.y, source.width, source.height, 'cover');
 
       // Corner Host Camera Box
@@ -563,13 +566,13 @@ export class VideoCompositor {
       this.roundRect(ctx, pipX, pipY, pipW, pipH, 16);
       ctx.stroke();
       ctx.clip();
-      this.drawVideoAspectFit(this.videoElement, pipX, pipY, pipW, pipH, 'cover');
+      this.drawVideoAspectFit(primaryVideo, pipX, pipY, pipW, pipH, 'cover');
       ctx.restore();
       return;
     }
 
     // Default Fallback
-    this.drawVideoAspectFit(this.videoElement, source.x, source.y, source.width, source.height, source.fit);
+    this.drawVideoAspectFit(primaryVideo, source.x, source.y, source.width, source.height, source.fit);
   }
 
   private drawVideoAspectFit(
