@@ -166,6 +166,7 @@ export interface YouTubeLiveSettings {
 }
 
 export type StreamBandwidthPreset = 'eco_720' | 'balanced_720' | 'high_1080' | 'pro_1080_60';
+export type PerformanceProfile = 'auto' | 'lite' | 'balanced' | 'pro';
 
 export interface StreamSettings {
   rtmpsUrl: string;
@@ -173,6 +174,8 @@ export interface StreamSettings {
   whipUrl: string;
   relayUrl?: string;
   targetResolution: '1080p60' | '1080p30' | '720p60' | '720p30';
+  performanceProfile?: PerformanceProfile;
+  enableReplayBuffer?: boolean;
   overlayUrl: string;
   usePostMessageBridge: boolean;
   transitionType: TransitionType;

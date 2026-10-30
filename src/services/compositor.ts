@@ -1,11 +1,9 @@
-import { Scene, ScoreboardSource, ScoreboardState, Source, TransitionType, VideoMediaSource } from '@/types/broadcast';
+import { PerformanceProfile, Scene, ScoreboardSource, ScoreboardState, Source, TransitionType, VideoMediaSource } from '@/types/broadcast';
 import { BrandKit, ChatMessage, NewsTickerConfig, StageLayout, StreamlabsBanner } from '@/types/streamlabs';
 
 export class VideoCompositor {
   private canvas: HTMLCanvasElement;
   private previewCtx: CanvasRenderingContext2D;
-  private streamCanvas: HTMLCanvasElement;
-  private streamCtx: CanvasRenderingContext2D;
   private activeCtx: CanvasRenderingContext2D;
 
   private get ctx(): CanvasRenderingContext2D {
@@ -15,12 +13,15 @@ export class VideoCompositor {
   private videoElement: HTMLVideoElement | null = null;
   private screenShareElement: HTMLVideoElement | null = null;
   private animationFrameId: number | null = null;
-  private targetFps: number = 60; // 60 FPS sports broadcast default
-  private width: number = 1920;
+  private targetFps: number = 30; // Default 30 FPS for universal smoothness across integrated GPUs, phones & tablets
+  private width: number = 1920;   // Logical coordinate system (sources are always positioned in 1920x1080 space)
   private height: number = 1080;
-  // Dedicated stream broadcast resolution (defaults to Full HD 1080p @ 60 FPS sports broadcast standard)
-  private streamWidth: number = 1920;
-  private streamHeight: number = 1080;
+  // Physical canvas backing store resolution (auto-scales to 1280x720 on Lite/Balanced or 1920x1080 on Pro)
+  private renderWidth: number = 1280;
+  private renderHeight: number = 720;
+  public performanceProfile: PerformanceProfile = 'auto';
+  public resolvedProfile: 'lite' | 'balanced' | 'pro' = 'balanced';
+  private lowCpuMode: boolean = false;
 
   // Scene transition state
   private currentScene: Scene;
@@ -79,36 +80,103 @@ export class VideoCompositor {
   // Ticker offset tracking
   private tickerOffset: number = 0;
   private lastTickerTimestamp: number = performance.now();
-  private lastStreamFrameTime: number = 0;
+  private lastRenderFrameTime: number = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
     initialScene: Scene,
-    initialScoreboard: ScoreboardState
+    initialScoreboard: ScoreboardState,
+    profile: PerformanceProfile = 'auto'
   ) {
     this.canvas = canvas;
-    this.canvas.width = this.width;
-    this.canvas.height = this.height;
     const context = canvas.getContext('2d', { alpha: false, desynchronized: true });
     if (!context) {
       throw new Error('Failed to obtain 2D rendering context from canvas');
     }
     this.previewCtx = context;
     this.activeCtx = context;
-
-    // Dedicated offscreen canvas for broadcasting stream to Facebook Live (includes Scoreboard HUD)
-    // 1280x720 (720p60) is the official broadcast standard for Facebook Live and guarantees 2.5-3.5 Mbps bitrate
-    this.streamCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : ({} as HTMLCanvasElement);
-    if (typeof this.streamCanvas.getContext === 'function') {
-      this.streamCanvas.width = this.streamWidth;
-      this.streamCanvas.height = this.streamHeight;
-      this.streamCtx = this.streamCanvas.getContext('2d', { alpha: false })!;
-    } else {
-      this.streamCtx = context;
-    }
-
     this.currentScene = initialScene;
     this.scoreboard = initialScoreboard;
+    this.setPerformanceProfile(profile);
+  }
+
+  public static detectOptimalProfile(): 'lite' | 'balanced' | 'pro' {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return 'balanced';
+    const cores = navigator.hardwareConcurrency || 4;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const memory = (navigator as any).deviceMemory || 4;
+    const ua = navigator.userAgent || '';
+    const isMobileOrTablet = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+
+    // Check WebGL renderer string for Intel integrated graphics or software renderers
+    let isIntegratedOrWeakGpu = false;
+    try {
+      const testCanvas = document.createElement('canvas');
+      const gl = (testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+      if (gl) {
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+          const renderer = (gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || '').toLowerCase();
+          if (
+            renderer.includes('intel') ||
+            renderer.includes('uhd') ||
+            renderer.includes('hd graphics') ||
+            renderer.includes('iris') ||
+            renderer.includes('swiftshader') ||
+            renderer.includes('llvmpipe') ||
+            renderer.includes('microsoft basic') ||
+            renderer.includes('mali-g') ||
+            renderer.includes('adreno (tm) 6')
+          ) {
+            isIntegratedOrWeakGpu = true;
+          }
+        }
+      }
+    } catch {}
+
+    if (cores <= 4 || memory <= 4 || isIntegratedOrWeakGpu) {
+      return 'lite';
+    }
+    if (isMobileOrTablet || cores <= 8) {
+      return 'balanced';
+    }
+    return 'pro';
+  }
+
+  public setPerformanceProfile(profile: PerformanceProfile) {
+    this.performanceProfile = profile;
+    const resolved = profile === 'auto' ? VideoCompositor.detectOptimalProfile() : profile;
+    this.resolvedProfile = resolved;
+
+    if (resolved === 'lite') {
+      // Lite / Eco Mode: 720p @ 30 FPS, no expensive canvas shadow blurs, single-pass render
+      this.renderWidth = 1280;
+      this.renderHeight = 720;
+      this.targetFps = 30;
+      this.lowCpuMode = true;
+    } else if (resolved === 'balanced') {
+      // Balanced Mode (Phones, Tablets & Mid-Range Laptops): 720p @ 30 FPS with crisp shadows
+      this.renderWidth = 1280;
+      this.renderHeight = 720;
+      this.targetFps = 30;
+      this.lowCpuMode = false;
+    } else {
+      // Pro GPU Mode: 1080p @ 60 FPS
+      this.renderWidth = 1920;
+      this.renderHeight = 1080;
+      this.targetFps = 60;
+      this.lowCpuMode = false;
+    }
+
+    if (this.canvas) {
+      this.canvas.width = this.renderWidth;
+      this.canvas.height = this.renderHeight;
+    }
+    if (this.previewCtx) {
+      this.previewCtx.imageSmoothingEnabled = true;
+      this.previewCtx.imageSmoothingQuality = this.lowCpuMode ? 'low' : 'medium';
+    }
+    this.resetCompositeStream();
   }
 
   public setVideoSource(video: HTMLVideoElement | null) {
@@ -124,7 +192,8 @@ export class VideoCompositor {
   }
 
   public setTargetFps(fps: number) {
-    const newFps = fps > 0 ? fps : 30;
+    const maxAllowedFps = this.resolvedProfile === 'lite' ? 30 : 60;
+    const newFps = Math.min(maxAllowedFps, fps > 0 ? fps : 30);
     if (this.targetFps !== newFps) {
       this.targetFps = newFps;
       this.resetCompositeStream();
@@ -234,8 +303,7 @@ export class VideoCompositor {
       }
     }
 
-    const targetCanvas = (this.streamCanvas && this.streamCanvas.width > 0) ? this.streamCanvas : this.canvas;
-    const canvasWithCapture = targetCanvas as HTMLCanvasElement & {
+    const canvasWithCapture = this.canvas as HTMLCanvasElement & {
       captureStream?(fps?: number): MediaStream;
       mozCaptureStream?(fps?: number): MediaStream;
     };
@@ -248,7 +316,7 @@ export class VideoCompositor {
         : new MediaStream();
 
     const videoTrack = canvasStream.getVideoTracks()[0];
-    const tracks: MediaStreamTrack[] = [videoTrack];
+    const tracks: MediaStreamTrack[] = videoTrack ? [videoTrack] : [];
 
     if (micStream && micStream.getAudioTracks().length > 0) {
       // Direct track addition avoids AudioContext suspension on mobile iOS Safari / Android Chrome
@@ -282,6 +350,13 @@ export class VideoCompositor {
   }
 
   private render(timestamp: number) {
+    // Throttle frame loop to targetFps (e.g. 30 FPS on Lite/Balanced) so laptops without discrete GPUs stay cool & responsive
+    const targetIntervalMs = 1000 / (this.targetFps || 30);
+    if (timestamp - this.lastRenderFrameTime < targetIntervalMs - 2) {
+      return;
+    }
+    this.lastRenderFrameTime = timestamp;
+
     this.frameCount++;
     if (timestamp - this.lastFpsUpdateTime >= 1000) {
       this.currentFps = Math.round((this.frameCount * 1000) / (timestamp - this.lastFpsUpdateTime));
@@ -298,32 +373,26 @@ export class VideoCompositor {
       }
     }
 
-    // 1. Render Preview Stage (phone screen: camera + overlays via DOM iframe, NO canvas duplicate)
+    // Unified Single-Pass Render: scale 1920x1080 logical coordinates onto the active canvas backing resolution (1280x720 or 1920x1080)
     this.activeCtx = this.previewCtx;
-    this.renderStage(false, timestamp);
-
-    // 2. Render Broadcast Stream Stage (off-screen canvas captured for Facebook Live: camera + synced HUD)
-    // Strictly throttled to targetFps (e.g. 30 FPS) so high-refresh screens (90Hz/120Hz) do not flood Facebook with 72-120 FPS
-    const streamIntervalMs = 1000 / (this.targetFps || 30);
-    if (this.streamCtx && this.streamCtx !== this.previewCtx) {
-      if (timestamp - this.lastStreamFrameTime >= streamIntervalMs - 3) {
-        this.lastStreamFrameTime = timestamp;
-        this.activeCtx = this.streamCtx;
-        this.streamCtx.save();
-        this.streamCtx.scale(this.streamWidth / this.width, this.streamHeight / this.height);
-        this.renderStage(true, timestamp);
-        this.streamCtx.restore();
-      }
+    this.previewCtx.save();
+    if (this.renderWidth !== this.width || this.renderHeight !== this.height) {
+      this.previewCtx.scale(this.renderWidth / this.width, this.renderHeight / this.height);
     }
+    this.renderStage(true, timestamp);
+    this.previewCtx.restore();
   }
 
   public setStreamResolution(width: number, height: number) {
-    if (this.streamWidth !== width || this.streamHeight !== height) {
-      this.streamWidth = width;
-      this.streamHeight = height;
-      if (this.streamCanvas) {
-        this.streamCanvas.width = width;
-        this.streamCanvas.height = height;
+    // Respect Lite profile ceiling on integrated GPUs
+    const maxW = this.resolvedProfile === 'lite' ? 1280 : width;
+    const maxH = this.resolvedProfile === 'lite' ? 720 : height;
+    if (this.renderWidth !== maxW || this.renderHeight !== maxH) {
+      this.renderWidth = maxW;
+      this.renderHeight = maxH;
+      if (this.canvas) {
+        this.canvas.width = maxW;
+        this.canvas.height = maxH;
       }
       this.resetCompositeStream();
     }
@@ -650,9 +719,11 @@ export class VideoCompositor {
     const awayColor = sb.awayColor || '#c8102e';
 
     ctx.save();
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
-    ctx.shadowBlur = 24 * scale;
-    ctx.shadowOffsetY = 6 * scale;
+    if (!this.lowCpuMode) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+      ctx.shadowBlur = 24 * scale;
+      ctx.shadowOffsetY = 6 * scale;
+    }
 
     // Outer container background
     ctx.fillStyle = 'rgba(10, 14, 24, 0.95)';
@@ -849,8 +920,10 @@ export class VideoCompositor {
     const radius = 10 * scale;
 
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.7)';
-    ctx.shadowBlur = 18 * scale;
+    if (!this.lowCpuMode) {
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = 18 * scale;
+    }
 
     // Background
     ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
@@ -953,9 +1026,11 @@ export class VideoCompositor {
     ctx.save();
 
     // 1. Box Shadow (0 0.4vw 2.5vw rgba(0,0,0,0.85))
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-    ctx.shadowBlur = Math.round(25 * scale);
-    ctx.shadowOffsetY = Math.round(8 * scale);
+    if (!this.lowCpuMode) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+      ctx.shadowBlur = Math.round(25 * scale);
+      ctx.shadowOffsetY = Math.round(8 * scale);
+    }
 
     // Rounded Pill Base
     ctx.beginPath();

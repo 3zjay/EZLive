@@ -191,12 +191,77 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
               <div>
                 <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
-                  Broadcast & Recording Profile
+                  Device Hardware & GPU Performance Mode
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {(
+                    [
+                      {
+                        id: 'auto',
+                        title: '⚡ Auto-Detect (Recommended)',
+                        desc: 'Auto-tunes for Laptop CPU, Phone, or Tablet',
+                      },
+                      {
+                        id: 'lite',
+                        title: '💻 Laptop Lite / Integrated GPU',
+                        desc: '720p @ 30fps • Ultra-Low CPU & Zero Lag',
+                      },
+                      {
+                        id: 'balanced',
+                        title: '📱 Tablet & Phone Balanced',
+                        desc: '720p @ 30fps • Smooth Battery-Saver HD',
+                      },
+                      {
+                        id: 'pro',
+                        title: '🚀 Pro GPU (Apple M-Series / RTX)',
+                        desc: '1080p @ 60fps • Max Graphics & Shadows',
+                      },
+                    ] as const
+                  ).map((item) => {
+                    const current = localSettings.performanceProfile || 'auto';
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setLocalSettings({ ...localSettings, performanceProfile: item.id })}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold text-left transition ${
+                          current === item.id
+                            ? 'bg-emerald-500/20 border-emerald-400 text-white ring-1 ring-emerald-400'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                        }`}
+                      >
+                        <div>{item.title}</div>
+                        <div className="text-[10px] font-normal text-slate-400 mt-0.5">{item.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                <div>
+                  <div className="text-xs font-bold text-slate-200">Background 10s Instant Replay Buffer</div>
+                  <div className="text-[10px] text-slate-400">
+                    Keep OFF on laptops without a dedicated GPU to prevent background encoding lag.
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(localSettings.enableReplayBuffer)}
+                  onChange={(e) => setLocalSettings({ ...localSettings, enableReplayBuffer: e.target.checked })}
+                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-400 mb-1.5 uppercase">
+                  Broadcast & Recording Output Target
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {(['1080p60', '1080p30', '720p60', '720p30'] as const).map((mode) => (
                     <button
                       key={mode}
+                      type="button"
                       onClick={() => setLocalSettings({ ...localSettings, targetResolution: mode })}
                       className={`py-2.5 px-3 rounded-xl border text-xs font-bold text-left transition ${
                         localSettings.targetResolution === mode
@@ -206,7 +271,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     >
                       <div>{mode}</div>
                       <div className="text-[10px] font-normal text-slate-500">
-                        {mode.startsWith('1080') ? 'Full HD Broadcast' : 'Low-Bandwidth Fallback'}
+                        {mode.startsWith('1080') ? 'Full HD Broadcast' : 'Fast Hardware Encoding'}
                       </div>
                     </button>
                   ))}

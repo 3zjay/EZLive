@@ -182,11 +182,14 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         />
 
-        {/* Official Hoop Culture Scoreboard Overlays Layered on Stage */}
+        {/* Custom External Browser URL Overlays (Hoop Culture Scoreboard URLs are already natively rendered on the GPU canvas with 0 DOM lag) */}
         {sources
           .filter(
             (s): s is Extract<Source, { type: 'browser_url' }> =>
-              s.type === 'browser_url' && s.visible
+              s.type === 'browser_url' &&
+              s.visible &&
+              !s.syncDataBridge &&
+              !(s.url || '').includes('scoreboard.hoopculture.ca')
           )
           .map((source) => (
             <div

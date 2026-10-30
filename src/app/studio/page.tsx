@@ -60,7 +60,9 @@ const DEFAULT_SETTINGS: StreamSettings = {
   streamKey: '',
   whipUrl: 'https://relay.hooptimes.live/whip',
   relayUrl: 'https://ezlive-relay.onrender.com',
-  targetResolution: '1080p60',
+  targetResolution: '720p30',
+  performanceProfile: 'auto',
+  enableReplayBuffer: false,
   overlayUrl: 'https://scoreboard.hoopculture.ca',
   usePostMessageBridge: true,
   transitionType: 'fade',
@@ -381,6 +383,15 @@ export default function StudioPage() {
 
   const handleSaveSettings = (newSettings: StreamSettings) => {
     setSettings(newSettings);
+    if (compositorRef.current) {
+      compositorRef.current.setPerformanceProfile(newSettings.performanceProfile || 'auto');
+      if (newSettings.enableReplayBuffer && mediaStreamRef.current) {
+        const compStream = compositorRef.current.getCompositeStream(mediaStreamRef.current);
+        recorderRef.current?.startReplayBuffer(compStream);
+      } else {
+        recorderRef.current?.stopReplayBuffer();
+      }
+    }
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem('ezlive_settings_v1', JSON.stringify(newSettings));
@@ -671,7 +682,12 @@ export default function StudioPage() {
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    const comp = new VideoCompositor(canvasRef.current, activeScene, scoreboard);
+    const comp = new VideoCompositor(
+      canvasRef.current,
+      activeScene,
+      scoreboard,
+      settings.performanceProfile || 'auto'
+    );
     comp.layout = stageLayout;
     comp.tickerConfig = tickerConfig;
     comp.brandKit = brandKit;
@@ -765,7 +781,7 @@ export default function StudioPage() {
     }
   }, []);
 
-  // Camera Initialization with Robust Mobile & iOS Safari Fallbacks
+  // Camera Initialization with Robust Laptop Webcam, Mobile & iOS Safari Fallbacks
   const startCamera = useCallback(
     async (facing: 'environment' | 'user' = 'environment', videoDevId?: string, audioDevId?: string) => {
       try {
@@ -773,38 +789,50 @@ export default function StudioPage() {
           mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         }
 
-        const is1080p = settings.targetResolution.startsWith('1080');
-        const is60fps = settings.targetResolution.endsWith('60');
+        const resolvedProfile =
+          (settings.performanceProfile === 'auto' || !settings.performanceProfile)
+            ? VideoCompositor.detectOptimalProfile()
+            : settings.performanceProfile;
+
+        // On Lite/Balanced devices (laptops without discrete GPU, phones, tablets), request 720p @ 30fps
+        const is1080p = resolvedProfile === 'pro' && settings.targetResolution.startsWith('1080');
+        const is60fps = resolvedProfile === 'pro' && settings.targetResolution.endsWith('60');
+
+        const isMobileOrTablet =
+          typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 
         let stream: MediaStream | null = null;
 
-        // Attempt 1: High-resolution requested constraints
+        // Attempt 1: Hardware-appropriate resolution constraints
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              facingMode: videoDevId ? undefined : { ideal: facing },
-              deviceId: videoDevId ? { exact: videoDevId } : undefined,
+              ...(videoDevId
+                ? { deviceId: { exact: videoDevId } }
+                : isMobileOrTablet
+                  ? { facingMode: { ideal: facing } }
+                  : {}),
               width: { ideal: is1080p ? 1920 : 1280 },
               height: { ideal: is1080p ? 1080 : 720 },
-              frameRate: { ideal: is60fps ? 60 : 30 },
+              frameRate: { ideal: is60fps ? 60 : 30, max: is60fps ? 60 : 30 },
             },
             audio: audioDevId
               ? { deviceId: { exact: audioDevId } }
               : true,
           });
         } catch (initialErr) {
-          console.warn('High-res getUserMedia rejected, attempting relaxed mobile constraints:', initialErr);
+          console.warn('Primary getUserMedia rejected, attempting universal laptop/mobile fallback:', initialErr);
           try {
-            // Attempt 2: Relaxed resolution with audio for iPad/phones
+            // Attempt 2: Universal video + audio (works on all Windows/Mac laptop webcams & mobile browsers)
             stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: { ideal: facing } },
+              video: isMobileOrTablet ? { facingMode: { ideal: facing } } : true,
               audio: true,
             });
           } catch (audioErr) {
-            console.warn('Audio+video rejected, attempting video only mode:', audioErr);
-            // Attempt 3: Video only (e.g. if microphone permission denied on mobile)
+            console.warn('Audio+video rejected, attempting video-only mode:', audioErr);
+            // Attempt 3: Video only (if laptop/phone has no mic or mic permission denied)
             stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: { ideal: facing } },
+              video: true,
               audio: false,
             });
           }
@@ -834,8 +862,13 @@ export default function StudioPage() {
 
         if (compositorRef.current && videoRef.current) {
           compositorRef.current.setVideoSource(videoRef.current);
-          const compStream = compositorRef.current.getCompositeStream(stream);
-          recorderRef.current?.startReplayBuffer(compStream);
+          // Only run continuous background Replay Buffer encoding if explicitly enabled (saves huge CPU/GPU on laptops without discrete GPU)
+          if (settings.enableReplayBuffer) {
+            const compStream = compositorRef.current.getCompositeStream(stream);
+            recorderRef.current?.startReplayBuffer(compStream);
+          } else {
+            recorderRef.current?.stopReplayBuffer();
+          }
         }
 
         setHasCamera(stream.getVideoTracks().length > 0);
@@ -850,7 +883,7 @@ export default function StudioPage() {
         console.error('Camera access error:', err);
       }
     },
-    [settings.targetResolution, setupAudioMeter]
+    [settings.targetResolution, settings.performanceProfile, settings.enableReplayBuffer, setupAudioMeter]
   );
 
   const hasInitiatedCamera = useRef(false);
@@ -942,6 +975,11 @@ export default function StudioPage() {
     const replayUrl = recorderRef.current.getInstantReplayUrl();
     if (replayUrl) {
       compositorRef.current.playInstantReplay(replayUrl);
+    } else if (!settings.enableReplayBuffer) {
+      // Enable replay buffer on the fly if operator clicks Replay
+      const nextSettings = { ...settings, enableReplayBuffer: true };
+      handleSaveSettings(nextSettings);
+      alert('10-Second Instant Replay Buffer has been turned ON! Give it 5 seconds to record court action, then tap Replay again.');
     } else {
       alert('Instant Replay Buffer is warming up (needs at least 3 seconds of live camera feed). Try again in a moment!');
     }
