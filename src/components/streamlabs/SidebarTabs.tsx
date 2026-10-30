@@ -17,6 +17,11 @@ import {
   Pause,
   RotateCcw,
   X,
+  Lock,
+  Unlock,
+  ArrowUp,
+  ArrowDown,
+  Zap,
 } from 'lucide-react';
 import { ChatMessage, NewsTickerConfig, StreamlabsBanner, BrandKit } from '@/types/streamlabs';
 import { Scene, ScoreboardState, SourceType } from '@/types/broadcast';
@@ -26,7 +31,7 @@ interface SidebarTabsProps {
   chatMessages: ChatMessage[];
   highlightedChat: ChatMessage | null;
   onHighlightChat: (msg: ChatMessage | null) => void;
-  onSendChatMessage: (text: string) => void;
+  onSendChatMessage: (text: string, platform?: 'facebook' | 'youtube') => void;
 
   // Ticker & Banners
   tickerConfig: NewsTickerConfig;
@@ -49,11 +54,14 @@ interface SidebarTabsProps {
   onAddSource: (type: SourceType) => void;
   onDeleteSource: (id: string) => void;
   onToggleSourceVisibility: (id: string) => void;
+  onToggleSourceLock?: (id: string) => void;
+  onMoveSourceOrder?: (id: string, direction: 'up' | 'down') => void;
   onOpenSourceProperties: (id: string) => void;
 
   // Scoreboard
   scoreboard: ScoreboardState;
   onChangeScoreboard: (update: Partial<ScoreboardState>) => void;
+  onTriggerInstantReplay?: () => void;
 
   // Audio Mixer
   micVolume: number;
@@ -86,26 +94,31 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   onAddSource,
   onDeleteSource,
   onToggleSourceVisibility,
+  onToggleSourceLock,
+  onMoveSourceOrder,
   onOpenSourceProperties,
   scoreboard,
   onChangeScoreboard,
+  onTriggerInstantReplay,
   micVolume,
   micMuted,
   onChangeMicVolume,
   onToggleMicMute,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<'chat' | 'ticker' | 'brand' | 'obs' | 'scoreboard' | 'mixer'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'ticker' | 'brand' | 'obs' | 'scoreboard' | 'mixer'>('scoreboard');
   const [chatInputText, setChatInputText] = useState('');
-  const [bannerTitle, setBannerTitle] = useState('HOOP TIMES CHAMPIONSHIP');
+  const [chatPlatform, setChatPlatform] = useState<'youtube' | 'facebook'>('youtube');
+  const [bannerTitle, setBannerTitle] = useState('HOOP CULTURE CHAMPIONSHIPS');
   const [bannerSubtitle, setBannerSubtitle] = useState('LIVE FROM MAIN GYM COURT');
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) || scenes[0];
+  const sortedSources = [...(activeScene?.sources || [])].sort((a, b) => b.zIndex - a.zIndex);
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInputText.trim()) return;
-    onSendChatMessage(chatInputText.trim());
+    onSendChatMessage(chatInputText.trim(), chatPlatform);
     setChatInputText('');
   };
 
@@ -127,6 +140,32 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
     <div className="w-full md:w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full text-xs select-none z-20">
       {/* Streamlabs Tab Navigation Icons */}
       <div className="flex items-center justify-between bg-slate-950 border-b border-slate-800 px-1 py-1 overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('scoreboard')}
+          className={`flex-1 py-2 px-1 rounded-lg flex flex-col items-center gap-1 font-bold text-[10px] transition ${
+            activeTab === 'scoreboard'
+              ? 'bg-slate-800 text-[#ff6b1a] border border-[#e8430a]/40'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          title="Basketball Scoreboard & Shot Clock Controller"
+        >
+          <Tv size={14} />
+          <span>Scores</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('obs')}
+          className={`flex-1 py-2 px-1 rounded-lg flex flex-col items-center gap-1 font-bold text-[10px] transition ${
+            activeTab === 'obs'
+              ? 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
+              : 'text-slate-400 hover:text-white'
+          }`}
+          title="OBS Scenes & Sources"
+        >
+          <Layers size={14} />
+          <span>OBS</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex-1 py-2 px-1 rounded-lg flex flex-col items-center gap-1 font-bold text-[10px] transition ${
@@ -167,32 +206,6 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('obs')}
-          className={`flex-1 py-2 px-1 rounded-lg flex flex-col items-center gap-1 font-bold text-[10px] transition ${
-            activeTab === 'obs'
-              ? 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
-              : 'text-slate-400 hover:text-white'
-          }`}
-          title="OBS Scenes & Sources"
-        >
-          <Layers size={14} />
-          <span>OBS</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('scoreboard')}
-          className={`flex-1 py-2 px-1 rounded-lg flex flex-col items-center gap-1 font-bold text-[10px] transition ${
-            activeTab === 'scoreboard'
-              ? 'bg-slate-800 text-rose-400 border border-rose-500/30'
-              : 'text-slate-400 hover:text-white'
-          }`}
-          title="Basketball Scoreboard Controller"
-        >
-          <Tv size={14} />
-          <span>Scores</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('mixer')}
           className={`flex-1 py-2 px-1 rounded-lg flex flex-col items-center gap-1 font-bold text-[10px] transition ${
             activeTab === 'mixer'
@@ -224,14 +237,19 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
             <div>
               <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                 <span className="font-extrabold uppercase text-[11px] text-slate-300">
-                  Stream Chat & Highlights
+                  Unified YouTube & FB Chat
                 </span>
-                <span className="text-[10px] text-sky-400 font-bold bg-sky-950 px-1.5 py-0.5 rounded border border-sky-800/50">
-                  Unified
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] text-red-400 font-bold bg-red-950/70 px-1.5 py-0.5 rounded border border-red-800/50">
+                    YT
+                  </span>
+                  <span className="text-[9px] text-blue-400 font-bold bg-blue-950/70 px-1.5 py-0.5 rounded border border-blue-800/50">
+                    FB
+                  </span>
+                </div>
               </div>
               <p className="text-[10px] text-slate-500 mt-1">
-                Hover or tap any comment to click <b>&quot;Show on Stream&quot;</b> and project it onto the broadcast canvas.
+                Tap any comment to click <b>&quot;Show on Stream&quot;</b> and project it onto the live broadcast.
               </p>
             </div>
 
@@ -251,7 +269,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-bold text-slate-100">{msg.sender}</span>
                       <span
-                        className={`text-[9px] font-bold px-1 rounded uppercase ${
+                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
                           msg.platform === 'facebook'
                             ? 'bg-blue-900/60 text-blue-300'
                             : msg.platform === 'youtube'
@@ -265,7 +283,6 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
 
                     <p className="text-slate-300 text-xs mb-2">{msg.message}</p>
 
-                    {/* Show on Stream Button (Flagship Streamlabs feature) */}
                     <button
                       onClick={() => onHighlightChat(isHighlighted ? null : msg)}
                       className={`w-full py-1 px-2 rounded-lg font-bold text-[10px] flex items-center justify-center gap-1 transition ${
@@ -283,20 +300,42 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
             </div>
 
             {/* Send manual announcement/chat message */}
-            <form onSubmit={handleSendMessage} className="pt-2 border-t border-slate-800 flex gap-1.5">
-              <input
-                type="text"
-                placeholder="Type comment or highlight..."
-                value={chatInputText}
-                onChange={(e) => setChatInputText(e.target.value)}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
-              />
-              <button
-                type="submit"
-                className="p-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl transition shadow"
-              >
-                <Send size={13} />
-              </button>
+            <form onSubmit={handleSendMessage} className="pt-2 border-t border-slate-800 space-y-1.5">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setChatPlatform('youtube')}
+                  className={`flex-1 py-1 rounded text-[10px] font-bold transition ${
+                    chatPlatform === 'youtube' ? 'bg-red-600 text-white' : 'bg-slate-950 text-slate-400'
+                  }`}
+                >
+                  YouTube Tag
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChatPlatform('facebook')}
+                  className={`flex-1 py-1 rounded text-[10px] font-bold transition ${
+                    chatPlatform === 'facebook' ? 'bg-blue-600 text-white' : 'bg-slate-950 text-slate-400'
+                  }`}
+                >
+                  Facebook Tag
+                </button>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Type court announcement or chat..."
+                  value={chatInputText}
+                  onChange={(e) => setChatInputText(e.target.value)}
+                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500"
+                />
+                <button
+                  type="submit"
+                  className="p-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl transition shadow"
+                >
+                  <Send size={13} />
+                </button>
+              </div>
             </form>
           </div>
         )}
@@ -452,7 +491,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
           </div>
         )}
 
-        {/* 4. OBS SCENES & SOURCES */}
+        {/* 4. OBS SCENES & ALL 7 SOURCES */}
         {activeTab === 'obs' && (
           <div className="space-y-3">
             {/* Scene Selector */}
@@ -496,41 +535,59 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
               </select>
             </div>
 
-            {/* Add Source Quick Buttons */}
+            {/* Add Source Quick Buttons (All 7 OBS Source Types) */}
             <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-              <div className="font-bold text-slate-400 text-[10px] uppercase mb-1.5">+ Add Source to Scene</div>
+              <div className="font-bold text-slate-400 text-[10px] uppercase mb-1.5">+ Add OBS Source Layer</div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
-                  onClick={() => onAddSource('browser_url')}
-                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-850 rounded-lg text-sky-400 font-bold text-[10px] text-left border border-slate-800"
-                >
-                  + Browser Source (URL)
-                </button>
-                <button
                   onClick={() => onAddSource('camera')}
-                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-850 rounded-lg text-emerald-400 font-bold text-[10px] text-left border border-slate-800"
+                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-emerald-400 font-bold text-[10px] text-left border border-slate-800"
                 >
-                  + Camera Source
+                  + Camera Device
                 </button>
                 <button
                   onClick={() => onAddSource('scoreboard')}
-                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-850 rounded-lg text-rose-400 font-bold text-[10px] text-left border border-slate-800"
+                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-[#ff6b1a] font-bold text-[10px] text-left border border-slate-800"
                 >
                   + Scoreboard HUD
                 </button>
                 <button
+                  onClick={() => onAddSource('video_media')}
+                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-amber-400 font-bold text-[10px] text-left border border-slate-800"
+                >
+                  + Video / Commercial
+                </button>
+                <button
+                  onClick={() => onAddSource('image')}
+                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-pink-400 font-bold text-[10px] text-left border border-slate-800"
+                >
+                  + Image / Sponsor PNG
+                </button>
+                <button
+                  onClick={() => onAddSource('browser_url')}
+                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-sky-400 font-bold text-[10px] text-left border border-slate-800"
+                >
+                  + Browser URL
+                </button>
+                <button
                   onClick={() => onAddSource('text')}
-                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-850 rounded-lg text-purple-400 font-bold text-[10px] text-left border border-slate-800"
+                  className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-purple-400 font-bold text-[10px] text-left border border-slate-800"
                 >
                   + Text / Lower-Third
+                </button>
+                <button
+                  onClick={() => onAddSource('color_solid')}
+                  className="col-span-2 py-1.5 px-2 bg-slate-900 hover:bg-slate-800 rounded-lg text-slate-300 font-bold text-[10px] text-left border border-slate-800"
+                >
+                  + Solid Color Plate / Dimmer
                 </button>
               </div>
             </div>
 
-            {/* Current Scene Sources */}
+            {/* Current Scene Sources with Z-order Up/Down & Lock */}
             <div className="space-y-1">
-              <div className="font-bold text-slate-400 text-[10px] uppercase">Active Layers</div>
-              {activeScene.sources.map((src) => {
+              <div className="font-bold text-slate-400 text-[10px] uppercase">Active Layers (Top to Bottom)</div>
+              {sortedSources.map((src) => {
                 const isSelected = src.id === selectedSourceId;
                 return (
                   <div
@@ -542,34 +599,54 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                         : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
                     }`}
                   >
-                    <span className="font-bold truncate max-w-[150px]">{src.name}</span>
-                    <div className="flex items-center gap-1">
+                    <span className="font-bold truncate max-w-[125px]">{src.name}</span>
+                    <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      {onMoveSourceOrder && (
+                        <>
+                          <button
+                            onClick={() => onMoveSourceOrder(src.id, 'up')}
+                            className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                            title="Move Up"
+                          >
+                            <ArrowUp size={11} />
+                          </button>
+                          <button
+                            onClick={() => onMoveSourceOrder(src.id, 'down')}
+                            className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-white"
+                            title="Move Down"
+                          >
+                            <ArrowDown size={11} />
+                          </button>
+                        </>
+                      )}
+                      {onToggleSourceLock && (
+                        <button
+                          onClick={() => onToggleSourceLock(src.id)}
+                          className={`p-1 hover:bg-slate-700 rounded ${
+                            src.locked ? 'text-amber-400' : 'text-slate-500'
+                          }`}
+                          title={src.locked ? 'Unlock Layer' : 'Lock Layer'}
+                        >
+                          {src.locked ? <Lock size={11} /> : <Unlock size={11} />}
+                        </button>
+                      )}
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleSourceVisibility(src.id);
-                        }}
+                        onClick={() => onToggleSourceVisibility(src.id)}
                         className="p-1 hover:bg-slate-700 rounded text-slate-400"
                       >
-                        {src.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                        {src.visible ? <Eye size={11} /> : <EyeOff size={11} />}
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onOpenSourceProperties(src.id);
-                        }}
-                        className="p-1 hover:bg-slate-700 rounded text-slate-400"
+                        onClick={() => onOpenSourceProperties(src.id)}
+                        className="p-1 hover:bg-slate-700 rounded text-sky-400"
                       >
-                        <Settings2 size={12} />
+                        <Settings2 size={11} />
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteSource(src.id);
-                        }}
+                        onClick={() => onDeleteSource(src.id)}
                         className="p-1 hover:bg-slate-700 rounded text-rose-400"
                       >
-                        <Trash2 size={12} />
+                        <Trash2 size={11} />
                       </button>
                     </div>
                   </div>
@@ -582,6 +659,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
         {/* 5. BASKETBALL SCOREBOARD OPERATOR */}
         {activeTab === 'scoreboard' && (
           <div className="space-y-3">
+            {/* Away & Home Score Cards */}
             <div className="grid grid-cols-2 gap-2">
               {/* Away */}
               <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
@@ -595,25 +673,25 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                 <div className="flex justify-center gap-1">
                   <button
                     onClick={() => onChangeScoreboard({ awayScore: scoreboard.awayScore + 1 })}
-                    className="flex-1 py-1 bg-sky-600 rounded font-bold"
+                    className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 rounded font-black text-white"
                   >
                     +1
                   </button>
                   <button
                     onClick={() => onChangeScoreboard({ awayScore: scoreboard.awayScore + 2 })}
-                    className="flex-1 py-1 bg-sky-600 rounded font-bold"
+                    className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 rounded font-black text-white"
                   >
                     +2
                   </button>
                   <button
                     onClick={() => onChangeScoreboard({ awayScore: scoreboard.awayScore + 3 })}
-                    className="flex-1 py-1 bg-sky-600 rounded font-bold"
+                    className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 rounded font-black text-white"
                   >
                     +3
                   </button>
                   <button
                     onClick={() => onChangeScoreboard({ awayScore: Math.max(0, scoreboard.awayScore - 1) })}
-                    className="px-2 py-1 bg-slate-800 rounded font-bold text-slate-400"
+                    className="px-2 py-1.5 bg-slate-800 rounded font-bold text-slate-400"
                   >
                     -1
                   </button>
@@ -628,29 +706,29 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                   onChange={(e) => onChangeScoreboard({ homeTeam: e.target.value })}
                   className="w-full bg-transparent text-center font-black text-xs text-slate-300 uppercase focus:outline-none mb-1"
                 />
-                <div className="text-3xl font-black text-rose-400 font-mono mb-2">{scoreboard.homeScore}</div>
+                <div className="text-3xl font-black text-[#ff6b1a] font-mono mb-2">{scoreboard.homeScore}</div>
                 <div className="flex justify-center gap-1">
                   <button
                     onClick={() => onChangeScoreboard({ homeScore: scoreboard.homeScore + 1 })}
-                    className="flex-1 py-1 bg-rose-600 rounded font-bold"
+                    className="flex-1 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] rounded font-black text-white"
                   >
                     +1
                   </button>
                   <button
                     onClick={() => onChangeScoreboard({ homeScore: scoreboard.homeScore + 2 })}
-                    className="flex-1 py-1 bg-rose-600 rounded font-bold"
+                    className="flex-1 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] rounded font-black text-white"
                   >
                     +2
                   </button>
                   <button
                     onClick={() => onChangeScoreboard({ homeScore: scoreboard.homeScore + 3 })}
-                    className="flex-1 py-1 bg-rose-600 rounded font-bold"
+                    className="flex-1 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] rounded font-black text-white"
                   >
                     +3
                   </button>
                   <button
                     onClick={() => onChangeScoreboard({ homeScore: Math.max(0, scoreboard.homeScore - 1) })}
-                    className="px-2 py-1 bg-slate-800 rounded font-bold text-slate-400"
+                    className="px-2 py-1.5 bg-slate-800 rounded font-bold text-slate-400"
                   >
                     -1
                   </button>
@@ -658,32 +736,122 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
               </div>
             </div>
 
-            {/* Clock Controls */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
-              <button
-                onClick={() => onChangeScoreboard({ isClockRunning: !scoreboard.isClockRunning })}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold transition shadow ${
-                  scoreboard.isClockRunning
-                    ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                }`}
-              >
-                {scoreboard.isClockRunning ? <Pause size={14} /> : <Play size={14} />}
-                <span>{scoreboard.isClockRunning ? 'Pause' : 'Start'}</span>
-              </button>
+            {/* Game Clock & Shot Clock Controls */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => onChangeScoreboard({ isClockRunning: !scoreboard.isClockRunning })}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold transition shadow ${
+                    scoreboard.isClockRunning
+                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  {scoreboard.isClockRunning ? <Pause size={14} /> : <Play size={14} />}
+                  <span>{scoreboard.isClockRunning ? 'Stop Clock' : 'Start Clock'}</span>
+                </button>
 
-              <div className="text-center font-mono font-black text-2xl text-slate-100">
-                {scoreboard.gameClock}
+                <div className="text-center">
+                  <div className="text-[9px] text-slate-400 uppercase font-bold">Game Clock</div>
+                  <input
+                    type="text"
+                    value={scoreboard.gameClock}
+                    onChange={(e) => onChangeScoreboard({ gameClock: e.target.value })}
+                    className="w-20 bg-transparent text-center font-mono font-black text-xl text-white focus:outline-none"
+                  />
+                </div>
+
+                <button
+                  onClick={() => onChangeScoreboard({ gameClock: '10:00', shotClock: 24, isClockRunning: false })}
+                  className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+                  title="Reset Game Clock to 10:00"
+                >
+                  <RotateCcw size={15} />
+                </button>
               </div>
 
-              <button
-                onClick={() => onChangeScoreboard({ gameClock: '10:00', isClockRunning: false })}
-                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
-                title="Reset Clock to 10:00"
-              >
-                <RotateCcw size={15} />
-              </button>
+              {/* Shot Clock Row (:24 / :14) */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-slate-400">Shot Clock</span>
+                  <span
+                    className={`font-mono font-black text-lg px-2 py-0.5 rounded border ${
+                      scoreboard.shotClock <= 5
+                        ? 'bg-rose-950 text-rose-400 border-rose-700'
+                        : 'bg-slate-900 text-amber-400 border-slate-800'
+                    }`}
+                  >
+                    :{scoreboard.shotClock.toString().padStart(2, '0')}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onChangeScoreboard({ shotClock: 24 })}
+                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black rounded-lg text-xs border border-slate-700"
+                  >
+                    Reset :24
+                  </button>
+                  <button
+                    onClick={() => onChangeScoreboard({ shotClock: 14 })}
+                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black rounded-lg text-xs border border-slate-700"
+                  >
+                    Reset :14
+                  </button>
+                </div>
+              </div>
             </div>
+
+            {/* Period (Q1-Q4/OT) & Possession Arrow */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black uppercase text-slate-400">Quarter / Period</span>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => onChangeScoreboard({ period: q })}
+                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition ${
+                        scoreboard.period === q
+                          ? 'bg-[#e8430a] text-white'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {q === 5 ? 'OT' : `Q${q}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <span className="text-[10px] font-black uppercase text-slate-400">Possession</span>
+                <div className="flex gap-1">
+                  {(['away', 'none', 'home'] as const).map((pos) => (
+                    <button
+                      key={pos}
+                      onClick={() => onChangeScoreboard({ possession: pos })}
+                      className={`px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition ${
+                        scoreboard.possession === pos
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {pos === 'away' ? `◀ ${scoreboard.awayTeam.slice(0, 3)}` : pos === 'home' ? `${scoreboard.homeTeam.slice(0, 3)} ▶` : 'Neutral'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Instant Replay Trigger Button */}
+            {onTriggerInstantReplay && (
+              <button
+                onClick={onTriggerInstantReplay}
+                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-[#e8430a] hover:from-amber-500 hover:to-[#ff6b1a] text-white font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-lg transition active:scale-98"
+              >
+                <Zap size={14} />
+                <span>Play 10s Slow-Mo Instant Replay</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -699,14 +867,14 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                     micMuted ? 'bg-rose-950 text-rose-400 border border-rose-800' : 'bg-emerald-950 text-emerald-400'
                   }`}
                 >
-                  {micMuted ? 'MUTED' : 'LIVE'}
+                  {micMuted ? 'MUTED' : `${micVolume}%`}
                 </button>
               </div>
 
               <input
                 type="range"
                 min={0}
-                max={100}
+                max={140}
                 value={micMuted ? 0 : micVolume}
                 onChange={(e) => onChangeMicVolume(parseInt(e.target.value, 10))}
                 className="w-full accent-emerald-500"
@@ -724,7 +892,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
             <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-200">Master Output</span>
-                <span className="text-[10px] font-bold text-emerald-400">0 dB</span>
+                <span className="text-[10px] font-bold text-emerald-400">0.0 dB</span>
               </div>
               <input type="range" min={0} max={100} defaultValue={100} className="w-full accent-emerald-500" />
             </div>

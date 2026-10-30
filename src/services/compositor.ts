@@ -1,4 +1,4 @@
-import { Scene, ScoreboardSource, ScoreboardState, Source } from '@/types/broadcast';
+import { Scene, ScoreboardSource, ScoreboardState, Source, TransitionType, VideoMediaSource } from '@/types/broadcast';
 import { BrandKit, ChatMessage, NewsTickerConfig, StageLayout, StreamlabsBanner } from '@/types/streamlabs';
 
 export class VideoCompositor {
@@ -29,12 +29,19 @@ export class VideoCompositor {
   private isTransitioning: boolean = false;
   private transitionStartTime: number = 0;
   private transitionDuration: number = 400; // ms
+  private transitionType: TransitionType = 'fade';
 
   // Audio Context and destination stream
   private audioContext: AudioContext | null = null;
   private audioSourceNode: MediaStreamAudioSourceNode | null = null;
   private audioDestinationNode: MediaStreamAudioDestinationNode | null = null;
+  private micGainNode: GainNode | null = null;
   private compositeStream: MediaStream | null = null;
+
+  // Video Media Cache & Instant Replay Video
+  private videoMediaCache: Map<string, HTMLVideoElement> = new Map();
+  private instantReplayVideo: HTMLVideoElement | null = null;
+  public isReplaying: boolean = false;
 
   // Streamlabs Features (clean defaults, no demo text)
   public layout: StageLayout = 'solo';
@@ -133,12 +140,13 @@ export class VideoCompositor {
     }
   }
 
-  public setScene(scene: Scene, durationMs: number = 400) {
+  public setScene(scene: Scene, durationMs: number = 400, type: TransitionType = 'fade') {
+    this.transitionType = type;
     if (this.currentScene.id === scene.id) {
       this.currentScene = scene;
       return;
     }
-    if (durationMs <= 0) {
+    if (durationMs <= 0 || type === 'cut') {
       this.currentScene = scene;
       this.previousScene = null;
       this.isTransitioning = false;
@@ -151,6 +159,45 @@ export class VideoCompositor {
     this.isTransitioning = true;
     this.transitionStartTime = performance.now();
     this.transitionAlpha = 0;
+  }
+
+  public setMicGain(volumePercent: number, muted: boolean) {
+    if (this.micGainNode && this.audioContext) {
+      const target = muted ? 0 : Math.max(0, Math.min(2, volumePercent / 100));
+      this.micGainNode.gain.setValueAtTime(target, this.audioContext.currentTime);
+    }
+  }
+
+  public playInstantReplay(blobUrl: string) {
+    if (typeof document === 'undefined') return;
+    if (this.instantReplayVideo) {
+      this.instantReplayVideo.pause();
+      this.instantReplayVideo.src = '';
+    }
+    const vid = document.createElement('video');
+    vid.src = blobUrl;
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.playbackRate = 0.85;
+    vid.onended = () => {
+      this.isReplaying = false;
+      this.instantReplayVideo = null;
+      URL.revokeObjectURL(blobUrl);
+    };
+    vid.play().then(() => {
+      this.instantReplayVideo = vid;
+      this.isReplaying = true;
+    }).catch(() => {
+      this.isReplaying = false;
+    });
+  }
+
+  public stopInstantReplay() {
+    if (this.instantReplayVideo) {
+      this.instantReplayVideo.pause();
+      this.instantReplayVideo = null;
+    }
+    this.isReplaying = false;
   }
 
   public updateCurrentScene(scene: Scene) {
@@ -292,7 +339,11 @@ export class VideoCompositor {
     // 2. Render previous scene if transitioning
     if (this.isTransitioning && this.previousScene) {
       ctx.save();
-      ctx.globalAlpha = 1 - this.transitionAlpha;
+      if (this.transitionType === 'slide') {
+        ctx.translate(-width * this.transitionAlpha, 0);
+      } else {
+        ctx.globalAlpha = 1 - this.transitionAlpha;
+      }
       this.renderSceneSources(this.previousScene, isStream);
       ctx.restore();
     }
@@ -300,10 +351,24 @@ export class VideoCompositor {
     // 3. Render current active scene
     ctx.save();
     if (this.isTransitioning) {
-      ctx.globalAlpha = this.transitionAlpha;
+      if (this.transitionType === 'slide') {
+        ctx.translate(width * (1 - this.transitionAlpha), 0);
+      } else if (this.transitionType === 'zoom') {
+        const s = 0.85 + 0.15 * this.transitionAlpha;
+        ctx.translate((width * (1 - s)) / 2, (height * (1 - s)) / 2);
+        ctx.scale(s, s);
+        ctx.globalAlpha = this.transitionAlpha;
+      } else {
+        ctx.globalAlpha = this.transitionAlpha;
+      }
     }
     this.renderSceneSources(this.currentScene, isStream);
     ctx.restore();
+
+    // 3.5 Instant Replay Slow-Mo Overlay (OBS Replay Buffer)
+    if (this.isReplaying && this.instantReplayVideo && this.instantReplayVideo.readyState >= 2) {
+      this.drawInstantReplayOverlay(timestamp);
+    }
 
     // 4. Streamlabs Overlay Layer: Active Banners
     if (this.activeBanner && this.activeBanner.enabled) {
@@ -342,6 +407,9 @@ export class VideoCompositor {
     switch (source.type) {
       case 'camera':
         this.drawCameraSource(source);
+        break;
+      case 'video_media':
+        this.drawVideoMediaSource(source as VideoMediaSource);
         break;
       case 'scoreboard':
         this.drawScoreboardSource(source);
@@ -465,6 +533,63 @@ export class VideoCompositor {
     }
 
     ctx.drawImage(video, sx, sy, sWidth, sHeight, x, y, w, h);
+  }
+
+  private drawVideoMediaSource(source: VideoMediaSource) {
+    if (!source.url || typeof document === 'undefined') return;
+    let vid = this.videoMediaCache.get(source.url);
+    if (!vid) {
+      vid = document.createElement('video');
+      vid.crossOrigin = 'anonymous';
+      vid.src = source.url;
+      vid.loop = source.loop ?? true;
+      vid.muted = source.muted ?? true;
+      vid.playsInline = true;
+      vid.play().catch(() => {});
+      this.videoMediaCache.set(source.url, vid);
+    } else {
+      vid.loop = source.loop ?? true;
+      vid.muted = source.muted ?? true;
+      if (vid.paused) vid.play().catch(() => {});
+    }
+
+    if (vid.readyState >= 2) {
+      this.drawVideoAspectFit(vid, source.x, source.y, source.width, source.height, source.fit || 'cover');
+    }
+  }
+
+  private drawInstantReplayOverlay(timestamp: number) {
+    if (!this.instantReplayVideo) return;
+    const { ctx, width, height } = this;
+    ctx.save();
+    this.drawVideoAspectFit(this.instantReplayVideo, 0, 0, width, height, 'cover');
+
+    // Replay Broadcast Border & Pill
+    ctx.strokeStyle = '#ff6b1a';
+    ctx.lineWidth = 12;
+    ctx.strokeRect(6, 6, width - 12, height - 12);
+
+    const pulse = Math.sin(timestamp / 180) > 0;
+    ctx.fillStyle = 'rgba(12, 9, 7, 0.92)';
+    this.roundRect(ctx, 60, 50, 380, 64, 14);
+    ctx.fill();
+    ctx.strokeStyle = '#ff6b1a';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    if (pulse) {
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(98, 82, 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 26px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('INSTANT REPLAY • 0.85x', 124, 83);
+    ctx.restore();
   }
 
   // --- Scoreboard HUD Source (With 4 Hoop Culture Themes) ---

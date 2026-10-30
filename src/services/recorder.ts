@@ -4,6 +4,7 @@ export interface RecordingState {
   durationSeconds: number;
   recordedBytes: number;
   mimeType: string;
+  hasReplayClip?: boolean;
 }
 
 export class BroadcastRecorder {
@@ -14,6 +15,12 @@ export class BroadcastRecorder {
   private stateChangeCallback: ((state: RecordingState) => void) | null = null;
   private totalBytes: number = 0;
   private selectedMimeType: string = '';
+
+  // Rolling OBS Replay Buffer (self-contained 10-second clips)
+  private replayRecorder: MediaRecorder | null = null;
+  private replayChunks: Blob[] = [];
+  private latestReplayBlobUrl: string | null = null;
+  private replayCycleInterval: NodeJS.Timeout | null = null;
 
   public onStateChange(callback: (state: RecordingState) => void) {
     this.stateChangeCallback = callback;
@@ -39,6 +46,85 @@ export class BroadcastRecorder {
     }
 
     return '';
+  }
+
+  public startReplayBuffer(stream: MediaStream) {
+    this.stopReplayBuffer();
+    const mimeType = this.getSupportedMimeType();
+
+    const startSegment = () => {
+      try {
+        if (!stream.active) return;
+        this.replayChunks = [];
+        const rec = mimeType
+          ? new MediaRecorder(stream, { mimeType })
+          : new MediaRecorder(stream);
+
+        rec.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            this.replayChunks.push(e.data);
+          }
+        };
+
+        rec.onstop = () => {
+          if (this.replayChunks.length > 0) {
+            const blob = new Blob(this.replayChunks, { type: mimeType || 'video/mp4' });
+            if (this.latestReplayBlobUrl) {
+              URL.revokeObjectURL(this.latestReplayBlobUrl);
+            }
+            this.latestReplayBlobUrl = URL.createObjectURL(blob);
+            this.notifyState();
+          }
+        };
+
+        rec.start(1000);
+        this.replayRecorder = rec;
+      } catch {
+        // Ignore if device restricts dual MediaRecorder
+      }
+    };
+
+    startSegment();
+    this.replayCycleInterval = setInterval(() => {
+      if (this.replayRecorder && this.replayRecorder.state === 'recording') {
+        try {
+          this.replayRecorder.stop();
+        } catch {}
+      }
+      setTimeout(startSegment, 150);
+    }, 10000);
+  }
+
+  public stopReplayBuffer() {
+    if (this.replayCycleInterval) {
+      clearInterval(this.replayCycleInterval);
+      this.replayCycleInterval = null;
+    }
+    if (this.replayRecorder && this.replayRecorder.state !== 'inactive') {
+      try {
+        this.replayRecorder.stop();
+      } catch {}
+    }
+    this.replayRecorder = null;
+  }
+
+  public getInstantReplayUrl(): string | null {
+    // If we have a completed rolling segment, return it; otherwise flush current chunks
+    if (this.replayChunks.length > 0) {
+      const mimeType = this.selectedMimeType || this.getSupportedMimeType() || 'video/mp4';
+      const currentBlob = new Blob(this.replayChunks, { type: mimeType });
+      if (currentBlob.size > 10000) {
+        if (this.latestReplayBlobUrl) {
+          URL.revokeObjectURL(this.latestReplayBlobUrl);
+        }
+        this.latestReplayBlobUrl = URL.createObjectURL(currentBlob);
+      }
+    } else if (this.recordedChunks.length > 0) {
+      const mimeType = this.selectedMimeType || this.getSupportedMimeType() || 'video/mp4';
+      const currentBlob = new Blob(this.recordedChunks, { type: mimeType });
+      return URL.createObjectURL(currentBlob);
+    }
+    return this.latestReplayBlobUrl;
   }
 
   public start(stream: MediaStream): boolean {
@@ -167,6 +253,7 @@ export class BroadcastRecorder {
       durationSeconds,
       recordedBytes: this.totalBytes,
       mimeType: this.selectedMimeType,
+      hasReplayClip: Boolean(this.latestReplayBlobUrl || this.replayChunks.length > 0),
     });
   }
 }

@@ -17,6 +17,7 @@ import {
   LogIn,
 } from 'lucide-react';
 import { ScoreboardState, StreamBandwidthPreset, StreamSettings } from '@/types/broadcast';
+import { connectYouTubeWithGoogle } from '@/services/firebase';
 
 interface GoLiveModalProps {
   isOpen: boolean;
@@ -156,6 +157,39 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   const [ytEnabled, setYtEnabled] = useState(Boolean(initialYtKey));
   const [ytKey, setYtKey] = useState(initialYtKey);
   const [showYtKey, setShowYtKey] = useState(false);
+  const [ytChannelName, setYtChannelName] = useState(settings.ytSettings?.channelTitle || '');
+  const [isConnectingYt, setIsConnectingYt] = useState(false);
+
+  const handleAutoProvisionYouTube = async () => {
+    setIsConnectingYt(true);
+    try {
+      const { user, accessToken } = await connectYouTubeWithGoogle();
+      if (accessToken) {
+        const res = await fetch('/api/youtube/live', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create_live',
+            accessToken,
+            title: title || 'Hoop Culture Live Championship',
+            description: description || 'Live courtside broadcast from EZLiveStudio by HoopCulture',
+            privacyStatus: 'public',
+            latencyPreference: 'ultraLow',
+          }),
+        });
+        const data = await res.json();
+        if (data.streamKey) {
+          setYtKey(data.streamKey);
+          setYtEnabled(true);
+          setYtChannelName(user?.displayName || 'YouTube Live');
+        }
+      }
+    } catch (e) {
+      console.warn('YouTube OAuth provision warning:', e);
+    } finally {
+      setIsConnectingYt(false);
+    }
+  };
 
   // Bandwidth & Quality (defaults to Full HD 1080p 60 FPS sports broadcast)
   const [qualityPreset, setQualityPreset] = useState<StreamBandwidthPreset>(
@@ -708,13 +742,31 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
               </div>
 
               {ytEnabled && (
-                <div className="mt-2 space-y-1">
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center justify-between bg-slate-950/70 px-3 py-2 rounded-lg border border-slate-800">
+                    <div className="text-[11px] text-slate-300">
+                      {ytChannelName ? (
+                        <span className="text-emerald-400 font-bold">✓ Connected: {ytChannelName}</span>
+                      ) : (
+                        <span>Auto-create YouTube Live broadcast &amp; fetch stream key via Google OAuth:</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAutoProvisionYouTube}
+                      disabled={isConnectingYt}
+                      className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] flex items-center gap-1 shadow transition shrink-0"
+                    >
+                      <LogIn size={11} />
+                      <span>{isConnectingYt ? 'Connecting...' : 'Auto-Connect YouTube'}</span>
+                    </button>
+                  </div>
                   <div className="relative">
                     <input
                       type={showYtKey ? 'text' : 'password'}
                       value={ytKey}
                       onChange={(e) => setYtKey(e.target.value)}
-                      placeholder="Paste YouTube Live Stream Key (e.g. xxxx-xxxx-xxxx-xxxx)..."
+                      placeholder="Or paste YouTube Live Stream Key (e.g. xxxx-xxxx-xxxx-xxxx)..."
                       className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-1.5 pr-9 text-white font-mono text-[11px] placeholder-slate-500 focus:outline-none focus:border-red-500"
                     />
                     <button
@@ -726,13 +778,13 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                     </button>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                    <span>From YouTube Studio &gt; Create &gt; Go Live &gt; Stream Key</span>
+                    <span>Supports OAuth Auto-Create or OBS Manual Stream Key from YouTube Studio</span>
                     {ytKey.trim() ? (
                       <span className="text-emerald-400 font-bold flex items-center gap-1">
                         <Check size={11} /> Ready
                       </span>
                     ) : (
-                      <span className="text-amber-400 font-medium">Key required</span>
+                      <span className="text-amber-400 font-medium">Connect or paste key</span>
                     )}
                   </div>
                 </div>

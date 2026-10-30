@@ -29,6 +29,11 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+export const youtubeGoogleProvider = new GoogleAuthProvider();
+youtubeGoogleProvider.addScope('https://www.googleapis.com/auth/youtube');
+youtubeGoogleProvider.addScope('https://www.googleapis.com/auth/youtube.readonly');
+youtubeGoogleProvider.setCustomParameters({ prompt: 'select_account' });
+
 export const facebookProvider = new FacebookAuthProvider();
 facebookProvider.addScope('email');
 facebookProvider.addScope('public_profile');
@@ -63,6 +68,17 @@ export async function signInWithGoogle(): Promise<User | null> {
 }
 
 /**
+ * Connect YouTube Channel via Google OAuth & return accessToken for YouTube Data API v3
+ */
+export async function connectYouTubeWithGoogle(): Promise<{ user: User; accessToken: string }> {
+  const result = await signInWithPopup(auth, youtubeGoogleProvider);
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  const accessToken = credential?.accessToken || '';
+  await syncUserRecord(result.user);
+  return { user: result.user, accessToken };
+}
+
+/**
  * Sign in with Facebook Account
  */
 export async function signInWithFacebook(): Promise<User | null> {
@@ -77,22 +93,35 @@ export async function signInWithFacebook(): Promise<User | null> {
 }
 
 /**
+ * Connect Facebook Live via Popup & return accessToken
+ */
+export async function connectFacebookLiveWithPopup(): Promise<{ user: User; accessToken: string }> {
+  const result = await signInWithPopup(auth, facebookProvider);
+  const credential = FacebookAuthProvider.credentialFromResult(result);
+  const accessToken = credential?.accessToken || '';
+  await syncUserRecord(result.user);
+  return { user: result.user, accessToken };
+}
+
+/**
  * Sign in with League Email & Password (matching Hoop Culture Scoreboard production standard)
  */
 export async function signInWithLeagueCredentials(email: string, password: string): Promise<User | null> {
   const cleanEmail = email.trim().toLowerCase();
-  
+
   // 1. Try Firebase Auth email/password first
   try {
     const res = await signInWithEmailAndPassword(auth, cleanEmail, password);
     await syncUserRecord(res.user);
     return res.user;
-  } catch (firebaseErr: any) {
+  } catch (firebaseErr: unknown) {
     // 2. Fall back to authoritative league credentials (same as HoopCultureScoreboard/login.html)
-    const isLeagueAdmin = (cleanEmail === 'admin@hoopculture.ca' || cleanEmail === 'isidro.pascua@gmail.com') && (password === 'hoopculture2026' || password === 'admin2026');
+    const isLeagueAdmin =
+      (cleanEmail === 'admin@hoopculture.ca' || cleanEmail === 'isidro.pascua@gmail.com') &&
+      (password === 'hoopculture2026' || password === 'admin2026');
     if (isLeagueAdmin) {
       const safeUid = 'league_' + cleanEmail.replace(/[\.\#\$\[\]@]/g, '_');
-      const leagueUser: any = {
+      const leagueUser: unknown = {
         uid: safeUid,
         email: cleanEmail,
         displayName: cleanEmail.includes('isidro') ? 'Isidro Pascua (Commissioner)' : 'League Administrator',
@@ -116,7 +145,10 @@ export async function logoutUser(): Promise<void> {
 /**
  * Ensure user session profile exists in local cache (0ms instant, no disabled Firestore hanging)
  */
-export async function syncUserRecord(user: User, assignedCourt: string = 'Court 1 - Main Gymnasium'): Promise<UserSessionProfile> {
+export async function syncUserRecord(
+  user: User,
+  assignedCourt: string = 'Court 1 - Main Gymnasium'
+): Promise<UserSessionProfile> {
   const profileKey = `ezlive_operator_profile_${user.uid}`;
   let existing: Partial<UserSessionProfile> = {};
 
@@ -126,7 +158,7 @@ export async function syncUserRecord(user: User, assignedCourt: string = 'Court 
       if (stored) {
         existing = JSON.parse(stored);
       }
-    } catch (e) {}
+    } catch {}
   }
 
   const profile: UserSessionProfile = {
@@ -147,7 +179,7 @@ export async function syncUserRecord(user: User, assignedCourt: string = 'Court 
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(profileKey, JSON.stringify(profile));
-    } catch (e) {}
+    } catch {}
   }
 
   return profile;
@@ -200,7 +232,7 @@ export async function getOperatorSession(uid: string): Promise<UserSessionProfil
     if (stored) {
       return JSON.parse(stored) as UserSessionProfile;
     }
-  } catch (e) {}
+  } catch {}
   return null;
 }
 

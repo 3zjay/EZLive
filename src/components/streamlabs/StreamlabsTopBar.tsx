@@ -19,6 +19,9 @@ import {
   Users,
   Mic,
   MicOff,
+  Zap,
+  Columns,
+  LayoutPanelTop,
 } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 import { StreamDestinations } from '@/types/streamlabs';
@@ -58,6 +61,11 @@ interface StreamlabsTopBarProps {
   courtOptions?: string[];
   relayStats?: { connected: boolean; mbSent: string; status: string };
   destinationsSummary?: string;
+  isStudioMode?: boolean;
+  onToggleStudioMode?: () => void;
+  bottomPanelMode?: 'obs' | 'streamlabs';
+  onToggleBottomPanelMode?: () => void;
+  onTriggerInstantReplay?: () => void;
 }
 
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
@@ -97,6 +105,11 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   ],
   relayStats,
   destinationsSummary,
+  isStudioMode,
+  onToggleStudioMode,
+  bottomPanelMode = 'obs',
+  onToggleBottomPanelMode,
+  onTriggerInstantReplay,
 }) => {
   const [isCourtDropdownOpen, setIsCourtDropdownOpen] = useState(false);
 
@@ -239,6 +252,46 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
           <Monitor size={13} className={isScreenSharing ? 'text-white' : 'text-amber-400'} />
           <span>{isScreenSharing ? 'Stop Share' : 'Share Screen'}</span>
         </button>
+
+        {/* OBS Instant Replay (10s Slow-Mo) */}
+        {onTriggerInstantReplay && (
+          <button
+            onClick={onTriggerInstantReplay}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-bold transition shadow-sm active:scale-95"
+            title="Play 10-Second Slow-Motion Instant Replay"
+          >
+            <Zap size={12} className="text-amber-400" />
+            <span className="hidden md:inline text-[11px]">Replay (10s)</span>
+          </button>
+        )}
+
+        {/* OBS Studio Mode Toggle */}
+        {onToggleStudioMode && (
+          <button
+            onClick={onToggleStudioMode}
+            className={`hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition border ${
+              isStudioMode
+                ? 'bg-amber-600 border-amber-400 text-white shadow'
+                : 'bg-[#140f0c] hover:bg-[#1f1712] border-[#2a1e14] text-slate-300'
+            }`}
+            title="Toggle OBS Studio Mode (Dual Preview & Program Monitors)"
+          >
+            <Columns size={12} />
+            <span className="hidden xl:inline text-[11px]">Studio Mode</span>
+          </button>
+        )}
+
+        {/* Bottom Panel Switcher (OBS Classic Docks vs Backstage Strip) */}
+        {onToggleBottomPanelMode && (
+          <button
+            onClick={onToggleBottomPanelMode}
+            className="hidden md:flex items-center gap-1 px-2.5 py-1.5 bg-[#140f0c] hover:bg-[#1f1712] border border-[#2a1e14] rounded-lg text-xs font-bold text-slate-200 transition"
+            title="Switch between OBS 5-Dock Panel and Streamlabs Backstage Strip"
+          >
+            <LayoutPanelTop size={12} className="text-[#ff6b1a]" />
+            <span className="hidden xl:inline text-[11px]">{bottomPanelMode === 'obs' ? 'OBS Docks' : 'Backstage'}</span>
+          </button>
+        )}
 
         {/* Flip Camera (Prominent for Mobile / Tablet Court Operators) */}
         {hasCamera && (

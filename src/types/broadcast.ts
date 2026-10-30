@@ -31,7 +31,7 @@ export interface ScoreboardState {
   lastSyncTimestamp?: number;
 }
 
-export type SourceType = 'camera' | 'browser_url' | 'image' | 'text' | 'scoreboard' | 'color_solid';
+export type SourceType = 'camera' | 'browser_url' | 'image' | 'text' | 'scoreboard' | 'color_solid' | 'video_media';
 
 export interface BaseSource {
   id: string;
@@ -52,6 +52,15 @@ export interface CameraSource extends BaseSource {
   fit: 'cover' | 'contain' | 'fill';
   facingMode?: 'environment' | 'user';
   deviceId?: string;
+  mirror?: boolean;
+}
+
+export interface VideoMediaSource extends BaseSource {
+  type: 'video_media';
+  url: string;
+  loop: boolean;
+  muted: boolean;
+  fit: 'cover' | 'contain' | 'fill';
 }
 
 export interface BrowserUrlSource extends BaseSource {
@@ -103,6 +112,7 @@ export interface ColorSolidSource extends BaseSource {
 
 export type Source =
   | CameraSource
+  | VideoMediaSource
   | BrowserUrlSource
   | ImageSource
   | TextSource
@@ -116,7 +126,7 @@ export interface Scene {
 }
 
 // Transition settings
-export type TransitionType = 'cut' | 'fade';
+export type TransitionType = 'cut' | 'fade' | 'slide' | 'zoom';
 
 export interface FacebookLiveSettings {
   mode: 'auto' | 'manual';
@@ -139,8 +149,20 @@ export interface FacebookLiveSettings {
 
 export interface YouTubeLiveSettings {
   enabled: boolean;
+  mode?: 'auto' | 'manual';
+  accessToken?: string;
+  channelId?: string;
+  channelTitle?: string;
+  channelAvatar?: string;
+  broadcastTitle?: string;
+  broadcastDescription?: string;
+  privacyStatus?: 'public' | 'unlisted' | 'private';
+  latencyPreference?: 'ultraLow' | 'low' | 'normal';
   streamKey: string;
   rtmpUrl?: string; // Default 'rtmp://a.rtmp.youtube.com/live2/'
+  activeBroadcastId?: string;
+  liveChatId?: string;
+  watchUrl?: string;
 }
 
 export type StreamBandwidthPreset = 'eco_720' | 'balanced_720' | 'high_1080' | 'pro_1080_60';

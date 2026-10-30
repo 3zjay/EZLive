@@ -473,6 +473,52 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
                   </select>
                 </div>
               </div>
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <span className="font-bold text-slate-300">Horizontal Mirror (Flip Left/Right)</span>
+                <input
+                  type="checkbox"
+                  checked={localSource.mirror ?? false}
+                  onChange={(e) => setLocalSource({ ...localSource, mirror: e.target.checked })}
+                  className="w-4 h-4 rounded accent-emerald-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* VIDEO MEDIA SOURCE */}
+          {localSource.type === 'video_media' && (
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-3">
+              <div className="font-bold text-amber-400 uppercase text-[11px]">Video Media / Sponsor Commercial Settings</div>
+              <div>
+                <label className="block font-bold text-slate-400 mb-1">Video File URL (MP4 / WebM)</label>
+                <input
+                  type="url"
+                  value={localSource.url}
+                  onChange={(e) => setLocalSource({ ...localSource, url: e.target.value })}
+                  placeholder="https://example.com/intro.mp4"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSource.loop ?? true}
+                    onChange={(e) => setLocalSource({ ...localSource, loop: e.target.checked })}
+                    className="w-4 h-4 rounded accent-amber-500"
+                  />
+                  <span className="font-bold text-slate-300">Loop Video Continuously</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={localSource.muted ?? true}
+                    onChange={(e) => setLocalSource({ ...localSource, muted: e.target.checked })}
+                    className="w-4 h-4 rounded accent-amber-500"
+                  />
+                  <span className="font-bold text-slate-300">Mute Video Track</span>
+                </label>
+              </div>
             </div>
           )}
 

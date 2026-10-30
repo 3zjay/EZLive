@@ -25,9 +25,10 @@ import { SettingsModal } from '@/components/studio/SettingsModal';
 import { SourcePropertiesModal } from '@/components/studio/SourcePropertiesModal';
 import { GuestInviteModal } from '@/components/streamlabs/GuestInviteModal';
 import { GoLiveModal } from '@/components/studio/GoLiveModal';
-import { StreamBandwidthPreset } from '@/types/broadcast';
+import { ObsBottomDocks } from '@/components/studio/ObsBottomDocks';
+import { StreamBandwidthPreset, TransitionType } from '@/types/broadcast';
 import { useAuth } from '@/context/AuthContext';
-import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown, Zap } from 'lucide-react';
+import { LogIn, User as UserIcon, Shield, MapPin, ChevronDown, Zap, ArrowRight } from 'lucide-react';
 
 const INITIAL_SCOREBOARD: ScoreboardState = {
   homeTeam: 'HOME',
@@ -360,6 +361,9 @@ export default function StudioPage() {
   // State: Core OBS & Streamlabs (persisted in browser storage)
   const [scenes, setScenes] = useState<Scene[]>(() => SceneStorage.loadScenes() || DEFAULT_OBS_SCENES);
   const [activeSceneId, setActiveSceneId] = useState<string>(() => scenes[0]?.id || 'scene-game');
+  const [previewSceneId, setPreviewSceneId] = useState<string>(() => scenes[1]?.id || scenes[0]?.id || 'scene-game');
+  const [isStudioMode, setIsStudioMode] = useState<boolean>(false);
+  const [bottomPanelMode, setBottomPanelMode] = useState<'obs' | 'streamlabs'>('obs');
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [scoreboard, setScoreboard] = useState<ScoreboardState>(INITIAL_SCOREBOARD);
   const [settings, setSettings] = useState<StreamSettings>(() => {
@@ -564,6 +568,44 @@ export default function StudioPage() {
 
   // Active scene helper
   const activeScene = scenes.find((s) => s.id === activeSceneId) || scenes[0];
+  const previewScene = scenes.find((s) => s.id === previewSceneId) || scenes[0];
+
+  // Live Basketball Game Clock & Shot Clock 1-Second Tick Engine
+  useEffect(() => {
+    if (!scoreboard.isClockRunning) return;
+    const timer = setInterval(() => {
+      setScoreboard((prev) => {
+        if (!prev.isClockRunning) return prev;
+        const parts = prev.gameClock.split(':');
+        let mins = parseInt(parts[0] || '0', 10);
+        let secs = parseInt(parts[1] || '0', 10);
+        if (mins === 0 && secs === 0) {
+          const stopped = { ...prev, isClockRunning: false };
+          compositorRef.current?.updateScoreboard(stopped);
+          return stopped;
+        }
+        if (secs === 0) {
+          mins = Math.max(0, mins - 1);
+          secs = 59;
+        } else {
+          secs -= 1;
+        }
+        const nextGameClock = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        const nextShotClock = prev.shotClock > 0 ? prev.shotClock - 1 : 0;
+        const nextState: ScoreboardState = {
+          ...prev,
+          gameClock: nextGameClock,
+          shotClock: nextShotClock,
+          shotSeconds: nextShotClock,
+          gameSeconds: mins * 60 + secs,
+        };
+        compositorRef.current?.updateScoreboard(nextState);
+        bridgeRef.current?.broadcast(nextState);
+        return nextState;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [scoreboard.isClockRunning]);
 
   const updateScenes = (newScenes: Scene[]) => {
     setScenes(newScenes);
@@ -784,6 +826,8 @@ export default function StudioPage() {
 
         if (compositorRef.current && videoRef.current) {
           compositorRef.current.setVideoSource(videoRef.current);
+          const compStream = compositorRef.current.getCompositeStream(stream);
+          recorderRef.current?.startReplayBuffer(compStream);
         }
 
         setHasCamera(stream.getVideoTracks().length > 0);
@@ -884,13 +928,39 @@ export default function StudioPage() {
     }
   };
 
-  // Scene Switching
+  // Trigger 10-Second Slow-Motion Instant Replay
+  const handleTriggerInstantReplay = () => {
+    if (!recorderRef.current || !compositorRef.current) return;
+    const replayUrl = recorderRef.current.getInstantReplayUrl();
+    if (replayUrl) {
+      compositorRef.current.playInstantReplay(replayUrl);
+    } else {
+      alert('Instant Replay Buffer is warming up (needs at least 3 seconds of live camera feed). Try again in a moment!');
+    }
+  };
+
+  // Scene Switching (Supports Direct Mode and OBS Studio Mode Preview)
   const handleSelectScene = (sceneId: string) => {
+    if (isStudioMode) {
+      setPreviewSceneId(sceneId);
+      setSelectedSourceId(null);
+      return;
+    }
     setActiveSceneId(sceneId);
+    setPreviewSceneId(sceneId);
     setSelectedSourceId(null);
     const targetScene = scenes.find((s) => s.id === sceneId);
     if (targetScene && compositorRef.current) {
-      compositorRef.current.setScene(targetScene, settings.transitionDurationMs);
+      compositorRef.current.setScene(targetScene, settings.transitionDurationMs, settings.transitionType);
+    }
+  };
+
+  const handleTriggerTransition = () => {
+    const targetId = isStudioMode ? previewSceneId : scenes.find((s) => s.id !== activeSceneId)?.id || activeSceneId;
+    const targetScene = scenes.find((s) => s.id === targetId);
+    if (targetScene && compositorRef.current) {
+      setActiveSceneId(targetScene.id);
+      compositorRef.current.setScene(targetScene, settings.transitionDurationMs, settings.transitionType);
     }
   };
 
@@ -921,6 +991,22 @@ export default function StudioPage() {
     handleSelectScene(newScene.id);
   };
 
+  const handleDuplicateScene = (sceneId: string) => {
+    const sourceScene = scenes.find((s) => s.id === sceneId);
+    if (!sourceScene) return;
+    const duplicated: Scene = {
+      id: `scene-${Date.now()}`,
+      name: `${sourceScene.name} (Copy)`,
+      sources: sourceScene.sources.map((src, idx) => ({
+        ...src,
+        id: `src-${Date.now()}-${idx}`,
+      })),
+    };
+    const next = [...scenes, duplicated];
+    updateScenes(next);
+    handleSelectScene(duplicated.id);
+  };
+
   const handleDeleteScene = (sceneId: string) => {
     if (scenes.length <= 1) return;
     const next = scenes.filter((s) => s.id !== sceneId);
@@ -930,11 +1016,14 @@ export default function StudioPage() {
     }
   };
 
-  // Source Operations
+  // Source Operations (All 7 OBS Source Types)
+  const targetEditingSceneId = isStudioMode ? previewSceneId : activeSceneId;
+
   const handleAddSource = (type: SourceType) => {
     let newSource: Source;
     const id = `src-${Date.now()}`;
-    const highestZ = activeScene.sources.reduce((max, s) => Math.max(max, s.zIndex), 0);
+    const targetScene = scenes.find((s) => s.id === targetEditingSceneId) || activeScene;
+    const highestZ = targetScene.sources.reduce((max, s) => Math.max(max, s.zIndex), 0);
     const newZ = highestZ + 1;
 
     switch (type) {
@@ -943,15 +1032,15 @@ export default function StudioPage() {
           id,
           name: 'Scoreboard HUD',
           type: 'scoreboard',
-          x: 480,
-          y: 40,
-          width: 960,
-          height: 120,
+          x: 658,
+          y: 934,
+          width: 604,
+          height: 106,
           opacity: 1,
           zIndex: newZ,
           visible: true,
           locked: false,
-          theme: 'hooptimes',
+          theme: 'nbaoverlay2',
           scale: 1,
         };
         break;
@@ -971,6 +1060,59 @@ export default function StudioPage() {
           locked: true,
           url: `https://scoreboard.hoopculture.ca/nbaoverlay2?user=${encodeURIComponent(activeEmail)}`,
           syncDataBridge: true,
+        };
+        break;
+      case 'video_media':
+        newSource = {
+          id,
+          name: 'Sponsor Video / Intro MP4',
+          type: 'video_media',
+          x: 120,
+          y: 120,
+          width: 640,
+          height: 360,
+          opacity: 1,
+          zIndex: newZ,
+          visible: true,
+          locked: false,
+          url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+          loop: true,
+          muted: true,
+          fit: 'cover',
+        };
+        break;
+      case 'image':
+        newSource = {
+          id,
+          name: 'Sponsor Logo PNG',
+          type: 'image',
+          x: 1620,
+          y: 60,
+          width: 220,
+          height: 90,
+          opacity: 1,
+          zIndex: newZ,
+          visible: true,
+          locked: false,
+          url: '/icon.svg',
+          fit: 'contain',
+        };
+        break;
+      case 'color_solid':
+        newSource = {
+          id,
+          name: 'Dimmer Plate',
+          type: 'color_solid',
+          x: 0,
+          y: 0,
+          width: 1920,
+          height: 1080,
+          opacity: 0.55,
+          zIndex: newZ,
+          visible: true,
+          locked: false,
+          color: '#080605',
+          borderRadius: 0,
         };
         break;
       case 'text':
@@ -1015,7 +1157,7 @@ export default function StudioPage() {
     }
 
     const next = scenes.map((sc) => {
-      if (sc.id === activeSceneId) {
+      if (sc.id === targetEditingSceneId) {
         return {
           ...sc,
           sources: [...sc.sources, newSource],
@@ -1030,7 +1172,7 @@ export default function StudioPage() {
 
   const handleDeleteSource = (sourceId: string) => {
     const next = scenes.map((sc) => {
-      if (sc.id === activeSceneId) {
+      if (sc.id === targetEditingSceneId) {
         return {
           ...sc,
           sources: sc.sources.filter((s) => s.id !== sourceId),
@@ -1046,13 +1188,44 @@ export default function StudioPage() {
 
   const handleToggleSourceVisibility = (sourceId: string) => {
     const next = scenes.map((sc) => {
-      if (sc.id === activeSceneId) {
+      if (sc.id === targetEditingSceneId) {
         return {
           ...sc,
           sources: sc.sources.map((s) => (s.id === sourceId ? { ...s, visible: !s.visible } : s)),
         };
       }
       return sc;
+    });
+    updateScenes(next);
+  };
+
+  const handleToggleSourceLock = (sourceId: string) => {
+    const next = scenes.map((sc) => {
+      if (sc.id === targetEditingSceneId) {
+        return {
+          ...sc,
+          sources: sc.sources.map((s) => (s.id === sourceId ? { ...s, locked: !s.locked } : s)),
+        };
+      }
+      return sc;
+    });
+    updateScenes(next);
+  };
+
+  const handleMoveSourceOrder = (sourceId: string, direction: 'up' | 'down') => {
+    const next = scenes.map((sc) => {
+      if (sc.id !== targetEditingSceneId) return sc;
+      const ordered = [...sc.sources].sort((a, b) => a.zIndex - b.zIndex);
+      const idx = ordered.findIndex((s) => s.id === sourceId);
+      if (idx === -1) return sc;
+      const swapIdx = direction === 'up' ? idx + 1 : idx - 1;
+      if (swapIdx < 0 || swapIdx >= ordered.length) return sc;
+
+      const tempZ = ordered[idx].zIndex;
+      ordered[idx] = { ...ordered[idx], zIndex: ordered[swapIdx].zIndex };
+      ordered[swapIdx] = { ...ordered[swapIdx], zIndex: tempZ };
+
+      return { ...sc, sources: ordered };
     });
     updateScenes(next);
   };
@@ -1074,7 +1247,8 @@ export default function StudioPage() {
   };
 
   const handleOpenSourceProperties = (sourceId: string) => {
-    const src = activeScene.sources.find((s) => s.id === sourceId);
+    const targetScene = scenes.find((s) => s.id === targetEditingSceneId) || activeScene;
+    const src = targetScene.sources.find((s) => s.id === sourceId);
     if (src) {
       setEditingSource(src);
       setIsSourcePropsOpen(true);
@@ -1083,7 +1257,7 @@ export default function StudioPage() {
 
   const handleSaveSourceProperties = (updated: Source) => {
     const next = scenes.map((sc) => {
-      if (sc.id === activeSceneId) {
+      if (sc.id === targetEditingSceneId) {
         const updatedScene: Scene = {
           ...sc,
           sources: sc.sources.map((s) => (s.id === updated.id ? updated : s)),
@@ -1441,22 +1615,94 @@ export default function StudioPage() {
         assignedCourt={profile?.assignedCourt || 'Court 1 — Championship Hardwood'}
         onUpdateAssignedCourt={updateAssignedCourt}
         courtOptions={COURT_OPTIONS}
+        isStudioMode={isStudioMode}
+        onToggleStudioMode={() => setIsStudioMode(!isStudioMode)}
+        bottomPanelMode={bottomPanelMode}
+        onToggleBottomPanelMode={() => setBottomPanelMode(bottomPanelMode === 'obs' ? 'streamlabs' : 'obs')}
+        onTriggerInstantReplay={handleTriggerInstantReplay}
       />
 
       {/* Main Studio Middle Zone: Program Preview Stage + Streamlabs Right Sidebar */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        {/* Main 16:9 Broadcast Stage Canvas with Bounding Box & Interactive Layers */}
+        {/* Main 16:9 Broadcast Stage Canvas with Bounding Box & Interactive Layers (or Dual Studio Mode) */}
         <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
-          <PreviewStage
-            canvasRef={canvasRef}
-            videoRef={videoRef}
-            activeScene={activeScene}
-            selectedSourceId={selectedSourceId}
-            onSelectSource={setSelectedSourceId}
-            onUpdateSourceTransform={handleUpdateSourceTransform}
-          />
+          {isStudioMode ? (
+            <div className="w-full h-full grid grid-cols-1 lg:grid-cols-11 gap-2 p-3 items-center bg-[#090705]">
+              {/* Left: PREVIEW Scene Inspector */}
+              <div className="lg:col-span-5 flex flex-col bg-[#120d0a] border border-emerald-500/40 rounded-xl overflow-hidden shadow-xl h-full max-h-[65vh]">
+                <div className="px-3 py-1.5 bg-emerald-950/50 border-b border-emerald-500/30 flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                    PREVIEW — {previewScene.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">{previewScene.sources.length} sources</span>
+                </div>
+                <div className="flex-1 p-3 flex flex-col justify-between bg-[#080605]">
+                  <div className="space-y-1.5 overflow-y-auto">
+                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">
+                      Preview Scene Layer Stack (Click Transition to push Live):
+                    </div>
+                    {previewScene.sources.map((src) => (
+                      <div
+                        key={src.id}
+                        onClick={() => handleOpenSourceProperties(src.id)}
+                        className="p-2 rounded-lg bg-[#140f0c] border border-[#2a1e14] hover:border-emerald-500/50 flex items-center justify-between cursor-pointer"
+                      >
+                        <span className="font-bold text-xs text-white">{src.name}</span>
+                        <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-900 text-emerald-400">
+                          {src.type}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2 border-t border-[#2a1e14] flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Transition: {settings.transitionType?.toUpperCase()}</span>
+                    <span>{settings.transitionDurationMs} ms</span>
+                  </div>
+                </div>
+              </div>
 
-           </div>
+              {/* Center Transition Bar */}
+              <div className="lg:col-span-1 flex flex-col items-center justify-center gap-2">
+                <button
+                  onClick={handleTriggerTransition}
+                  className="px-3 py-3 rounded-xl bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:from-[#ff6b1a] hover:to-[#ff8533] text-white font-black uppercase text-[10px] tracking-wider shadow-lg flex flex-col items-center gap-1 transition active:scale-95"
+                >
+                  <span>Cut / Fade</span>
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+
+              {/* Right: PROGRAM (LIVE OUTPUT) */}
+              <div className="lg:col-span-5 flex flex-col bg-[#120d0a] border border-[#e8430a]/60 rounded-xl overflow-hidden shadow-xl h-full max-h-[65vh]">
+                <div className="px-3 py-1.5 bg-[#e8430a]/20 border-b border-[#e8430a]/40 flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6b1a]">
+                    PROGRAM (LIVE OUTPUT) — {activeScene.name}
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400">{fps} FPS</span>
+                </div>
+                <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+                  <PreviewStage
+                    canvasRef={canvasRef}
+                    videoRef={videoRef}
+                    activeScene={activeScene}
+                    selectedSourceId={selectedSourceId}
+                    onSelectSource={setSelectedSourceId}
+                    onUpdateSourceTransform={handleUpdateSourceTransform}
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <PreviewStage
+              canvasRef={canvasRef}
+              videoRef={videoRef}
+              activeScene={activeScene}
+              selectedSourceId={selectedSourceId}
+              onSelectSource={setSelectedSourceId}
+              onUpdateSourceTransform={handleUpdateSourceTransform}
+            />
+          )}
+        </div>
 
         {/* Streamlabs Toolset Sidebar (Desktop Side Panel or Mobile/Tablet Overlay Drawer) */}
         {isSidebarOpen && (
@@ -1479,7 +1725,7 @@ export default function StudioPage() {
                 brandKit={brandKit}
                 onUpdateBrandKit={setBrandKit}
                 scenes={scenes}
-                activeSceneId={activeSceneId}
+                activeSceneId={targetEditingSceneId}
                 selectedSourceId={selectedSourceId}
                 onSelectScene={handleSelectScene}
                 onAddScene={handleAddScene}
@@ -1488,9 +1734,12 @@ export default function StudioPage() {
                 onAddSource={handleAddSource}
                 onDeleteSource={handleDeleteSource}
                 onToggleSourceVisibility={handleToggleSourceVisibility}
+                onToggleSourceLock={handleToggleSourceLock}
+                onMoveSourceOrder={handleMoveSourceOrder}
                 onOpenSourceProperties={handleOpenSourceProperties}
                 scoreboard={scoreboard}
                 onChangeScoreboard={handleScoreboardChange}
+                onTriggerInstantReplay={handleTriggerInstantReplay}
                 micVolume={micVolume}
                 micMuted={micMuted}
                 onChangeMicVolume={setMicVolume}
@@ -1557,14 +1806,57 @@ export default function StudioPage() {
         )}
       </div>
 
-      {/* Backstage Participant Strip & Layout Switcher (Solo, Split, PIP, Grid) */}
-      <BackstageStrip
-        participants={participants}
-        layout={stageLayout}
-        onToggleOnStage={handleToggleOnStage}
-        onToggleMute={handleToggleParticipantMute}
-        onChangeLayout={setStageLayout}
-      />
+      {/* Bottom Dock Area: Switchable between OBS Classic 5-Dock Panel and Streamlabs Backstage Strip */}
+      {bottomPanelMode === 'obs' ? (
+        <ObsBottomDocks
+          scenes={scenes}
+          activeSceneId={activeSceneId}
+          previewSceneId={previewSceneId}
+          isStudioMode={isStudioMode}
+          selectedSourceId={selectedSourceId}
+          onSelectScene={handleSelectScene}
+          onAddScene={handleAddScene}
+          onDuplicateScene={handleDuplicateScene}
+          onDeleteScene={handleDeleteScene}
+          onSelectSource={setSelectedSourceId}
+          onAddSource={handleAddSource}
+          onDeleteSource={handleDeleteSource}
+          onToggleSourceVisibility={handleToggleSourceVisibility}
+          onToggleSourceLock={handleToggleSourceLock}
+          onMoveSourceOrder={handleMoveSourceOrder}
+          onOpenSourceProperties={handleOpenSourceProperties}
+          audioLevel={audioLevel}
+          micVolume={micVolume}
+          micMuted={micMuted}
+          onChangeMicVolume={setMicVolume}
+          onToggleMicMute={handleToggleMicMute}
+          transitionType={settings.transitionType || 'fade'}
+          transitionDurationMs={settings.transitionDurationMs || 400}
+          onChangeTransitionType={(t: TransitionType) => handleSaveSettings({ ...settings, transitionType: t })}
+          onChangeTransitionDuration={(ms: number) =>
+            handleSaveSettings({ ...settings, transitionDurationMs: ms })
+          }
+          onTriggerTransition={handleTriggerTransition}
+          isStreaming={isStreaming}
+          isYouTubeLive={Boolean(settings.ytSettings?.enabled && isStreaming)}
+          isFacebookLive={isStreaming}
+          recordingState={recordingState}
+          fps={fps}
+          onOpenGoLiveModal={handleToggleStreaming}
+          onToggleRecording={handleToggleRecording}
+          onTriggerInstantReplay={handleTriggerInstantReplay}
+          onToggleStudioMode={() => setIsStudioMode(!isStudioMode)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+        />
+      ) : (
+        <BackstageStrip
+          participants={participants}
+          layout={stageLayout}
+          onToggleOnStage={handleToggleOnStage}
+          onToggleMute={handleToggleParticipantMute}
+          onChangeLayout={setStageLayout}
+        />
+      )}
 
       {/* Guest Invite Modal */}
       <GuestInviteModal isOpen={isGuestInviteOpen} onClose={() => setIsGuestInviteOpen(false)} />
