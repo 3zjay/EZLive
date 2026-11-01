@@ -833,8 +833,10 @@ export default function StudioPage() {
       compositorRef.current.highlightedChat = highlightedChat;
       compositorRef.current.activeBanner = activeBanner;
       compositorRef.current.brandKit = brandKit;
+      compositorRef.current.isBroadcastingOrRecording =
+        isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer);
     }
-  }, [stageLayout, tickerConfig, highlightedChat, activeBanner, brandKit]);
+  }, [stageLayout, tickerConfig, highlightedChat, activeBanner, brandKit, isStreaming, recordingState.isRecording, settings.enableReplayBuffer]);
 
   // Audio VU Meter Setup
   const setupAudioMeter = useCallback((stream: MediaStream) => {
@@ -874,11 +876,21 @@ export default function StudioPage() {
     }
   }, []);
 
-  // Camera Initialization with Robust Laptop Webcam, Mobile & iOS Safari Fallbacks
+  // Camera Initialization with Robust Laptop Webcam, Mobile, Android WebView & iOS Safari Fallbacks
   const startCamera = useCallback(
     async (facing: 'environment' | 'user' = 'environment', videoDevId?: string, audioDevId?: string) => {
       try {
         setCameraError(null);
+
+        // If running inside the Native Android App, ensure OS Camera/Mic permissions are requested
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const nativeRtmp = typeof window !== 'undefined' ? (window as any).EZLiveNativeRTMP : null;
+        if (nativeRtmp && typeof nativeRtmp.requestCameraPermissions === 'function') {
+          try {
+            nativeRtmp.requestCameraPermissions();
+          } catch {}
+        }
+
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         }
@@ -893,11 +905,11 @@ export default function StudioPage() {
         const is60fps = resolvedProfile === 'pro' && settings.targetResolution.endsWith('60');
 
         const isMobileOrTablet =
-          typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+          typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile|EZLiveAndroidApp/i.test(navigator.userAgent);
 
         let stream: MediaStream | null = null;
 
-        // Attempt 1: Hardware-appropriate resolution constraints
+        // Attempt 1: Hardware-appropriate resolution constraints + audio
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -919,28 +931,45 @@ export default function StudioPage() {
           try {
             // Attempt 2: Universal video + audio (works on all Windows/Mac laptop webcams & mobile browsers)
             stream = await navigator.mediaDevices.getUserMedia({
-              video: isMobileOrTablet ? { facingMode: { ideal: facing } } : true,
+              video: videoDevId
+                ? { deviceId: { ideal: videoDevId } }
+                : isMobileOrTablet
+                  ? { facingMode: { ideal: facing } }
+                  : true,
               audio: true,
             });
           } catch (audioErr) {
-            console.warn('Audio+video rejected, attempting video-only mode:', audioErr);
+            console.warn('Audio+video rejected, attempting video-only mode with facingMode:', audioErr);
             try {
-              // Attempt 3: Video only (if laptop/phone has no mic or mic permission denied)
+              // Attempt 3: Video only with facingMode / deviceId (if laptop/phone has no mic or mic permission denied)
               stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
+                video: videoDevId
+                  ? { deviceId: { ideal: videoDevId } }
+                  : isMobileOrTablet
+                    ? { facingMode: { ideal: facing } }
+                    : true,
                 audio: false,
               });
-            } catch (videoOnlyErr) {
-              // Attempt 4: Enumerate available video devices and pick the first one explicitly
-              const allDevs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-              const vDevs = allDevs.filter((d) => d.kind === 'videoinput');
-              if (vDevs.length > 0 && vDevs[0].deviceId) {
+            } catch (videoFacingErr) {
+              console.warn('Video facingMode rejected, attempting bare video:true fallback:', videoFacingErr);
+              try {
+                // Attempt 4: Bare video:true
                 stream = await navigator.mediaDevices.getUserMedia({
-                  video: { deviceId: { ideal: vDevs[0].deviceId } },
+                  video: true,
                   audio: false,
                 });
-              } else {
-                throw videoOnlyErr;
+              } catch (videoOnlyErr) {
+                // Attempt 5: Enumerate available video devices and pick the first one explicitly
+                const allDevs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+                const vDevs = allDevs.filter((d) => d.kind === 'videoinput');
+                if (vDevs.length > 0 && vDevs[0].deviceId) {
+                  stream = await navigator.mediaDevices.getUserMedia({
+                    video: { deviceId: { ideal: vDevs[0].deviceId } },
+                    audio: false,
+                  });
+                } else {
+                  throw videoOnlyErr;
+                }
               }
             }
           }
@@ -1018,13 +1047,21 @@ export default function StudioPage() {
       hasInitiatedCamera.current = true;
       startCamera(facingMode);
     }
+
+    // Listen for Android Native Runtime Permission Grant event so camera starts immediately after tapping "Allow"
+    const handleAndroidPermGranted = () => {
+      startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined);
+    };
+    window.addEventListener('ANDROID_PERMISSIONS_GRANTED', handleAndroidPermGranted);
+
     return () => {
+      window.removeEventListener('ANDROID_PERMISSIONS_GRANTED', handleAndroidPermGranted);
       if (audioLevelInterval.current) clearInterval(audioLevelInterval.current);
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [startCamera, facingMode]);
+  }, [startCamera, facingMode, selectedVideoDeviceId, selectedAudioDeviceId]);
 
   const handleFlipCamera = () => {
     const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
@@ -1756,6 +1793,13 @@ export default function StudioPage() {
   return (
     <div className="fixed inset-0 flex flex-col bg-[#080605] overflow-hidden font-sans select-none text-[#f2ede8] z-10">
       {/* Hidden Source Elements */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0.001, pointerEvents: 'none', top: 0, left: 0, zIndex: -50 }}
+      />
       <video
         ref={screenShareVideoRef}
         autoPlay

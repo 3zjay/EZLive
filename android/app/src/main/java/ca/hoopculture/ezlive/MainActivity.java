@@ -6,16 +6,18 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
+import androidx.annotation.NonNull;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     private static final int PERMISSION_REQUEST_CODE = 1001;
     private NativeRtmpBridge nativeRtmpBridge;
+    private PermissionRequest pendingWebPermissionRequest = null;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -44,10 +46,18 @@ public class MainActivity extends BridgeActivity {
             nativeRtmpBridge = new NativeRtmpBridge(this, webView);
             webView.addJavascriptInterface(nativeRtmpBridge, "EZLiveNativeRTMP");
 
-            webView.setWebChromeClient(new WebChromeClient() {
+            // Subclass Capacitor's BridgeWebChromeClient so WebRTC getUserMedia always receives camera & mic permissions
+            webView.setWebChromeClient(new BridgeWebChromeClient(this.bridge) {
                 @Override
                 public void onPermissionRequest(final PermissionRequest request) {
-                    runOnUiThread(() -> request.grant(request.getResources()));
+                    runOnUiThread(() -> {
+                        if (hasCameraPermission()) {
+                            request.grant(request.getResources());
+                        } else {
+                            pendingWebPermissionRequest = request;
+                            requestBroadcastPermissions();
+                        }
+                    });
                 }
             });
         }
@@ -81,7 +91,11 @@ public class MainActivity extends BridgeActivity {
         );
     }
 
-    private void requestBroadcastPermissions() {
+    public boolean hasCameraPermission() {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    public void requestBroadcastPermissions() {
         String[] requiredPermissions = new String[] {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
@@ -101,6 +115,32 @@ public class MainActivity extends BridgeActivity {
                 missingPermissions.toArray(new String[0]),
                 PERMISSION_REQUEST_CODE
             );
+        } else {
+            notifyPermissionsGranted();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            if (pendingWebPermissionRequest != null) {
+                try {
+                    pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
+                } catch (Exception ignored) {}
+                pendingWebPermissionRequest = null;
+            }
+            notifyPermissionsGranted();
+        }
+    }
+
+    public void notifyPermissionsGranted() {
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            android.webkit.WebView webView = this.bridge.getWebView();
+            webView.post(() -> webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('ANDROID_PERMISSIONS_GRANTED'));",
+                null
+            ));
         }
     }
 }

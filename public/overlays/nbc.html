@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    // Global Storage Shield — prevents WebKit SecurityError exceptions on blocked localStorage/sessionStorage
+    (function() {
+      try {
+        localStorage.setItem('__test_ls__', '1');
+        localStorage.removeItem('__test_ls__');
+      } catch (e) {
+        console.warn("localStorage is blocked. Injecting in-memory fallback.");
+        var store = {};
+        Object.defineProperty(window, 'localStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+      try {
+        sessionStorage.setItem('__test_ss__', '1');
+        sessionStorage.removeItem('__test_ss__');
+      } catch (e) {
+        console.warn("sessionStorage is blocked. Injecting in-memory fallback.");
+        var store = {};
+        Object.defineProperty(window, 'sessionStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <title>NBA – NBC Style Scorebug</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,700;0,800;0,900;1,900&family=Barlow:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script src="/overlays/firebase-config.js"></script>
+  <style>
+    :root {
+      --navy:   #0a1224;
+      --navy2:  #111d38;
+      --navy3:  #18284c;
+      --gold:   #f2c94c;
+      --gold2:  #f2994a;
+      --gold-g: linear-gradient(180deg, #ffe885 0%, #f2c94c 50%, #d49a18 100%);
+      --red-g:  linear-gradient(180deg, #ff4b4b 0%, #dc2626 50%, #991b1b 100%);
+      --white:  #ffffff;
+      --shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: transparent;
+      font-family: 'Barlow Condensed', sans-serif;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+      padding-bottom: 2.5vh;
+    }
+
+    /* ══ MAIN BUG CONTAINER ══ */
+    #bug {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border-radius: 9999px;
+      overflow: hidden;
+      background: #000000;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.85);
+      transform-origin: bottom center;
+    }
+
+    /* ── TOP DECORATIVE STRIP (hidden in stadium pill style) ── */
+    #top-bar {
+      display: none;
+    }
+
+    /* ── MAIN SCOREBOARD ROW ── */
+    #row {
+      display: flex;
+      align-items: center;
+      height: 4.6vw;
+      background: #0d0d0d;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ① & ⑦ LOGO BLOCK (Capsule Ends) */
+    .logo-wrapper {
+      position: relative;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      background: #2d2d2d;
+      padding: 0 0.8vw;
+      transition: background 0.4s;
+    }
+
+    .logo-cell {
+      width: 3.6vw;
+      height: 3.6vw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    /* Circle badge inside the cell */
+    .circle {
+      width: 3.4vw;
+      height: 3.4vw;
+      border-radius: 50%;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.5), inset 0 0 0 1.5px rgba(0,0,0,0.15);
+      overflow: hidden;
+      padding: 0.2vw;
+    }
+    .circle img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .no-logo {
+      font-size: 0.8vw;
+      font-weight: 900;
+      color: #111;
+      letter-spacing: 0.5px;
+    }
+
+    /* Stacked Team Name Typography */
+    .team-abbr-stacked {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-transform: uppercase;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 0.82vw;
+      font-size: 0.95vw;
+      color: #ffffff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+      padding: 0 0.4vw;
+    }
+
+    /* ② & ⑥ BRACE / DIVIDER COLUMNS (With Foul Numbers) */
+    .brace-col {
+      width: 1.3vw;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #2d2d2d;
+      color: rgba(255,255,255,0.9);
+      position: relative;
+    }
+    .brace-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ③ & ⑤ SCORE SEGMENTS — Clean Original Design */
+    .score-seg {
+      width: 5.6vw;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #2d2d2d;
+      position: relative;
+      transition: background 0.4s;
+    }
+
+    .score-num {
+      font-size: 3.1vw;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: -1px;
+      line-height: 1;
+      font-style: italic;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      transition: transform 0.15s ease-out;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+    }
+    .score-num.bump {
+      transform: scale(1.25);
+      color: #ffe885;
+    }
+
+    /* ④ CENTER CLOCK & PERIOD PANEL */
+    #ctr {
+      width: 9.8vw;
+      height: 100%;
+      background: #000000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-left: 1px solid rgba(255,255,255,0.12);
+      border-right: 1px solid rgba(255,255,255,0.12);
+      position: relative;
+      z-index: 5;
+      padding: 0.2vw 0;
+    }
+
+    #hcLogo {
+      height: 1.1vw;
+      width: auto;
+      max-width: 8vw;
+      object-fit: contain;
+      margin-bottom: 0.1vw;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.8));
+    }
+
+    #clk {
+      font-size: 1.65vw;
+      font-weight: 900;
+      color: #ff3344;
+      line-height: 0.9;
+      letter-spacing: 0.5px;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0 10px rgba(255, 51, 68, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #clk.warn { color: #ff3344; animation: pulseClk 1s infinite; }
+
+    #prow {
+      display: flex;
+      align-items: center;
+      gap: 0.5vw;
+      margin-top: 0.15vw;
+    }
+
+    #per {
+      font-size: 0.85vw;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 0.5px;
+    }
+
+    #sc {
+      font-size: 0.85vw;
+      font-weight: 900;
+      color: #ffe885;
+      background: transparent;
+      padding: 0;
+    }
+    #sc.warn { color: #ff3344; animation: scPulse 0.45s ease infinite alternate; }
+    #sc.zero { color: #ff1122; text-shadow: 0 0 0.5vw #ff0000; }
+    @keyframes scPulse { 0% { opacity: 1; } 100% { opacity: 0.35; } }
+
+    #qf {
+      font-size: 0.75vw;
+      font-weight: 900;
+      color: #ff3344;
+    }
+
+    /* ── BOTTOM INFORMATION STRIP ── */
+    #strip {
+      width: 100%;
+      height: 1.3vw;
+      background: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .strip-text {
+      font-size: 0.68vw;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 0.5vw;
+    }
+    .live-dot {
+      width: 0.45vw;
+      height: 0.45vw;
+      background: #ff3344;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #ff3344;
+    }
+    .venue-highlight {
+      color: #ffe885;
+    }
+  </style>
+</head>
+<body>
+
+<div id="bug">
+
+  <!-- ① TOP BAR (segmented team backgrounds) -->
+  <div id="top-bar">
+    <div id="hTopBar"></div>
+    <div id="ctrTopBar"></div>
+    <div id="aTopBar"></div>
+  </div>
+
+  <!-- MAIN ROW -->
+  <div id="row">
+
+    <!-- ① HOME LOGO -->
+    <div class="logo-wrapper" id="hLogoWrapper">
+      <div class="logo-cell" id="hLogoCell">
+        <div class="circle" id="hCircle"><div class="no-logo">LOGO</div></div>
+      </div>
+      <div class="team-abbr-stacked" id="hAbbr">HOME</div>
+    </div>
+
+    <!-- ② HOME BRACE — Broadcast Divider & Notched Line -->
+    <div class="brace-col" id="hBraceCol">
+      <svg class="brace-svg" viewBox="0 0 16 42">
+        <line x1="14" y1="0" x2="14" y2="42" stroke="currentColor" stroke-opacity="0.25" stroke-width="1.2" />
+        <path d="M 9,6 L 9,18 L 4,21 L 9,24 L 9,36" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.5" stroke-linecap="square" />
+        <text x="8" y="13" font-family="'Barlow Condensed', sans-serif" font-size="8.5" font-weight="900" fill="currentColor" text-anchor="end" id="hFouls"></text>
+      </svg>
+    </div>
+
+    <!-- ③ HOME SCORE  (dark) -->
+    <div class="score-seg" id="hScoreSeg">
+      <span class="score-num" id="hNum">0</span>
+    </div>
+
+    <!-- ④ CENTER -->
+    <div id="ctr">
+      <img src="/hoop-culture-logo2.png" id="hcLogo" class="brand-logo" alt="Hoop Culture Logo" onerror="this.onerror=null;this.src='/hoop-culture-logo.jpg';" style="height:1.1vw; max-width:8vw; object-fit:contain; margin-bottom:0.1vw;">
+      <div id="clk">10:00</div>
+      <div id="prow">
+        <span id="per">1ST</span>
+        <span id="sc">24</span>
+        <span id="qf"></span>
+      </div>
+    </div>
+
+    <!-- ⑤ AWAY SCORE  (bright team color) -->
+    <div class="score-seg" id="aScoreSeg">
+      <span class="score-num" id="aNum">0</span>
+    </div>
+
+    <!-- ⑥ AWAY BRACE — Broadcast Divider & Notched Line -->
+    <div class="brace-col" id="aBraceCol">
+      <svg class="brace-svg" viewBox="0 0 16 42">
+        <line x1="2" y1="0" x2="2" y2="42" stroke="currentColor" stroke-opacity="0.25" stroke-width="1.2" />
+        <path d="M 7,6 L 7,18 L 12,21 L 7,24 L 7,36" fill="none" stroke="currentColor" stroke-opacity="0.7" stroke-width="1.5" stroke-linecap="square" />
+        <text x="8" y="13" font-family="'Barlow Condensed', sans-serif" font-size="8.5" font-weight="900" fill="currentColor" text-anchor="start" id="aFouls"></text>
+      </svg>
+    </div>
+
+    <!-- ⑦ AWAY LOGO -->
+    <div class="logo-wrapper" id="aLogoWrapper">
+      <div class="team-abbr-stacked" id="aAbbr">AWAY</div>
+      <div class="logo-cell" id="aLogoCell">
+        <div class="circle" id="aCircle"><div class="no-logo">LOGO</div></div>
+      </div>
+    </div>
+
+  </div><!-- /row -->
+
+  <!-- BOTTOM STRIP — Clean Centered Broadcast Info -->
+  <div id="strip">
+    <div id="strip-content" class="strip-text">
+      <span id="live-dot" class="live-dot" style="display:none;"></span>
+      <span id="strip-text">HOOP CULTURE NETWORK</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ══ CONFIG ══ */
+const isLocalServer = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.startsWith('10.');
+
+const useFB = (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+
+const SRV = useFB
+  ? 'https://basketball-scoreboard-o0c7.onrender.com'
+  : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '');
+
+let db=null;
+if(useFB&&typeof isFirebaseConfigured!=='undefined'&&isFirebaseConfigured){
+  firebase.initializeApp(firebaseConfig);
+  db=firebase.database();
+}
+
+function gP(n){return new URLSearchParams(window.location.search).get(n);}
+const CU=gP('user')||'default';
+const FU=CU.replace(/[\.\#\$\[\]]/g,'_');
+
+const PER=['1ST','2ND','3RD','4TH','OT','2OT','3OT'];
+
+const DEF={
+  homeScore:0,awayScore:0,
+  homeAbbr:'HOME',awayAbbr:'AWAY',
+  homeColor:'#888888',awayColor:'#c8102e',
+  homeLogo:'',awayLogo:'',
+  homeLogoThumb:'',awayLogoThumb:'',
+  homeFouls:0,awayFouls:0,
+  gameSeconds:600,clockRunning:false,
+  shotSeconds:24,shotRunning:false,
+  quarter:1,
+  rp1Title:'BROADCAST',rp1Value:'',
+  rp2Title:'VENUE',rp2Value:'',
+  aiSyncEnabled:true
+};
+
+let S={...DEF};
+let aiSyncActive = false;
+let aiState = { gameSeconds: null, clockStr: null, homeScore: null, awayScore: null, quarter: null, shotSeconds: null };
+let lH=-1,lA=-1,_lb=0;
+let _lastLocalMsgTime=0;
+let _ll=0;
+
+function applyStreamData(data) {
+  if (!data) return;
+  
+  if (data.streamActive === false) {
+    aiSyncActive = false;
+    draw();
+    return;
+  }
+  
+  if (data.streamActive === true) {
+    aiSyncActive = true;
+  } else if (data.clock != null || data.homeScore != null || data.awayScore != null || data.period != null || data.shotClock != null) {
+    aiSyncActive = true;
+  }
+
+  if (data.clock != null) {
+    const clockStr = String(data.clock).trim();
+    aiState.clockStr = clockStr;
+    if (clockStr.includes(':')) {
+      const parts = clockStr.split(':');
+      aiState.gameSeconds = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    } else if (clockStr.length === 3) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 1), 10) || 0) * 60 + (parseInt(clockStr.substring(1), 10) || 0);
+    } else if (clockStr.length === 4) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 2), 10) || 0) * 60 + (parseInt(clockStr.substring(2), 10) || 0);
+    } else {
+      const p = parseFloat(clockStr);
+      if (!isNaN(p)) aiState.gameSeconds = Math.round(p);
+    }
+  }
+  if (data.homeScore != null && !isNaN(parseInt(data.homeScore, 10))) aiState.homeScore = parseInt(data.homeScore, 10);
+  if (data.awayScore != null && !isNaN(parseInt(data.awayScore, 10))) aiState.awayScore = parseInt(data.awayScore, 10);
+  if (data.period != null && !isNaN(parseInt(data.period, 10))) aiState.quarter = parseInt(data.period, 10);
+  if (data.shotClock != null && !isNaN(parseInt(data.shotClock, 10))) aiState.shotSeconds = parseInt(data.shotClock, 10);
+
+  if (data.gameClockStream) S.gameClockStream = data.gameClockStream;
+  if (data.homeScoreStream) S.homeScoreStream = data.homeScoreStream;
+  if (data.awayScoreStream) S.awayScoreStream = data.awayScoreStream;
+  if (data.periodStream) S.periodStream = data.periodStream;
+  if (data.shotClockStream) S.shotClockStream = data.shotClockStream;
+
+  draw();
+}
+
+function getEffState() {
+  if (aiSyncActive) {
+    return {
+      ...S,
+      gameSeconds: aiState.gameSeconds !== null ? aiState.gameSeconds : S.gameSeconds,
+      clockStr: aiState.clockStr !== null ? aiState.clockStr : null,
+      homeScore: aiState.homeScore !== null ? aiState.homeScore : S.homeScore,
+      awayScore: aiState.awayScore !== null ? aiState.awayScore : S.awayScore,
+      quarter: aiState.quarter !== null ? aiState.quarter : S.quarter,
+      shotSeconds: aiState.shotSeconds !== null ? aiState.shotSeconds : S.shotSeconds,
+    };
+  }
+  return S;
+}
+
+let _lastStateMsgTime = 0;
+
+function hasStateNonClockChanged(oldS, newD) {
+  if (!oldS || !newD) return true;
+  for (const k of [
+    'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeRecord', 'awayRecord',
+    'homeColor', 'awayColor', 'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
+    'quarter', 'possession', 'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value',
+    'homeFouls', 'awayFouls'
+  ]) {
+    if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
+  }
+  return false;
+}
+
+function applyStateMessage(msgData) {
+  _lastStateMsgTime = Date.now();
+  _ll = Date.now();
+  _lastLocalMsgTime = Date.now();
+  if (!msgData) return;
+  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
+  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
+  const nonClockChanged = hasStateNonClockChanged(S, msgData);
+  S = { ...S, ...msgData };
+  if (nonClockChanged) {
+    draw();
+  } else {
+    tock();
+  }
+  sync();
+}
+
+function handleBCMessage(e) {
+  if (!e || !e.data) return;
+  if (e.data.type === 'state') {
+    applyStateMessage(e.data.data);
+  } else if (e.data.type === 'stream') {
+    _lastLocalMsgTime = Date.now();
+    applyStreamData(e.data.data);
+  }
+}
+
+const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('hc_scoreboard_sync') : null;
+if (bc) bc.onmessage = handleBCMessage;
+const bcLegacy = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('basketball_scoreboard') : null;
+if (bcLegacy) bcLegacy.onmessage = handleBCMessage;
+window.addEventListener('message', handleBCMessage);
+
+function $(i){return document.getElementById(i);}
+function tx(i,v){
+  const e=$(i);
+  const s = String(v !== undefined && v !== null ? v : '');
+  if(e && e.textContent !== s) e.textContent = s;
+}
+function isHex(c){return/^#[0-9A-F]{6}$/i.test(c);}
+
+/* Hex Darkener Helper */
+function dk(hex, factor) {
+  if (!isHex(hex)) return '#2d2d2d';
+  let r = parseInt(hex.slice(1,3), 16);
+  let g = parseInt(hex.slice(3,5), 16);
+  let b = parseInt(hex.slice(5,7), 16);
+  r = Math.floor(r * factor);
+  g = Math.floor(g * factor);
+  b = Math.floor(b * factor);
+  return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+}
+
+/* Light/Dark Luminance Helper */
+function isLight(hex) {
+  if (!isHex(hex)) return false;
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b);
+  return lum > 160;
+}
+
+function setLogo(cid,url){
+  const c=$(cid);if(!c)return;
+  if(url){
+    let img=c.querySelector('img');
+    if(!img){
+      c.innerHTML=`<img src="${url}" alt="" style="width:100%;height:100%;object-fit:contain">`;
+    } else if(img.getAttribute('src')!==url){
+      img.src=url;
+    }
+  } else {
+    if(!c.querySelector('.no-logo')){
+      c.innerHTML='<div class="no-logo">LOGO</div>';
+    }
+  }
+}
+function setStacked(id,text){
+  const el=$(id);if(!el)return;
+  const cleanText=(text||'').trim();
+  if (el.dataset.renderedText === cleanText) return;
+  el.dataset.renderedText = cleanText;
+  const chars=cleanText.toUpperCase().split('');
+  const len=chars.length;
+  
+  let fontSize='0.95vw';
+  let lineHeight='0.82vw';
+  
+  if(len>8){
+    fontSize='0.36vw';
+    lineHeight='0.3vw';
+  }else if(len>6){
+    fontSize='0.5vw';
+    lineHeight='0.43vw';
+  }else if(len>4){
+    fontSize='0.68vw';
+    lineHeight='0.58vw';
+  }else if(len===4){
+    fontSize='0.82vw';
+    lineHeight='0.7vw';
+  }
+  
+  el.style.fontSize=fontSize;
+  el.style.lineHeight=lineHeight;
+  el.innerHTML=chars.map(c=>`<span>${c}</span>`).join('');
+}
+
+function renderStreamOrText(elId, streamImgUrl, fallbackText, maxHeightCss) {
+  const el = typeof elId === 'string' ? $(elId) : elId;
+  if (!el) return;
+  if (aiSyncActive && streamImgUrl) {
+    let img = el.querySelector('img.stream-bin-img');
+    if (!img) {
+      el.innerHTML = '';
+      img = document.createElement('img');
+      img.className = 'stream-bin-img';
+      img.style.maxHeight = maxHeightCss || '100%';
+      img.style.maxWidth = '100%';
+      img.style.objectFit = 'contain';
+      img.style.verticalAlign = 'middle';
+      img.style.filter = 'brightness(1.25) contrast(1.25)';
+      img.style.borderRadius = '4px';
+      img.style.border = '1px solid rgba(255, 255, 255, 0.55)';
+      img.style.outline = '1px solid rgba(0, 0, 0, 0.9)';
+      img.style.background = '#080c14';
+      img.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.8), inset 0 0 3px rgba(255, 255, 255, 0.2)';
+      img.style.padding = '2px 4px';
+      img.style.boxSizing = 'border-box';
+      img.style.display = 'inline-block';
+      el.appendChild(img);
+    } else {
+      img.style.maxHeight = maxHeightCss || '100%';
+    }
+    if (img.src !== streamImgUrl) {
+      img.src = streamImgUrl;
+    }
+  } else {
+    const img = el.querySelector('img.stream-bin-img');
+    if (img) {
+      el.innerHTML = '';
+    }
+    const txt = (fallbackText !== null && fallbackText !== undefined) ? String(fallbackText) : '';
+    if (el.children.length === 0 && el.textContent !== txt) {
+      el.textContent = txt;
+    }
+  }
+}
+
+/* ══ CLOCK ══ */
+function tock(){
+  const eff = getEffState();
+  let v = '';
+  if (aiSyncActive && eff.clockStr) {
+    v = eff.clockStr;
+  } else {
+    const s = eff.gameSeconds, m = Math.floor(s/60), sec = s%60;
+    v = s < 60 ? `${s}.0` : `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+  renderStreamOrText('clk', S.gameClockStream, v, '1.6vw');
+  const e=$('clk');
+  if(e){
+    const targetWarn = eff.gameSeconds<=30;
+    if(e.classList.contains('warn') !== targetWarn) e.classList.toggle('warn', targetWarn);
+  }
+
+  const scText = eff.shotSeconds != null ? eff.shotSeconds : '--';
+  renderStreamOrText('sc', S.shotClockStream, scText, '0.9vw');
+  const sc=$('sc');
+  if(sc){
+    const targetWarn = (eff.shotSeconds !== null && eff.shotSeconds<=5 && eff.shotSeconds > 0);
+    if(sc.classList.contains('warn') !== targetWarn) sc.classList.toggle('warn', targetWarn);
+    const targetZero = (eff.shotSeconds !== null && eff.shotSeconds === 0);
+    if(sc.classList.contains('zero') !== targetZero) sc.classList.toggle('zero', targetZero);
+  }
+}
+
+/* ══ DRAW ══ */
+function draw(){
+  const eff = getEffState();
+  /* period */
+  const perText = typeof eff.quarter==='number'?(eff.quarter===0?PER[0]:PER[eff.quarter-1]||`Q${eff.quarter}`):eff.quarter;
+  renderStreamOrText('per', S.periodStream, perText, '0.9vw');
+  tock();
+
+  /* scores + bump */
+  const hE=$('hNum'),aE=$('aNum');
+  renderStreamOrText('hNum', S.homeScoreStream, eff.homeScore, '2.6vw');
+  renderStreamOrText('aNum', S.awayScoreStream, eff.awayScore, '2.6vw');
+  if(hE && lH >= 0 && lH !== eff.homeScore){hE.classList.remove('bump');void hE.offsetWidth;hE.classList.add('bump');}
+  if(aE && lA >= 0 && lA !== eff.awayScore){aE.classList.remove('bump');void aE.offsetWidth;aE.classList.add('bump');}
+  lH=eff.homeScore;lA=eff.awayScore;
+
+  /* abbr — max 4 chars stacked vertically */
+  setStacked('hAbbr', S.homeAbbr || 'HOME');
+  setStacked('aAbbr', S.awayAbbr || 'AWAY');
+
+  /* fouls in brace columns */
+  const hf=S.homeFouls||0,af=S.awayFouls||0;
+  tx('hFouls',hf>0?String(hf):'');
+  tx('aFouls',af>0?String(af):'');
+
+  /* shot clock fouls */
+  const qfn=parseInt(S.rp1Value||'');
+  tx('qf',(!isNaN(qfn)&&qfn>0)?String(qfn):'');
+
+  /* ── COLORS ── */
+  const hcRaw = isHex(S.homeColor) ? S.homeColor : '#888888';
+  const acRaw = isHex(S.awayColor) ? S.awayColor : '#c8102e';
+
+  const homePrimary = hcRaw;
+  const awayPrimary = acRaw;
+
+  const hTextColor = isLight(homePrimary) ? '#111111' : '#ffffff';
+  const aTextColor = isLight(awayPrimary) ? '#111111' : '#ffffff';
+
+  const hLW=$('hLogoWrapper');
+  if(hLW)hLW.style.background=dk(hcRaw, 0.58);
+
+  const hTB=$('hTopBar');
+  if(hTB)hTB.style.background=dk(hcRaw, 0.58);
+
+  const aTB=$('aTopBar');
+  if(aTB)aTB.style.background=dk(acRaw, 0.58);
+
+  const aLW=$('aLogoWrapper');
+  if(aLW)aLW.style.background=dk(acRaw, 0.58);
+
+  const hBrace = $('hBraceCol');
+  if(hBrace){
+    hBrace.style.background=homePrimary;
+    hBrace.style.color=hTextColor;
+  }
+  const hScore = $('hScoreSeg');
+  if(hScore){
+    hScore.style.background=homePrimary;
+    hScore.style.color=hTextColor;
+  }
+
+  const aBrace = $('aBraceCol');
+  if(aBrace){
+    aBrace.style.background=awayPrimary;
+    aBrace.style.color=aTextColor;
+  }
+  const aScore = $('aScoreSeg');
+  if(aScore){
+    aScore.style.background=awayPrimary;
+    aScore.style.color=aTextColor;
+  }
+
+  setLogo('hCircle',S.homeLogo || S.homeLogoThumb);
+  setLogo('aCircle',S.awayLogo || S.awayLogoThumb);
+
+  const bcVal = (S.rp1Value || '').trim();
+  const vnLabel = (S.rp2Title || 'VENUE').trim();
+  const vnVal = (S.rp2Value || '').trim();
+
+  const cleanBc = (bcVal === '—' || bcVal === '-') ? '' : bcVal;
+  const cleanVn = (vnVal === '—' || vnVal === '-') ? '' : vnVal;
+
+  const dotEl = document.getElementById('live-dot');
+  const txtEl = document.getElementById('strip-text');
+
+  if (txtEl) {
+    let targetHtml = '';
+    if (cleanBc) {
+      if (dotEl) dotEl.style.display = 'inline-block';
+      targetHtml = `LIVE: ${cleanBc}`;
+      if (cleanVn) {
+        targetHtml += ` &nbsp;&nbsp;&bull;&nbsp;&nbsp; ${vnLabel}: <span class="venue-highlight">${cleanVn}</span>`;
+      }
+    } else {
+      if (dotEl) dotEl.style.display = 'none';
+      if (cleanVn) {
+        targetHtml = `${vnLabel}: <span class="venue-highlight">${cleanVn}</span>`;
+      } else {
+        targetHtml = 'HOOP CULTURE NETWORK';
+      }
+    }
+    if (txtEl.dataset.renderedHtml !== targetHtml) {
+      txtEl.dataset.renderedHtml = targetHtml;
+      txtEl.innerHTML = targetHtml;
+    }
+  }
+}
+
+/* ══ TIMER & LOCAL TICK ══ */
+let tT=null,sT=null;
+function sync(){
+  clearInterval(tT);clearInterval(sT);
+  if(S.gameRunning){
+    tT=setInterval(()=>{
+      if(Date.now() - _lastStateMsgTime < 3000) return;
+      if(S.gameSeconds>0){S.gameSeconds--;tock();}else{clearInterval(tT);gbuzz();}
+    },1000);
+  }
+  if(S.shotRunning){
+    sT=setInterval(()=>{
+      if(Date.now() - _lastStateMsgTime < 3000) return;
+      if(S.shotSeconds>0){S.shotSeconds--;tock();}else{clearInterval(sT);sbuzz();}
+    },1000);
+  }
+}
+function stop(){clearInterval(tT);clearInterval(sT);}
+
+/* ══ AUDIO ══ */
+const _gameBuzzer = new Audio('/buzzer.mp3');
+_gameBuzzer.volume = 1.0;
+_gameBuzzer.load();
+
+const _shotBuzzer = new Audio('/buzzer.mp3');
+_shotBuzzer.volume = 1.0;
+_shotBuzzer.load();
+
+window.addEventListener('load', () => {
+  [_gameBuzzer, _shotBuzzer].forEach(a => {
+    a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+  });
+});
+
+function gbuzz(){ _gameBuzzer.currentTime = 0; _gameBuzzer.play().catch(()=>{}); }
+function sbuzz(){ _shotBuzzer.currentTime = 0; _shotBuzzer.play().catch(()=>{}); }
+
+/* ══ CONNECT ══ */
+function conn(){
+  if(useFB&&db){
+    db.ref(`states/${FU}`).on('value',sn=>{
+      if(Date.now()-_ll<2000)return;
+      const d=sn.val();
+      if(!d)return;
+      applyStateMessage(d);
+    });
+    db.ref(`ocr/${FU}`).on('value',sn=>{const d=sn.val();if(d)applyStreamData(d);});
+    db.ref(`buzz/${FU}`).on('value',sn=>{if(Date.now()-_ll<2000)return;const m=sn.val();if(!m||m.timestamp<=_lb)return;_lb=m.timestamp;m.kind==='game'?gbuzz():sbuzz();});
+    return;
+  }
+  const es=new EventSource(`${SRV}/events?user=${encodeURIComponent(CU)}`);
+  es.onmessage=e=>{
+    try{
+      const m=JSON.parse(e.data);
+      if(m.type==='buzz'){
+        m.kind==='game'?gbuzz():sbuzz();
+      } else if(m.type==='state'){
+        applyStateMessage(m.data);
+      } else if(m.type==='stream'){
+        applyStreamData(m.data);
+      }
+    }catch(err){}
+  };
+  es.onerror=()=>{es.close();setTimeout(conn,2000);};
+}
+if(useFB&&db){
+  draw();
+  db.ref(`states/${FU}`).once('value').then(sn=>{const d=sn.val();if(d){S={...DEF,...d};draw();sync();}}).catch(()=>{}).finally(()=>conn());
+}
+else{draw();fetch(`${SRV}/state?user=${encodeURIComponent(CU)}`).then(r=>r.json()).then(d=>{if(Object.keys(d).length){S={...DEF,...d};draw();sync();}}).catch(()=>{}).finally(()=>conn());}
+</script>
+</body>
+</html>

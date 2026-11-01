@@ -43,6 +43,7 @@ export class VideoCompositor {
   private videoMediaCache: Map<string, HTMLVideoElement> = new Map();
   private instantReplayVideo: HTMLVideoElement | null = null;
   public isReplaying: boolean = false;
+  public isBroadcastingOrRecording: boolean = false;
 
   // Streamlabs Features (clean defaults, no demo text)
   public layout: StageLayout = 'solo';
@@ -493,7 +494,7 @@ export class VideoCompositor {
         this.drawColorSolidSource(source);
         break;
       case 'browser_url':
-        if (isStream) {
+        if (this.isBroadcastingOrRecording) {
           this.drawBrowserSourcePlaceholder(source);
         }
         break;
@@ -712,11 +713,11 @@ export class VideoCompositor {
     const { ctx } = this;
     const sb = this.scoreboard;
     const scale = source.scale || 1;
-    const barWidth = source.width || 1040 * scale;
-    const barHeight = source.height || 116 * scale;
-    const barX = source.x;
-    const barY = source.y;
-    const radius = 12 * scale;
+    let barWidth = 1040 * scale;
+    let barHeight = 116 * scale;
+    let barX = Math.round((this.width - barWidth) / 2);
+    let barY = Math.round(this.height - barHeight - 36 * scale);
+    const radius = 58 * scale;
 
     const homeColor = sb.homeColor || '#f5c842';
     const awayColor = sb.awayColor || '#c8102e';
@@ -916,10 +917,10 @@ export class VideoCompositor {
     const { ctx } = this;
     const sb = this.scoreboard;
     const scale = source.scale || 1;
-    const barWidth = source.width || 880 * scale;
-    const barHeight = source.height || 100 * scale;
-    const barX = source.x;
-    const barY = source.y;
+    const barWidth = 880 * scale;
+    const barHeight = 100 * scale;
+    const barX = Math.round((this.width - barWidth) / 2);
+    const barY = Math.round(this.height - barHeight - 30 * scale);
     const radius = 10 * scale;
 
     ctx.save();

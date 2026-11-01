@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scoreboard Scorebug</title>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="/overlays/firebase-config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body {
+  background:transparent;
+  font-family:'Barlow Condensed',sans-serif;
+  overflow:hidden;
+  width:100%; height:100%;
+}
+
+/* Scorebug sits top-left — compact, same vw scaling as fullscreen bar */
+#scorebug {
+  position:fixed;
+  bottom:1.5vw; left:50%; transform:translateX(-50%);
+  display:inline-flex;
+  flex-direction:column;
+  min-width:22vw;
+}
+
+/* ── TOP ROW: Period · Clock · Shot ── */
+.top-bar {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#0d1117;
+  border-top:0.18vw solid #c8102e;
+  border-radius:0.42vw 0.42vw 0 0;
+  height:1.82vw;
+  overflow:hidden;
+}
+.top-text-centered{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:0.75vw;
+  font-weight:900;
+  color:rgba(255,255,255,0.85);
+  text-transform:uppercase;
+  letter-spacing:0.08vw;
+  text-shadow:0 0.05vw 0.1vw rgba(0,0,0,0.85);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.live-dot-pulse{
+  width:0.5vw;
+  height:0.5vw;
+  background-color:#ff3b30;
+  border-radius:50%;
+  display:inline-block;
+  margin-right:0.4vw;
+  flex-shrink:0;
+  box-shadow:0 0 0.2vw #ff3b30;
+  animation:pulse-live 1.0s infinite alternate;
+}
+@keyframes pulse-live{
+  0%{opacity:0.35;transform:scale(0.85)}
+  100%{opacity:1;transform:scale(1.15);box-shadow:0 0 0.35vw #ff3b30}
+}
+.venue-highlight{
+  color:#ffae00;
+  text-shadow:0 0 0.3vw rgba(255,174,0,0.25);
+}
+.period-lbl {
+  font-size:0.52vw; font-weight:800;
+  letter-spacing:0.16vw; color:rgba(255,255,255,0.45);
+  text-transform:uppercase; white-space:nowrap;
+}
+.game-clock {
+  font-family:'Teko',sans-serif; font-size:1.3vw; font-weight:700;
+  color:#fff; letter-spacing:0.1vw; line-height:1;
+  font-variant-numeric:tabular-nums; transition:color 0.3s;
+}
+.game-clock.warn { color:#ff5f5f; }
+.shot-row { display:flex; align-items:center; justify-content:center; gap:0.26vw; flex-shrink:0; }
+.shot-label {
+  font-size:0.47vw; font-weight:800;
+  letter-spacing:0.1vw; color:#8a95a8; text-transform:uppercase;
+  flex-shrink:0;
+}
+.shot-num {
+  font-family:'Teko',sans-serif; font-size:1.04vw; font-weight:700;
+  color:#f5c842; letter-spacing:0.05vw; line-height:1;
+  font-variant-numeric:tabular-nums; min-width:1.5vw; text-align:center;
+  display:inline-flex; align-items:center; justify-content:center;
+  overflow:hidden; flex-shrink:0;
+}
+.shot-num.urgent { color:#e84040; animation:scPulse 0.45s ease infinite alternate; }
+.shot-num.zero { color:#ff3b30; text-shadow:0 0 0.6vw #ff0000; font-weight:800; }
+@keyframes scPulse { 0% { opacity:1; } 100% { opacity:0.35; } }
+
+.live-seg {
+  display:flex; align-items:center; gap:0.36vw;
+  padding:0 0.78vw;
+}
+.live-dot {
+  width:0.31vw; height:0.31vw; border-radius:50%;
+  background:#e84040; box-shadow:0 0 0.36vw #e84040;
+  animation:livePulse 1.2s ease infinite;
+}
+@keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.6)} }
+.live-text {
+  font-size:0.42vw; font-weight:800; letter-spacing:0.16vw;
+  color:rgba(255,255,255,0.45); text-transform:uppercase;
+}
+
+/* ── MAIN ROW: Logo · Score | Center | Score · Logo ── */
+.main-row {
+  display:flex; align-items:center;
+  background:#0d1117;
+  border-bottom:0.18vw solid #c8102e;
+  border-radius:0 0 0.42vw 0.42vw;
+  height:5.73vw;
+  overflow:visible;
+}
+
+/* Team segments */
+.team-seg {
+  display:flex; align-items:center;
+  width:12.5vw; flex-shrink:0;
+  box-sizing:border-box;
+  height:100%;
+}
+.team-seg.home { flex-direction:row; padding-left:0.52vw; justify-content:flex-start; border-bottom-left-radius:0.42vw; }
+.team-seg.away { flex-direction:row; padding-right:0.52vw; justify-content:flex-end; border-bottom-right-radius:0.42vw; }
+
+.logo-wrap {
+  width:5.73vw; height:5.73vw; flex-shrink:0;
+  position:relative; z-index:9;
+}
+.logo-circle {
+  width:5.73vw; height:5.73vw; border-radius:50%;
+  background:#111; border:0.18vw solid rgba(255,255,255,0.12);
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden; box-shadow:0 0.16vw 1vw rgba(0,0,0,0.8);
+  transition:border-color 0.3s, box-shadow 0.3s;
+}
+.logo-circle img { width:5.1vw; height:5.1vw; object-fit:contain; image-rendering:auto; }
+.logo-ph {
+  font-size:0.42vw; font-weight:700; color:rgba(255,255,255,0.2);
+  text-transform:uppercase; text-align:center; line-height:1.3;
+}
+
+.team-text {
+  display:flex; flex-direction:column; justify-content:center;
+  flex:1; min-width:0;
+}
+.team-seg.home .team-text { align-items:flex-start; padding-left:0.52vw; }
+.team-seg.away .team-text { align-items:flex-end; padding-right:0.52vw; }
+.team-abbrev {
+  font-family:'Teko',sans-serif; font-size:1.3vw; font-weight:700;
+  color:#fff; letter-spacing:0.05vw; line-height:0.95;
+  text-transform:uppercase; white-space:normal;
+  word-wrap:break-word;
+}
+.team-seg.home .team-abbrev { text-align:left; }
+.team-seg.away .team-abbrev { text-align:right; }
+.team-record {
+  font-size:0.52vw; font-weight:700;
+  color:rgba(255,255,255,0.7); letter-spacing:0.03vw; white-space:nowrap;
+}
+
+/* Score blocks */
+.score-block {
+  display:flex; align-items:center; justify-content:center;
+  background:#161b26; height:100%; width:4.69vw; flex-shrink:0;
+}
+.score-num {
+  font-family:'Teko',sans-serif; font-size:3.65vw; font-weight:700;
+  color:#fff; letter-spacing:0.05vw; line-height:1;
+  text-align:center; font-variant-numeric:tabular-nums;
+}
+@keyframes scoreBump {
+  0%{transform:scale(1);color:#fff}
+  40%{transform:scale(1.2);color:#f5c842}
+  100%{transform:scale(1);color:#fff}
+}
+.bump { animation:scoreBump 0.38s ease; }
+
+/* Center: period / clock / shot */
+.center-block {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:#161b26; height:100%; width:7.81vw; flex-shrink:0;
+  border-left:1px solid rgba(255,255,255,0.07);
+  border-right:1px solid rgba(255,255,255,0.07);
+  gap:0.1vw; padding:0 0.52vw;
+}
+
+/* Possession arrows */
+.poss-arrow-ov {
+  display:flex; align-items:center; justify-content:center;
+  width:1.46vw; flex-shrink:0; height:100%;
+}
+.poss-arrow-ov svg {
+  width:1.15vw; height:0.83vw;
+  opacity:0;
+  transition:opacity 0.3s, filter 0.3s;
+}
+.poss-arrow-ov.on svg {
+  opacity:1;
+  filter:drop-shadow(0 0 0.26vw #ff8800) drop-shadow(0 0 0.52vw #ff6600) drop-shadow(0 0 1vw #ff4400);
+}
+.poss-arrow-ov.home.on svg { animation:arrowLeft  0.8s ease-in-out infinite alternate; }
+.poss-arrow-ov.away.on svg { animation:arrowRight 0.8s ease-in-out infinite alternate; }
+@keyframes arrowLeft  { from{transform:translateX(0)} to{transform:translateX(-0.18vw)} }
+@keyframes arrowRight { from{transform:translateX(0)} to{transform:translateX( 0.18vw)} }
+</style>
+</head>
+<body>
+
+<div id="scorebug">
+
+  <!-- TOP: Live · Broadcast · Venue -->
+  <div class="top-bar">
+    <div id="top-content" class="top-text-centered">
+      <span id="live-dot-pulse" class="live-dot-pulse" style="display:none;"></span>
+      <span id="top-text">HOOP CULTURE NETWORK</span>
+    </div>
+  </div>
+
+  <!-- MAIN: Team + Score + Center + Score + Team -->
+  <div class="main-row">
+
+    <!-- HOME -->
+    <div class="team-seg home" id="homeSegOv2">
+      <div class="logo-wrap">
+        <div class="logo-circle" id="homeLogoOv2"><div class="logo-ph">LOGO</div></div>
+      </div>
+      <div class="team-text">
+        <div class="team-abbrev" id="homeAbbrOv2">HOME</div>
+        <div class="team-record" id="homeRecOv2">0-0</div>
+      </div>
+    </div>
+
+    <!-- HOME POSS ARROW -->
+    <div class="poss-arrow-ov home" id="possArrowHomeOv2">
+      <svg viewBox="0 0 60 42">
+        <defs><radialGradient id="ag2h" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="40%" stop-color="#ffcc00"/>
+          <stop offset="100%" stop-color="#ff6600"/>
+        </radialGradient></defs>
+        <polygon points="4,21 56,3 56,39" fill="url(#ag2h)"/>
+      </svg>
+    </div>
+
+    <div class="score-block" id="homeScoreBlock">
+      <div class="score-num" id="homeScoreOv2">0</div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center-block">
+      <div class="period-lbl" id="periodCenterOv2">1ST</div>
+      <div class="game-clock" id="gameClkCenterOv2">10:00</div>
+      <div class="shot-row">
+        <div class="shot-label">SHOT</div>
+        <div class="shot-num" id="shotClkCenterOv2">24</div>
+      </div>
+    </div>
+
+    <div class="score-block" id="awayScoreBlock">
+      <div class="score-num" id="awayScoreOv2">0</div>
+    </div>
+
+    <!-- AWAY POSS ARROW -->
+    <div class="poss-arrow-ov away" id="possArrowAwayOv2">
+      <svg viewBox="0 0 60 42">
+        <defs><radialGradient id="ag2a" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="40%" stop-color="#ffcc00"/>
+          <stop offset="100%" stop-color="#ff6600"/>
+        </radialGradient></defs>
+        <polygon points="56,21 4,3 4,39" fill="url(#ag2a)"/>
+      </svg>
+    </div>
+
+    <!-- AWAY -->
+    <div class="team-seg away" id="awaySegOv2">
+      <div class="team-text" style="align-items:flex-end;">
+        <div class="team-abbrev" id="awayAbbrOv2">AWAY</div>
+        <div class="team-record" id="awayRecOv2">0-0</div>
+      </div>
+      <div class="logo-wrap">
+        <div class="logo-circle" id="awayLogoOv2"><div class="logo-ph">LOGO</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const isLocalServer = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.startsWith('10.');
+
+const useFirebase = (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+
+const SERVER_URL = useFirebase
+  ? 'https://basketball-scoreboard-o0c7.onrender.com'
+  : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '');
+
+let db = null;
+if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  } catch(e) { console.warn('Firebase init failed:', e); }
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
+
+let aiSyncActive = false;
+let aiState = { gameSeconds: null, clockStr: null, homeScore: null, awayScore: null, quarter: null, shotSeconds: null };
+
+function applyStreamData(data) {
+  if (!data) return;
+  if (data.streamActive === false) {
+    aiSyncActive = false;
+    render();
+    return;
+  }
+  if (data.streamActive === true) {
+    aiSyncActive = true;
+  } else if (data.clock != null || data.homeScore != null || data.awayScore != null || data.period != null || data.shotClock != null) {
+    aiSyncActive = true;
+  }
+
+  if (data.clock != null) {
+    const clockStr = String(data.clock).trim();
+    aiState.clockStr = clockStr;
+    if (clockStr.includes(':')) {
+      const parts = clockStr.split(':');
+      aiState.gameSeconds = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    } else if (clockStr.length === 3) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 1), 10) || 0) * 60 + (parseInt(clockStr.substring(1), 10) || 0);
+    } else if (clockStr.length === 4) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 2), 10) || 0) * 60 + (parseInt(clockStr.substring(2), 10) || 0);
+    } else {
+      const p = parseFloat(clockStr);
+      if (!isNaN(p)) aiState.gameSeconds = Math.round(p);
+    }
+  }
+  if (data.homeScore != null && !isNaN(parseInt(data.homeScore, 10))) aiState.homeScore = parseInt(data.homeScore, 10);
+  if (data.awayScore != null && !isNaN(parseInt(data.awayScore, 10))) aiState.awayScore = parseInt(data.awayScore, 10);
+  if (data.period != null && !isNaN(parseInt(data.period, 10))) aiState.quarter = parseInt(data.period, 10);
+  if (data.shotClock != null && !isNaN(parseInt(data.shotClock, 10))) aiState.shotSeconds = parseInt(data.shotClock, 10);
+
+  if (data.gameClockStream) S.gameClockStream = data.gameClockStream;
+  if (data.homeScoreStream) S.homeScoreStream = data.homeScoreStream;
+  if (data.awayScoreStream) S.awayScoreStream = data.awayScoreStream;
+  if (data.periodStream) S.periodStream = data.periodStream;
+  if (data.shotClockStream) S.shotClockStream = data.shotClockStream;
+
+  render();
+}
+
+function getEffState() {
+  if (aiSyncActive) {
+    return {
+      ...S,
+      gameSeconds: aiState.gameSeconds !== null ? aiState.gameSeconds : S.gameSeconds,
+      clockStr: aiState.clockStr !== null ? aiState.clockStr : null,
+      homeScore: aiState.homeScore !== null ? aiState.homeScore : S.homeScore,
+      awayScore: aiState.awayScore !== null ? aiState.awayScore : S.awayScore,
+      quarter: aiState.quarter !== null ? aiState.quarter : S.quarter,
+      shotSeconds: aiState.shotSeconds !== null ? aiState.shotSeconds : S.shotSeconds,
+    };
+  }
+  return S;
+}
+
+let _lastLocalMsgTime = 0;
+let _lastStateMsgTime = 0;
+
+function hasStateNonClockChanged(oldS, newD) {
+  if (!oldS || !newD) return true;
+  for (const k of [
+    'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeRecord', 'awayRecord',
+    'homeColor', 'awayColor', 'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
+    'quarter', 'possession', 'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value'
+  ]) {
+    if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
+  }
+  return false;
+}
+
+function applyStateMessage(msgData) {
+  _lastStateMsgTime = Date.now();
+  if (!msgData) return;
+  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
+  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
+  const nonClockChanged = hasStateNonClockChanged(S, msgData);
+  S = { ...S, ...msgData };
+  if (nonClockChanged) {
+    render();
+  } else {
+    renderClocks();
+  }
+  syncLocalTick();
+}
+
+const bc = new BroadcastChannel('hc_scoreboard_sync');
+bc.onmessage = (e) => {
+  const msg = e.data;
+  if (!msg) return;
+  _lastLocalMsgTime = Date.now();
+  if (msg.type === 'state') {
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream') {
+    applyStreamData(msg.data);
+  } else if (msg.type === 'buzz') {
+    if (msg.timestamp > _lastBuzzTime) {
+      _lastBuzzTime = msg.timestamp;
+      if (msg.kind === 'game') playGameBuzzer(); else playShotBuzzer();
+    }
+  }
+};
+window.addEventListener('message', (e) => {
+  const msg = e.data;
+  if (!msg) return;
+  if (msg.type === 'state') {
+    _lastLocalMsgTime = Date.now();
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream') {
+    _lastLocalMsgTime = Date.now();
+    applyStreamData(msg.data);
+  }
+});
+
+const DEF = {
+  homeScore:0, awayScore:0,
+  homeAbbr:'HOME', homeRecord:'0-0', homeColor:'#f5c842', homeLogo:null,
+  awayAbbr:'AWAY', awayRecord:'0-0', awayColor:'#c8102e', awayLogo:null,
+  quarter:1, gameSeconds:600, shotSeconds:24,
+  gameRunning:false, shotRunning:false, possession:null,
+};
+const PERIODS = ['1ST','2ND','3RD','4TH','OT','2OT'];
+let S = {...DEF};
+
+let localTick = null;
+function startLocalTick(){
+  if(localTick) return;
+  localTick = setInterval(()=>{
+    if(Date.now() - _lastStateMsgTime < 3000) return;
+    if(S.gameRunning && S.gameSeconds > 0){ S.gameSeconds--; renderClocks(); }
+    if(S.shotRunning && S.shotSeconds > 0){ S.shotSeconds--; renderClocks(); }
+  }, 1000);
+}
+function stopLocalTick(){ clearInterval(localTick); localTick = null; }
+function syncLocalTick(){ if(S.gameRunning || S.shotRunning){ startLocalTick(); } else { stopLocalTick(); } }
+
+function renderStreamOrText(elId, streamImgUrl, fallbackText, maxHeightCss) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  if (aiSyncActive && streamImgUrl) {
+    let img = el.querySelector('img.stream-bin-img');
+    if (!img) {
+      el.innerHTML = '';
+      img = document.createElement('img');
+      img.className = 'stream-bin-img';
+      img.style.maxHeight = maxHeightCss || '100%';
+      img.style.maxWidth = '100%';
+      img.style.objectFit = 'contain';
+      img.style.flexShrink = '0';
+      img.style.verticalAlign = 'middle';
+      img.style.filter = 'brightness(1.25) contrast(1.25)';
+      img.style.borderRadius = '4px';
+      img.style.border = '1px solid rgba(255, 255, 255, 0.55)';
+      img.style.outline = '1px solid rgba(0, 0, 0, 0.9)';
+      img.style.background = '#080c14';
+      img.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.8), inset 0 0 3px rgba(255, 255, 255, 0.2)';
+      img.style.padding = '2px 4px';
+      img.style.boxSizing = 'border-box';
+      img.style.display = 'inline-block';
+      el.appendChild(img);
+    } else {
+      img.style.maxHeight = maxHeightCss || '100%';
+    }
+    if (img.src !== streamImgUrl) {
+      img.src = streamImgUrl;
+    }
+  } else {
+    const img = el.querySelector('img.stream-bin-img');
+    if (img) {
+      el.innerHTML = '';
+    }
+    const txt = (fallbackText !== null && fallbackText !== undefined) ? String(fallbackText) : '';
+    if (el.children.length === 0 && el.textContent !== txt) {
+      el.textContent = txt;
+    }
+  }
+}
+
+function renderClocks(){
+  const eff = getEffState();
+  let txt = '';
+  if (aiSyncActive && eff.clockStr) {
+    txt = eff.clockStr;
+  } else {
+    const m = Math.floor(eff.gameSeconds/60), sec = eff.gameSeconds%60;
+    txt = `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+  const warn = eff.gameSeconds <= 30;
+  
+  renderStreamOrText('gameClkCenterOv2', S.gameClockStream, txt, '1.8vw');
+  const clk = document.getElementById('gameClkCenterOv2');
+  if(clk && clk.classList.contains('warn') !== warn){
+    clk.classList.toggle('warn', warn);
+  }
+
+  const shotText = eff.shotSeconds != null ? eff.shotSeconds : '--';
+  renderStreamOrText('shotClkCenterOv2', S.shotClockStream, shotText, '1.4vw');
+  const shot = document.getElementById('shotClkCenterOv2');
+  if(shot){
+    const targetUrgent = (eff.shotSeconds !== null && eff.shotSeconds <= 5 && eff.shotSeconds > 0);
+    if(shot.classList.contains('urgent') !== targetUrgent){
+      shot.classList.toggle('urgent', targetUrgent);
+    }
+    const targetZero = (eff.shotSeconds !== null && eff.shotSeconds === 0);
+    if(shot.classList.contains('zero') !== targetZero){
+      shot.classList.toggle('zero', targetZero);
+    }
+  }
+}
+
+let lastHome = -1, lastAway = -1;
+function s(id, val){
+  const e = document.getElementById(id);
+  const str = String(val !== undefined && val !== null ? val : '');
+  if(e && e.textContent !== str) e.textContent = str;
+}
+
+function darken(hex, pct=0.5){
+  let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `rgb(${Math.round(r*pct)},${Math.round(g*pct)},${Math.round(b*pct)})`;
+}
+
+function setSafeLogo(elId, url, borderColor) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  if (url) {
+    let img = el.querySelector('img');
+    if (!img) {
+      el.innerHTML = `<img src="${url}" alt="">`;
+    } else if (img.getAttribute('src') !== url) {
+      img.src = url;
+    }
+  } else {
+    if (!el.querySelector('.logo-ph')) {
+      el.innerHTML = '<div class="logo-ph">LOGO</div>';
+    }
+  }
+  if (borderColor && el.dataset.borderCol !== borderColor) {
+    el.dataset.borderCol = borderColor;
+    el.style.borderColor = borderColor;
+    el.style.background = darken(borderColor, 0.4);
+    el.style.boxShadow = `0 0 0.8vw ${borderColor}, 0 0 2vw ${borderColor}66, 0 0.16vw 1vw rgba(0,0,0,0.8)`;
+  }
+}
+
+function render(){
+  const eff = getEffState();
+  const qL = typeof eff.quarter==='number' ? (eff.quarter===0?PERIODS[0]:PERIODS[eff.quarter-1]||`Q${eff.quarter}`) : eff.quarter;
+  renderStreamOrText('periodCenterOv2', S.periodStream, qL, '1.2vw');
+
+  // Broadcast & venue in top bar
+  const bcVal = (S.rp1Value || '').trim();
+  const vnLabel = (S.rp2Title || 'VENUE').trim();
+  const vnVal = (S.rp2Value || '').trim();
+
+  // Filter out empty or none values like '—'
+  const cleanBc = (bcVal === '—' || bcVal === '-') ? '' : bcVal;
+  const cleanVn = (vnVal === '—' || vnVal === '-') ? '' : vnVal;
+
+  const dotEl = document.getElementById('live-dot-pulse');
+  const txtEl = document.getElementById('top-text');
+
+  if (txtEl) {
+    let targetHtml = '';
+    if (cleanBc) {
+      if (dotEl) dotEl.style.display = 'inline-block';
+      targetHtml = `LIVE: ${cleanBc}`;
+      if (cleanVn) {
+        targetHtml += ` &nbsp;&nbsp;&bull;&nbsp;&nbsp; ${vnLabel}: <span class="venue-highlight">${cleanVn}</span>`;
+      }
+    } else {
+      if (dotEl) dotEl.style.display = 'none';
+      if (cleanVn) {
+        targetHtml = `${vnLabel}: <span class="venue-highlight">${cleanVn}</span>`;
+      } else {
+        targetHtml = 'HOOP CULTURE NETWORK';
+      }
+    }
+    if (txtEl.dataset.renderedHtml !== targetHtml) {
+      txtEl.dataset.renderedHtml = targetHtml;
+      txtEl.innerHTML = targetHtml;
+    }
+  }
+
+  // Score with bump animation
+  const hEl = document.getElementById('homeScoreOv2');
+  const aEl = document.getElementById('awayScoreOv2');
+  renderStreamOrText('homeScoreOv2', S.homeScoreStream, eff.homeScore, '2.8vw');
+  renderStreamOrText('awayScoreOv2', S.awayScoreStream, eff.awayScore, '2.8vw');
+  if(hEl && lastHome >= 0 && lastHome !== eff.homeScore){
+    hEl.classList.remove('bump'); void hEl.offsetWidth; hEl.classList.add('bump');
+  }
+  if(aEl && lastAway >= 0 && lastAway !== eff.awayScore){
+    aEl.classList.remove('bump'); void aEl.offsetWidth; aEl.classList.add('bump');
+  }
+  lastHome = eff.homeScore; lastAway = eff.awayScore;
+
+  s('homeAbbrOv2', S.homeAbbr.toUpperCase());
+  s('awayAbbrOv2', S.awayAbbr.toUpperCase());
+  s('homeRecOv2', S.homeRecord || '0-0');
+  s('awayRecOv2', S.awayRecord || '0-0');
+
+  renderClocks();
+
+  // Score block backgrounds + logo glows — all use team color
+  const hc = S.homeColor || '#f5c842';
+  const ac = S.awayColor || '#c8102e';
+
+  const hSB = document.getElementById('homeScoreBlock');
+  const aSB = document.getElementById('awayScoreBlock');
+  if(hSB && hSB.dataset.color !== hc){ hSB.dataset.color = hc; hSB.style.background = hc; }
+  if(aSB && aSB.dataset.color !== ac){ aSB.dataset.color = ac; aSB.style.background = ac; }
+
+  const hSeg = document.getElementById('homeSegOv2');
+  const aSeg = document.getElementById('awaySegOv2');
+  if(hSeg && hSeg.dataset.color !== hc){ hSeg.dataset.color = hc; hSeg.style.background = hc; }
+  if(aSeg && aSeg.dataset.color !== ac){ aSeg.dataset.color = ac; aSeg.style.background = ac; }
+
+  const hArrow = document.getElementById('possArrowHomeOv2');
+  const aArrow = document.getElementById('possArrowAwayOv2');
+  if(hArrow && hArrow.dataset.color !== hc){ hArrow.dataset.color = hc; hArrow.style.background = hc; }
+  if(aArrow && aArrow.dataset.color !== ac){ aArrow.dataset.color = ac; aArrow.style.background = ac; }
+
+  const hLogo = S.homeLogo || S.homeLogoThumb;
+  setSafeLogo('homeLogoOv2', hLogo, hc);
+
+  const aLogo = S.awayLogo || S.awayLogoThumb;
+  setSafeLogo('awayLogoOv2', aLogo, ac);
+
+  // Possession
+  document.getElementById('possArrowHomeOv2')?.classList.toggle('on', S.possession==='home');
+  document.getElementById('possArrowAwayOv2')?.classList.toggle('on', S.possession==='away');
+}
+
+const _gameBuzzer = new Audio('/buzzer.mp3');
+_gameBuzzer.volume = 1.0;
+_gameBuzzer.load();
+
+const _shotBuzzer = new Audio('/buzzer.mp3');
+_shotBuzzer.volume = 1.0;
+_shotBuzzer.load();
+
+window.addEventListener('load', () => {
+  [_gameBuzzer, _shotBuzzer].forEach(a => {
+    a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+  });
+});
+
+function playGameBuzzer(){ _gameBuzzer.currentTime = 0; _gameBuzzer.play().catch(()=>{}); }
+function playShotBuzzer(){ _shotBuzzer.currentTime = 0; _shotBuzzer.play().catch(()=>{}); }
+
+let _lastBuzzTime = 0;
+
+function connectSSE(){
+  if (useFirebase && db) {
+    db.ref(`states/${fbUser}`).on('value', snapshot => {
+      if (Date.now() - _lastLocalMsgTime < 2000) return;
+      const d = snapshot.val();
+      if (!d) return;
+      applyStateMessage(d);
+    });
+    db.ref(`ocr/${fbUser}`).on('value', snapshot => {
+      const d = snapshot.val();
+      if (d) applyStreamData(d);
+    });
+    db.ref(`buzz/${fbUser}`).on('value', snapshot => {
+      if (Date.now() - _lastLocalMsgTime < 2000) return;
+      const msg = snapshot.val();
+      if (!msg || msg.timestamp <= _lastBuzzTime) return;
+      _lastBuzzTime = msg.timestamp;
+      if(msg.kind==='game') playGameBuzzer(); else playShotBuzzer();
+    });
+    return;
+  }
+  const es = new EventSource(`${SERVER_URL}/events?user=${encodeURIComponent(currentUser)}`);
+  es.onmessage = e => {
+    try {
+      const msg = JSON.parse(e.data);
+      if(msg.type==='buzz'){
+        if (Date.now() - _lastLocalMsgTime < 2000) return;
+        if(msg.kind==='game') playGameBuzzer(); else playShotBuzzer();
+      }
+      else if(msg.type==='state'){
+        if (Date.now() - _lastLocalMsgTime < 2000) return;
+        applyStateMessage(msg.data);
+      }
+      else if(msg.type==='stream'){
+        applyStreamData(msg.data);
+      }
+    } catch(err){}
+  };
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 2000); };
+}
+
+if (useFirebase && db) {
+  render();
+  db.ref(`states/${fbUser}`).once('value').then(snapshot => {
+    const data = snapshot.val();
+    if (data) { S={...DEF,...data}; render(); syncLocalTick(); }
+  }).catch(()=>{}).finally(()=>{ connectSSE(); });
+} else {
+  render();
+  fetch(`${SERVER_URL}/state?user=${encodeURIComponent(currentUser)}`).then(r=>r.json()).then(d=>{
+    if(Object.keys(d).length){ S={...DEF,...d}; render(); syncLocalTick(); }
+  }).catch(()=>{}).finally(()=>{ connectSSE(); });
+}
+</script>
+</body>
+</html>

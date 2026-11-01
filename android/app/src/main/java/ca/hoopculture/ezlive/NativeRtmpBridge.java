@@ -45,6 +45,15 @@ public class NativeRtmpBridge {
     }
 
     @JavascriptInterface
+    public boolean requestCameraPermissions() {
+        if (activity != null) {
+            activity.runOnUiThread(() -> activity.requestBroadcastPermissions());
+            return activity.hasCameraPermission();
+        }
+        return false;
+    }
+
+    @JavascriptInterface
     public String startStream(
         String fbKey,
         String rtmpsUrl,

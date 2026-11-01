@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NBA Scorebug 2</title>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="/overlays/firebase-config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { background:transparent; overflow:hidden; width:100%; height:100%; }
+
+#scorebug {
+  position:fixed;
+  bottom:2vw; left:50%; transform:translateX(-50%);
+  display:flex; align-items:center;
+  height:5.5vw;
+  font-family:'Barlow Condensed',sans-serif;
+  border-radius:0.5vw;
+  overflow:hidden;
+  box-shadow:0 0.4vw 2.5vw rgba(0,0,0,0.8);
+}
+
+/* ─ HOME LOGO (left bookend, same height as bar) ─ */
+.home-logo-seg {
+  width:6vw; height:100%;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0; overflow:hidden;
+  background:#111;
+  border-right:0.18vw solid rgba(255,255,255,0.12);
+  transition:background 0.4s, box-shadow 0.4s;
+}
+.home-logo-seg img { width:5.3vw; height:5.3vw; object-fit:contain; image-rendering:auto; }
+.logo-ph { font-size:0.5vw; font-weight:700; color:rgba(255,255,255,0.25); text-transform:uppercase; text-align:center; }
+
+/* ─ HOME SCORE BLOCK ─ */
+.home-seg {
+  height:100%;
+  display:flex; align-items:center;
+  padding:0 1.3vw;
+  background:#1a4fa0;
+  flex-shrink:0;
+}
+.score-col { display:flex; flex-direction:column; align-items:flex-start; }
+.score-num {
+  font-family:'Teko',sans-serif; font-size:3.6vw; font-weight:700;
+  color:#fff; line-height:0.88; font-variant-numeric:tabular-nums;
+}
+.fouls-lbl {
+  font-size:0.62vw; font-weight:800; letter-spacing:0.08vw;
+  color:rgba(255,255,255,0.8); text-transform:uppercase; white-space:nowrap;
+}
+@keyframes scoreBump { 0%{transform:scale(1)} 40%{transform:scale(1.2);color:#ffe066} 100%{transform:scale(1)} }
+.bump { animation:scoreBump 0.38s ease; }
+
+/* ─ CENTER DIVIDER LOGO (same height as bar) ─ */
+.divider-logo-seg {
+  width:6vw; height:100%;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0; overflow:hidden;
+  background:#111;
+  border-left:0.18vw solid rgba(255,255,255,0.12);
+  border-right:0.18vw solid rgba(255,255,255,0.12);
+  transition:background 0.4s, box-shadow 0.4s;
+}
+.divider-logo-seg img { width:5.3vw; height:5.3vw; object-fit:contain; image-rendering:auto; }
+
+/* ─ AWAY SCORE BLOCK ─ */
+.away-seg {
+  height:100%;
+  display:flex; align-items:center;
+  padding:0 1.3vw;
+  background:#c8102e;
+  flex-shrink:0;
+}
+
+/* ─ RIGHT INFO ─ */
+.info-seg {
+  height:100%;
+  display:flex; align-items:center; gap:0.8vw;
+  background:#16202e;
+  padding:0 1.3vw;
+  flex-shrink:0;
+}
+.period-clock { display:flex; flex-direction:column; align-items:flex-start; }
+.period-val {
+  font-size:1.45vw; font-weight:900; font-style:italic;
+  color:#fff; letter-spacing:0.05vw; line-height:1; text-transform:uppercase;
+}
+.clock-val {
+  font-family:'Teko',sans-serif; font-size:2.3vw; font-weight:700;
+  color:#fff; line-height:1; font-variant-numeric:tabular-nums; transition:color 0.3s;
+  min-width:4.5vw; display:inline-block;
+}
+.clock-val.warn { color:#ff5f5f; }
+.info-divider { width:1px; height:60%; background:rgba(255,255,255,0.15); flex-shrink:0; }
+.shot-col { display:flex; flex-direction:column; align-items:center; }
+.shot-lbl { font-size:0.45vw; font-weight:800; letter-spacing:0.15vw; color:rgba(255,255,255,0.3); text-transform:uppercase; }
+.shot-val {
+  font-family:'Teko',sans-serif; font-size:2.9vw; font-weight:700;
+  color:#f5c842; line-height:1; font-variant-numeric:tabular-nums;
+  min-width:3.0vw; display:inline-flex; align-items:center; justify-content:center;
+  text-align:center; flex-shrink:0; overflow:hidden;
+}
+.shot-val.urgent { color:#e84040; animation:scPulse 0.45s ease infinite alternate; }
+.shot-val.zero { color:#ff3b30; text-shadow:0 0 0.6vw #ff0000; font-weight:800; }
+@keyframes scPulse { 0%{opacity:1} 100%{opacity:0.35} }
+
+/* Possession dot */
+.poss-dot {
+  position:absolute; width:0.4vw; height:0.4vw; border-radius:50%;
+  background:#fff; box-shadow:0 0 0.3vw #fff;
+  opacity:0; transition:opacity 0.3s;
+}
+.poss-dot.on { opacity:1; animation:dp 0.9s ease-in-out infinite alternate; }
+@keyframes dp { from{transform:scale(1)} to{transform:scale(1.6)} }
+</style>
+</head>
+<body>
+<div id="scorebug">
+
+  <!-- HOME LOGO -->
+  <div class="home-logo-seg" id="homeLogoN2">
+    <div class="logo-ph">LOGO</div>
+  </div>
+
+  <!-- HOME SCORE -->
+  <div class="home-seg" id="homeBlock">
+    <div class="score-col" style="position:relative;">
+      <div class="poss-dot" id="possHome" style="top:0.2vw;left:-0.7vw;"></div>
+      <div class="score-num" id="homeScoreN2">0</div>
+      <div class="fouls-lbl">FOULS: <span id="homeFoulsN2">0</span></div>
+    </div>
+  </div>
+
+  <!-- CENTER DIVIDER (away logo) -->
+  <div class="divider-logo-seg" id="awayLogoN2">
+    <div class="logo-ph">LOGO</div>
+  </div>
+
+  <!-- AWAY SCORE -->
+  <div class="away-seg" id="awayBlock">
+    <div class="score-col" style="position:relative;">
+      <div class="poss-dot" id="possAway" style="top:0.2vw;right:-0.7vw;"></div>
+      <div class="score-num" id="awayScoreN2">0</div>
+      <div class="fouls-lbl">FOULS: <span id="awayFoulsN2">0</span></div>
+    </div>
+  </div>
+
+  <!-- RIGHT INFO -->
+  <div class="info-seg">
+    <div class="period-clock">
+      <div class="period-val" id="periodN2">1ST</div>
+      <div class="clock-val" id="gameClkN2">10:00</div>
+    </div>
+    <div class="info-divider"></div>
+    <div class="shot-col">
+      <div class="shot-lbl">SHOT</div>
+      <div class="shot-val" id="shotClkN2">24</div>
+    </div>
+  </div>
+
+</div>
+<script>
+const isLocalServer = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.startsWith('10.');
+
+const useFirebase = (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+
+const SERVER_URL = useFirebase
+  ? 'https://basketball-scoreboard-o0c7.onrender.com'
+  : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '');
+
+let db = null;
+if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  } catch(e) { console.warn('Firebase init failed:', e); }
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
+
+let aiSyncActive = false;
+let aiState = { gameSeconds: null, clockStr: null, homeScore: null, awayScore: null, quarter: null, shotSeconds: null };
+
+function applyStreamData(data) {
+  if (!data) return;
+  if (data.streamActive === false) {
+    aiSyncActive = false;
+    render();
+    return;
+  }
+  if (data.streamActive === true) {
+    aiSyncActive = true;
+  } else if (data.clock != null || data.homeScore != null || data.awayScore != null || data.period != null || data.shotClock != null) {
+    aiSyncActive = true;
+  }
+
+  if (data.clock != null) {
+    const clockStr = String(data.clock).trim();
+    aiState.clockStr = clockStr;
+    if (clockStr.includes(':')) {
+      const parts = clockStr.split(':');
+      aiState.gameSeconds = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    } else if (clockStr.length === 3) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 1), 10) || 0) * 60 + (parseInt(clockStr.substring(1), 10) || 0);
+    } else if (clockStr.length === 4) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 2), 10) || 0) * 60 + (parseInt(clockStr.substring(2), 10) || 0);
+    } else {
+      const p = parseFloat(clockStr);
+      if (!isNaN(p)) aiState.gameSeconds = Math.round(p);
+    }
+  }
+  if (data.homeScore != null && !isNaN(parseInt(data.homeScore, 10))) aiState.homeScore = parseInt(data.homeScore, 10);
+  if (data.awayScore != null && !isNaN(parseInt(data.awayScore, 10))) aiState.awayScore = parseInt(data.awayScore, 10);
+  if (data.period != null && !isNaN(parseInt(data.period, 10))) aiState.quarter = parseInt(data.period, 10);
+  if (data.shotClock != null && !isNaN(parseInt(data.shotClock, 10))) aiState.shotSeconds = parseInt(data.shotClock, 10);
+
+  if (data.gameClockStream) S.gameClockStream = data.gameClockStream;
+  if (data.homeScoreStream) S.homeScoreStream = data.homeScoreStream;
+  if (data.awayScoreStream) S.awayScoreStream = data.awayScoreStream;
+  if (data.periodStream) S.periodStream = data.periodStream;
+  if (data.shotClockStream) S.shotClockStream = data.shotClockStream;
+
+  render();
+}
+
+function getEffState() {
+  if (aiSyncActive) {
+    return {
+      ...S,
+      gameSeconds: aiState.gameSeconds !== null ? aiState.gameSeconds : S.gameSeconds,
+      clockStr: aiState.clockStr !== null ? aiState.clockStr : null,
+      homeScore: aiState.homeScore !== null ? aiState.homeScore : S.homeScore,
+      awayScore: aiState.awayScore !== null ? aiState.awayScore : S.awayScore,
+      quarter: aiState.quarter !== null ? aiState.quarter : S.quarter,
+      shotSeconds: aiState.shotSeconds !== null ? aiState.shotSeconds : S.shotSeconds,
+    };
+  }
+  return S;
+}
+
+let _lastLocalMsgTime = 0;
+let _lastStateMsgTime = 0;
+
+function hasStateNonClockChanged(oldS, newD) {
+  if (!oldS || !newD) return true;
+  for (const k of [
+    'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeColor', 'awayColor',
+    'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
+    'quarter', 'possession', 'homeFouls', 'awayFouls'
+  ]) {
+    if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
+  }
+  return false;
+}
+
+function applyStateMessage(msgData) {
+  _lastStateMsgTime = Date.now();
+  if (!msgData) return;
+  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
+  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
+  const nonClockChanged = hasStateNonClockChanged(S, msgData);
+  S = { ...S, ...msgData };
+  if (nonClockChanged) {
+    render();
+  } else {
+    renderClocks();
+  }
+  syncLocalTick();
+}
+
+const bc = new BroadcastChannel('hc_scoreboard_sync');
+bc.onmessage = (e) => {
+  const msg = e.data;
+  if (!msg) return;
+  _lastLocalMsgTime = Date.now();
+  if (msg.type === 'state') {
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream') {
+    applyStreamData(msg.data);
+  } else if (msg.type === 'buzz') {
+    if (msg.timestamp > _lastBuzzTime) {
+      _lastBuzzTime = msg.timestamp;
+      if (msg.kind === 'game') playGameBuzzer(); else playShotBuzzer();
+    }
+  }
+};
+window.addEventListener('message', (e) => {
+  const msg = e.data;
+  if (!msg) return;
+  if (msg.type === 'state') {
+    _lastLocalMsgTime = Date.now();
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream') {
+    _lastLocalMsgTime = Date.now();
+    applyStreamData(msg.data);
+  }
+});
+
+const DEF={homeScore:0,awayScore:0,homeFouls:0,awayFouls:0,homeAbbr:'HOME',homeColor:'#1a4fa0',homeLogo:null,awayAbbr:'AWAY',awayColor:'#c8102e',awayLogo:null,quarter:1,gameSeconds:600,shotSeconds:24,gameRunning:false,shotRunning:false,possession:null};
+const PERIODS=['1ST','2ND','3RD','4TH','OT','2OT'];
+let S={...DEF},lastHome=-1,lastAway=-1;
+
+let localTick=null;
+function startLocalTick(){
+  if(localTick)return;
+  localTick=setInterval(()=>{
+    if(Date.now() - _lastStateMsgTime < 3000) return;
+    if(S.gameRunning&&S.gameSeconds>0){S.gameSeconds--;renderClocks();}
+    if(S.shotRunning&&S.shotSeconds>0){S.shotSeconds--;renderClocks();}
+  },1000);
+}
+function stopLocalTick(){clearInterval(localTick);localTick=null;}
+function syncLocalTick(){if(S.gameRunning||S.shotRunning)startLocalTick();else stopLocalTick();}
+
+function renderStreamOrText(elId, streamImgUrl, fallbackText, maxHeightCss) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  if (aiSyncActive && streamImgUrl) {
+    let img = el.querySelector('img.stream-bin-img');
+    if (!img) {
+      el.innerHTML = '';
+      img = document.createElement('img');
+      img.className = 'stream-bin-img';
+      img.style.maxHeight = maxHeightCss || '100%';
+      img.style.maxWidth = '100%';
+      img.style.objectFit = 'contain';
+      img.style.flexShrink = '0';
+      img.style.verticalAlign = 'middle';
+      img.style.filter = 'brightness(1.25) contrast(1.25)';
+      img.style.borderRadius = '4px';
+      img.style.border = '1px solid rgba(255, 255, 255, 0.55)';
+      img.style.outline = '1px solid rgba(0, 0, 0, 0.9)';
+      img.style.background = '#080c14';
+      img.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.8), inset 0 0 3px rgba(255, 255, 255, 0.2)';
+      img.style.padding = '2px 4px';
+      img.style.boxSizing = 'border-box';
+      img.style.display = 'inline-block';
+      el.appendChild(img);
+    } else {
+      img.style.maxHeight = maxHeightCss || '100%';
+    }
+    if (img.src !== streamImgUrl) {
+      img.src = streamImgUrl;
+    }
+  } else {
+    const img = el.querySelector('img.stream-bin-img');
+    if (img) {
+      el.innerHTML = '';
+    }
+    const txt = (fallbackText !== null && fallbackText !== undefined) ? String(fallbackText) : '';
+    if (el.children.length === 0 && el.textContent !== txt) {
+      el.textContent = txt;
+    }
+  }
+}
+
+function renderClocks(){
+  const eff = getEffState();
+  let txt = '';
+  if (aiSyncActive && eff.clockStr) {
+    txt = eff.clockStr;
+  } else {
+    const m = Math.floor(eff.gameSeconds/60), sec = eff.gameSeconds%60;
+    txt = `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+  
+  renderStreamOrText('gameClkN2', S.gameClockStream, txt, '1.8vw');
+  const c=document.getElementById('gameClkN2');
+  if(c){
+    const targetWarn = eff.gameSeconds<=30;
+    if(c.classList.contains('warn') !== targetWarn) c.classList.toggle('warn', targetWarn);
+  }
+
+  const shotText = eff.shotSeconds != null ? eff.shotSeconds : '--';
+  renderStreamOrText('shotClkN2', S.shotClockStream, shotText, '1.4vw');
+  const sh=document.getElementById('shotClkN2');
+  if(sh){
+    const targetUrgent = (eff.shotSeconds !== null && eff.shotSeconds<=5 && eff.shotSeconds > 0);
+    if(sh.classList.contains('urgent') !== targetUrgent) sh.classList.toggle('urgent', targetUrgent);
+    const targetZero = (eff.shotSeconds !== null && eff.shotSeconds === 0);
+    if(sh.classList.contains('zero') !== targetZero) sh.classList.toggle('zero', targetZero);
+  }
+}
+
+function s(id,v){
+  const e=document.getElementById(id);
+  const str = String(v !== undefined && v !== null ? v : '');
+  if(e && e.textContent !== str) e.textContent = str;
+}
+
+function darken(hex, pct=0.5){
+  let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return `rgb(${Math.round(r*pct)},${Math.round(g*pct)},${Math.round(b*pct)})`;
+}
+
+function setSafeLogo(elId, url, isAway, color) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  if (url) {
+    let img = el.querySelector('img');
+    if (!img) {
+      el.innerHTML = `<img src="${url}" alt="">`;
+    } else if (img.getAttribute('src') !== url) {
+      img.src = url;
+    }
+  } else {
+    if (!el.querySelector('.logo-ph')) {
+      el.innerHTML = '<div class="logo-ph">LOGO</div>';
+    }
+  }
+  if (color && el.dataset.borderCol !== color) {
+    el.dataset.borderCol = color;
+    el.style.background = darken(color, 0.35);
+    el.style.boxShadow = `0 0 0.8vw ${color}, 0 0 2vw ${color}66`;
+    if (!isAway) {
+      el.style.borderRight = `0.18vw solid ${color}88`;
+    } else {
+      el.style.borderLeft = `0.18vw solid ${color}88`;
+      el.style.borderRight = `0.18vw solid ${color}88`;
+    }
+  }
+}
+
+function render(){
+  const eff = getEffState();
+  const qL=typeof eff.quarter==='number'?(eff.quarter===0?PERIODS[0]:PERIODS[eff.quarter-1]||`Q${eff.quarter}`):eff.quarter;
+  renderStreamOrText('periodN2', S.periodStream, qL, '1.2vw');
+
+  const hEl=document.getElementById('homeScoreN2');
+  const aEl=document.getElementById('awayScoreN2');
+  renderStreamOrText('homeScoreN2', S.homeScoreStream, eff.homeScore, '2.8vw');
+  renderStreamOrText('awayScoreN2', S.awayScoreStream, eff.awayScore, '2.8vw');
+  if(hEl && lastHome >= 0 && lastHome !== eff.homeScore){ hEl.classList.remove('bump'); void hEl.offsetWidth; hEl.classList.add('bump'); }
+  if(aEl && lastAway >= 0 && lastAway !== eff.awayScore){ aEl.classList.remove('bump'); void aEl.offsetWidth; aEl.classList.add('bump'); }
+  lastHome=eff.homeScore;lastAway=eff.awayScore;
+
+  s('homeFoulsN2',S.homeFouls||0);
+  s('awayFoulsN2',S.awayFouls||0);
+  renderClocks();
+
+  const hc=S.homeColor||'#1a4fa0';
+  const ac=S.awayColor||'#c8102e';
+
+  // Home block color
+  const hb=document.getElementById('homeBlock');
+  if(hb && hb.dataset.color !== hc){ hb.dataset.color = hc; hb.style.background=hc; }
+
+  // Away block color
+  const ab=document.getElementById('awayBlock');
+  if(ab && ab.dataset.color !== ac){ ab.dataset.color = ac; ab.style.background=ac; }
+
+  // Home logo seg — dark bg with home color glow
+  const hLogo = S.homeLogo || S.homeLogoThumb;
+  setSafeLogo('homeLogoN2', hLogo, false, hc);
+
+  // Away logo seg (center divider) — dark bg with away color glow
+  const aLogo = S.awayLogo || S.awayLogoThumb;
+  setSafeLogo('awayLogoN2', aLogo, true, ac);
+
+  document.getElementById('possHome')?.classList.toggle('on',S.possession==='home');
+  document.getElementById('possAway')?.classList.toggle('on',S.possession==='away');
+}
+
+const _gameBuzzer = new Audio('/buzzer.mp3');
+_gameBuzzer.volume = 1.0;
+_gameBuzzer.load();
+
+const _shotBuzzer = new Audio('/buzzer.mp3');
+_shotBuzzer.volume = 1.0;
+_shotBuzzer.load();
+
+window.addEventListener('load', () => {
+  [_gameBuzzer, _shotBuzzer].forEach(a => {
+    a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+  });
+});
+
+function playGameBuzzer(){ _gameBuzzer.currentTime = 0; _gameBuzzer.play().catch(()=>{}); }
+function playShotBuzzer(){ _shotBuzzer.currentTime = 0; _shotBuzzer.play().catch(()=>{}); }
+let _lastBuzzTime = 0;
+function connectSSE(){
+  if (useFirebase && db) {
+    db.ref(`states/${fbUser}`).on('value', snapshot => {
+      if (Date.now() - _lastLocalMsgTime < 2000) return;
+      const d = snapshot.val();
+      if (!d) return;
+      applyStateMessage(d);
+    });
+    db.ref(`ocr/${fbUser}`).on('value', snapshot => {
+      const d = snapshot.val();
+      if (d) applyStreamData(d);
+    });
+    db.ref(`buzz/${fbUser}`).on('value', snapshot => {
+      if (Date.now() - _lastLocalMsgTime < 2000) return;
+      const msg = snapshot.val();
+      if (!msg || msg.timestamp <= _lastBuzzTime) return;
+      _lastBuzzTime = msg.timestamp;
+      if(msg.kind==='game') playGameBuzzer(); else playShotBuzzer();
+    });
+    return;
+  }
+  const es=new EventSource(`${SERVER_URL}/events?user=${encodeURIComponent(currentUser)}`);
+  es.onmessage=e=>{
+    try{
+      const msg=JSON.parse(e.data);
+      if(msg.type==='buzz'){
+        if (Date.now() - _lastLocalMsgTime < 2000) return;
+        if(msg.kind==='game')playGameBuzzer();else playShotBuzzer();
+      }else if(msg.type==='state'){
+        if (Date.now() - _lastLocalMsgTime < 2000) return;
+        applyStateMessage(msg.data);
+      }else if(msg.type==='stream'){
+        applyStreamData(msg.data);
+      }
+    }catch(err){}
+  };
+  es.onerror=()=>{es.close();setTimeout(connectSSE,2000);};
+}
+if (useFirebase && db) {
+  render();
+  db.ref(`states/${fbUser}`).once('value').then(snapshot => {
+    const data = snapshot.val();
+    if (data) { S={...DEF,...data}; render(); syncLocalTick(); }
+  }).catch(()=>{}).finally(()=>connectSSE());
+} else {
+  render();
+  fetch(`${SERVER_URL}/state?user=${encodeURIComponent(currentUser)}`).then(r=>r.json()).then(d=>{if(Object.keys(d).length){S={...DEF,...d};render();syncLocalTick();}}).catch(()=>{}).finally(()=>connectSSE());
+}
+</script>
+</body>
+</html>

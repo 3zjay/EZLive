@@ -161,30 +161,38 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   // Convert 1920x1080 canvas coords to % of stage for DOM elements
   const toPercent = (val: number, max: number) => `${(val / max) * 100}%`;
 
+  // Map scoreboard.hoopculture.ca overlay URLs directly to our local copied /overlays/*.html files
+  const resolveOverlayUrl = (rawUrl: string): string => {
+    if (!rawUrl) return '';
+    try {
+      const lower = rawUrl.toLowerCase();
+      if (lower.includes('scoreboard.hoopculture.ca') || lower.startsWith('/overlays/')) {
+        const parsed = new URL(rawUrl, typeof window !== 'undefined' ? window.location.origin : 'https://live.hoopculture.ca');
+        const userParam = parsed.searchParams.get('user') || 'isidro.pascua@gmail.com';
+        const path = parsed.pathname.toLowerCase();
+        if (path.includes('nbaoverlay2')) {
+          return `/overlays/nbaoverlay2.html?user=${encodeURIComponent(userParam)}`;
+        }
+        if (path.includes('fullscreen')) {
+          return `/overlays/fullscreen.html?user=${encodeURIComponent(userParam)}`;
+        }
+        if (path.includes('nbc')) {
+          return `/overlays/nbc.html?user=${encodeURIComponent(userParam)}`;
+        }
+        if (path.includes('nbaoverlay')) {
+          return `/overlays/nbaoverlay.html?user=${encodeURIComponent(userParam)}`;
+        }
+      }
+    } catch {}
+    return rawUrl;
+  };
+
   return (
     <div
       ref={containerRef}
       className="relative flex-1 w-full h-full min-h-0 min-w-0 bg-black flex items-center justify-center overflow-hidden select-none p-1 sm:p-2"
       onClick={() => onSelectSource(null)}
     >
-      {/* Hidden Source Video Element (keeps decoding frames actively on Android Blink / iOS Safari WebKit) */}
-      <video
-        ref={videoRef}
-        playsInline
-        muted
-        autoPlay
-        style={{
-          position: 'absolute',
-          width: '100%',
-          height: '100%',
-          opacity: 0.0001,
-          pointerEvents: 'none',
-          top: 0,
-          left: 0,
-          zIndex: 0,
-        }}
-      />
-
       {/* 16:9 Stage Viewport Container — Responsive for Phone, iPad & Desktop */}
       <div
         ref={stageBoxRef}
@@ -206,7 +214,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
         {hasCameraSourceInScene && !hasCamera && !isScreenSharing && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute inset-0 z-10 flex items-center justify-center p-4 pointer-events-auto"
+            className="absolute inset-0 z-40 flex items-center justify-center p-4 pointer-events-auto"
           >
             <div className="bg-[#120d0a]/95 border border-[#3a2818] rounded-2xl p-4 sm:p-5 max-w-md w-full text-center shadow-2xl backdrop-blur-md space-y-3">
               <div className="w-10 h-10 rounded-xl bg-[#e8430a]/20 border border-[#e8430a]/40 text-[#ff6b1a] flex items-center justify-center mx-auto">
@@ -239,8 +247,12 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
               <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
                 {onRetryCamera && (
                   <button
-                    onClick={onRetryCamera}
-                    className="px-3.5 py-2 rounded-xl bg-[#e8430a] hover:bg-[#ff6b1a] text-white font-black text-xs flex items-center gap-1.5 shadow transition active:scale-95"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRetryCamera();
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#e8430a] hover:bg-[#ff6b1a] text-white font-black text-xs flex items-center gap-1.5 shadow transition active:scale-95 cursor-pointer"
                   >
                     <RefreshCw size={13} />
                     <span>Connect Camera</span>
@@ -248,8 +260,12 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
                 )}
                 {onToggleScreenShare && (
                   <button
-                    onClick={onToggleScreenShare}
-                    className="px-3.5 py-2 rounded-xl bg-[#1b1410] hover:bg-[#261c16] border border-[#3a2818] text-amber-300 font-bold text-xs flex items-center gap-1.5 transition active:scale-95"
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleScreenShare();
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-[#1b1410] hover:bg-[#261c16] border border-[#3a2818] text-amber-300 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
                   >
                     <Monitor size={13} />
                     <span>Share Screen Instead</span>
@@ -260,34 +276,34 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           </div>
         )}
 
-        {/* Custom External Browser URL Overlays (Hoop Culture Scoreboard URLs are already natively rendered on the GPU canvas with 0 DOM lag) */}
+        {/* Genuine HTML Scoreboard Overlays & Browser URL Sources */}
         {sources
           .filter(
             (s): s is Extract<Source, { type: 'browser_url' }> =>
-              s.type === 'browser_url' &&
-              s.visible &&
-              !s.syncDataBridge &&
-              !(s.url || '').includes('scoreboard.hoopculture.ca')
+              s.type === 'browser_url' && s.visible && Boolean(s.url)
           )
-          .map((source) => (
-            <div
-              key={source.id}
-              className="absolute pointer-events-none inset-0 w-full h-full"
-              style={{
-                opacity: source.opacity,
-                zIndex: source.zIndex + 10,
-                transform: 'translateZ(0)',
-                backfaceVisibility: 'hidden',
-              }}
-            >
-              <iframe
-                src={source.url}
-                className="w-full h-full border-0 bg-transparent pointer-events-none"
-                title={source.name}
-                allow="camera; microphone"
-              />
-            </div>
-          ))}
+          .map((source) => {
+            const resolvedSrc = resolveOverlayUrl(source.url);
+            return (
+              <div
+                key={`${source.id}-${resolvedSrc}`}
+                className="absolute pointer-events-none inset-0 w-full h-full"
+                style={{
+                  opacity: source.opacity,
+                  zIndex: source.zIndex + 10,
+                  transform: 'translateZ(0)',
+                  backfaceVisibility: 'hidden',
+                }}
+              >
+                <iframe
+                  src={resolvedSrc}
+                  className="w-full h-full border-0 bg-transparent pointer-events-none"
+                  title={source.name}
+                  allow="camera; microphone; autoplay"
+                />
+              </div>
+            );
+          })}
 
         {/* OBS Interactive Red Bounding Box & Transform Handles */}
         {selectedSource && selectedSource.visible && (

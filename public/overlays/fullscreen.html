@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Live Scoreboard Overlay – Fullscreen</title>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="/overlays/firebase-config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width:100%; height:100%;
+  background:transparent;
+  font-family:'Barlow Condensed',sans-serif;
+  overflow:hidden;
+}
+
+/* Full viewport — bar pinned near bottom */
+#overlay {
+  width:100vw;
+  height:100vh;
+  display:flex;
+  align-items:flex-end;
+  padding-bottom:3vh;
+}
+
+/* Bar uses vw units throughout so it scales with viewport */
+.bar {
+  width:100%; height:6.25vw;
+  background:#0d1117;
+  border-top:0.21vw solid #c8102e;
+  border-bottom:0.21vw solid #c8102e;
+  display:flex; align-items:center;
+  overflow:visible; position:relative;
+}
+.bar-inner {
+  display:flex; align-items:center;
+  width:100%; height:100%;
+  overflow:visible; position:relative;
+}
+
+.team-seg { display:flex; align-items:center; padding:0 0.42vw; flex-shrink:0; }
+.team-seg.home { flex-direction:row; padding-left:0.73vw; }
+.team-seg.away { flex-direction:row-reverse; padding-right:0.73vw; }
+
+.record { font-size:0.68vw; font-weight:700; color:#8a95a8; letter-spacing:0.03vw; padding:0 0.52vw; white-space:nowrap; width:3.13vw; text-align:center; flex-shrink:0; }
+
+.logo-wrap { width:7.8vw; height:7.8vw; flex-shrink:0; margin:0 0.31vw; position:relative; z-index:9999; }
+.logo-circle {
+  width:7.8vw; height:7.8vw; border-radius:50%;
+  background:#111; border:0.21vw solid rgba(255,255,255,0.15);
+  display:flex; align-items:center; justify-content:center;
+  overflow:hidden; box-shadow:0 0.21vw 1.25vw rgba(0,0,0,0.8);
+  position:relative; z-index:9999;
+}
+.logo-circle img { width:7vw; height:7vw; object-fit:contain; image-rendering:auto; }
+.logo-ph { font-size:0.47vw; font-weight:700; color:rgba(255,255,255,0.25); text-transform:uppercase; text-align:center; line-height:1.3; }
+
+.team-text { display:flex; flex-direction:column; justify-content:center; padding:0 0.21vw; flex-shrink:0; }
+.team-seg.away .team-text { align-items:flex-end; }
+.team-abbrev { font-family:'Teko',sans-serif; font-size:1.67vw; font-weight:700; color:#fff; letter-spacing:0.05vw; line-height:1; text-transform:uppercase; white-space:nowrap; }
+
+.score-block {
+  display:flex; align-items:center; justify-content:center;
+  background:#161b26; height:100%; width:5.73vw; flex-shrink:0;
+  border-left:1px solid rgba(255,255,255,0.07);
+  border-right:1px solid rgba(255,255,255,0.07);
+}
+.score-num { font-family:'Teko',sans-serif; font-size:4.17vw; font-weight:700; color:#fff; letter-spacing:0.05vw; line-height:1; width:100%; text-align:center; font-variant-numeric:tabular-nums; }
+
+.center-block {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:0 1.15vw; gap:0.1vw;
+  border-left:1px solid rgba(255,255,255,0.07);
+  border-right:1px solid rgba(255,255,255,0.07);
+  background:#161b26; width:10.42vw; flex-shrink:0; height:100%;
+}
+.period-badge { font-size:0.68vw; font-weight:800; letter-spacing:0.16vw; color:rgba(255,255,255,0.45); text-transform:uppercase; white-space:nowrap; }
+.game-clock {
+  font-family:'Teko',sans-serif; font-size:2.92vw; font-weight:700; color:#fff;
+  letter-spacing:0.16vw; line-height:1; transition:color 0.3s;
+  font-variant-numeric:tabular-nums; white-space:nowrap; width:8.33vw; text-align:center;
+}
+.game-clock.warn { color:#ff5f5f; }
+.shot-row { display:flex; align-items:center; gap:0.26vw; }
+.shot-label { font-size:0.57vw; font-weight:800; color:#8a95a8; letter-spacing:0.1vw; text-transform:uppercase; }
+.shot-num { font-family:'Teko',sans-serif; font-size:1.35vw; font-weight:700; color:#f5c842; letter-spacing:0.05vw; width:1.88vw; text-align:center; line-height:1; font-variant-numeric:tabular-nums; }
+.shot-num.urgent { color:#e84040; animation:scPulse 0.45s ease infinite alternate; }
+.shot-num.zero { color:#ff3b30; text-shadow:0 0 0.6vw #ff0000; font-weight:800; }
+@keyframes scPulse { to { opacity:0.4; } }
+
+.right-panel { flex:1; display:flex; align-items:stretch; border-left:1px solid rgba(255,255,255,0.07); height:100%; }
+.live-seg { display:flex; align-items:center; gap:0.42vw; padding:0 0.94vw; border-right:1px solid rgba(255,255,255,0.07); }
+.live-dot { width:0.36vw; height:0.36vw; border-radius:50%; background:#e84040; box-shadow:0 0 0.42vw #e84040; animation:livePulse 1.2s ease infinite; }
+@keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.6)} }
+.live-text { font-size:0.52vw; font-weight:800; letter-spacing:0.16vw; color:rgba(255,255,255,0.5); text-transform:uppercase; }
+
+.rp-seg { display:flex; flex-direction:column; justify-content:center; padding:0 0.94vw; border-right:1px solid rgba(255,255,255,0.07); flex:1; }
+.rp-title { font-size:0.52vw; font-weight:800; letter-spacing:0.13vw; color:rgba(255,255,255,0.3); text-transform:uppercase; margin-bottom:0.05vw; }
+.rp-val { font-family:'Teko',sans-serif; font-size:1.46vw; font-weight:700; color:#fff; letter-spacing:0.05vw; line-height:1; }
+
+/* Possession arrows */
+.poss-arrow-ov {
+  display:flex; align-items:center; justify-content:center;
+  width:1.88vw; flex-shrink:0; opacity:0;
+  transition:opacity 0.3s, filter 0.3s;
+}
+.poss-arrow-ov svg { width:1.46vw; height:1.04vw; }
+.poss-arrow-ov.on {
+  opacity:1;
+  filter:drop-shadow(0 0 0.26vw #ff8800) drop-shadow(0 0 0.63vw #ff6600) drop-shadow(0 0 1.15vw #ff4400);
+}
+.poss-arrow-ov.home.on { animation:arrowBounceLeft  0.8s ease-in-out infinite alternate; }
+.poss-arrow-ov.away.on { animation:arrowBounceRight 0.8s ease-in-out infinite alternate; }
+@keyframes arrowBounceLeft  { from{transform:translateX(0)} to{transform:translateX(-0.21vw)} }
+@keyframes arrowBounceRight { from{transform:translateX(0)} to{transform:translateX( 0.21vw)} }
+
+@keyframes scoreBump {
+  0%  { transform:scale(1); color:#fff; }
+  40% { transform:scale(1.2); color:#f5c842; }
+  100%{ transform:scale(1); color:#fff; }
+}
+.bump { animation:scoreBump 0.38s ease; }
+</style>
+</head>
+<body>
+
+<div id="overlay">
+  <div class="bar" id="mainBar">
+    <div class="bar-inner">
+
+      <!-- HOME -->
+      <div class="team-seg home">
+        <div class="record" id="homeRecordOv">0-0</div>
+        <div class="logo-wrap">
+          <div class="logo-circle" id="homeLogoOv"><div class="logo-ph">LOGO</div></div>
+        </div>
+        <div class="team-text">
+          <div class="team-abbrev" id="homeAbbrOv">HOME</div>
+        </div>
+      </div>
+
+      <!-- HOME POSSESSION ARROW -->
+      <div class="poss-arrow-ov home" id="possArrowHome">
+        <svg viewBox="0 0 60 42">
+          <defs><radialGradient id="arrowGlowOvHome" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="40%" stop-color="#ffcc00"/><stop offset="100%" stop-color="#ff6600"/></radialGradient></defs>
+          <polygon points="4,21 56,3 56,39" fill="url(#arrowGlowOvHome)"/>
+        </svg>
+      </div>
+
+      <div class="score-block">
+        <div class="score-num" id="homeScoreOv">0</div>
+      </div>
+
+      <!-- CENTER -->
+      <div class="center-block">
+        <div class="period-badge" id="periodOv">1ST</div>
+        <div class="game-clock" id="gameClkOv">10:00</div>
+        <div class="shot-row">
+          <div class="shot-label">SHOT</div>
+          <div class="shot-num" id="shotClkOv">24</div>
+        </div>
+      </div>
+
+      <div class="score-block">
+        <div class="score-num" id="awayScoreOv">0</div>
+      </div>
+
+      <!-- AWAY POSSESSION ARROW -->
+      <div class="poss-arrow-ov away" id="possArrowAway">
+        <svg viewBox="0 0 60 42">
+          <defs><radialGradient id="arrowGlowOvAway" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="40%" stop-color="#ffcc00"/><stop offset="100%" stop-color="#ff6600"/></radialGradient></defs>
+          <polygon points="56,21 4,3 4,39" fill="url(#arrowGlowOvAway)"/>
+        </svg>
+      </div>
+
+      <!-- AWAY -->
+      <div class="team-seg away">
+        <div class="team-text" style="align-items:flex-end;">
+          <div class="team-abbrev" id="awayAbbrOv">AWAY</div>
+        </div>
+        <div class="logo-wrap">
+          <div class="logo-circle" id="awayLogoOv"><div class="logo-ph">LOGO</div></div>
+        </div>
+        <div class="record" id="awayRecordOv">0-0</div>
+      </div>
+
+      <!-- RIGHT PANEL -->
+      <div class="right-panel">
+        <div class="live-seg">
+          <div class="live-dot"></div>
+          <div class="live-text">LIVE</div>
+        </div>
+        <div class="rp-seg">
+          <div class="rp-title" id="rp1TOv">BROADCAST</div>
+          <div class="rp-val" id="rp1VOv">—</div>
+        </div>
+        <div class="rp-seg">
+          <div class="rp-title" id="rp2TOv">VENUE</div>
+          <div class="rp-val" id="rp2VOv">—</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const isLocalServer = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.startsWith('10.');
+
+const useFirebase = (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+
+const SERVER_URL = useFirebase
+  ? 'https://basketball-scoreboard-o0c7.onrender.com'
+  : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '');
+
+let db = null;
+if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  } catch(e) { console.warn('Firebase init failed:', e); }
+}
+
+const urlParams = new URLSearchParams(window.location.search);
+const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
+
+let aiSyncActive = false;
+let aiState = { gameSeconds: null, clockStr: null, homeScore: null, awayScore: null, quarter: null, shotSeconds: null };
+
+function applyStreamData(data) {
+  if (!data) return;
+  if (data.streamActive === false) {
+    aiSyncActive = false;
+    render();
+    return;
+  }
+  if (data.streamActive === true) {
+    aiSyncActive = true;
+  } else if (data.clock != null || data.homeScore != null || data.awayScore != null || data.period != null || data.shotClock != null) {
+    aiSyncActive = true;
+  }
+
+  if (data.clock != null) {
+    const clockStr = String(data.clock).trim();
+    aiState.clockStr = clockStr;
+    if (clockStr.includes(':')) {
+      const parts = clockStr.split(':');
+      aiState.gameSeconds = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    } else if (clockStr.length === 3) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 1), 10) || 0) * 60 + (parseInt(clockStr.substring(1), 10) || 0);
+    } else if (clockStr.length === 4) {
+      aiState.gameSeconds = (parseInt(clockStr.substring(0, 2), 10) || 0) * 60 + (parseInt(clockStr.substring(2), 10) || 0);
+    } else {
+      const p = parseFloat(clockStr);
+      if (!isNaN(p)) aiState.gameSeconds = Math.round(p);
+    }
+  }
+  if (data.homeScore != null && !isNaN(parseInt(data.homeScore, 10))) aiState.homeScore = parseInt(data.homeScore, 10);
+  if (data.awayScore != null && !isNaN(parseInt(data.awayScore, 10))) aiState.awayScore = parseInt(data.awayScore, 10);
+  if (data.period != null && !isNaN(parseInt(data.period, 10))) aiState.quarter = parseInt(data.period, 10);
+  if (data.shotClock != null && !isNaN(parseInt(data.shotClock, 10))) aiState.shotSeconds = parseInt(data.shotClock, 10);
+
+  if (data.gameClockStream) S.gameClockStream = data.gameClockStream;
+  if (data.homeScoreStream) S.homeScoreStream = data.homeScoreStream;
+  if (data.awayScoreStream) S.awayScoreStream = data.awayScoreStream;
+  if (data.periodStream) S.periodStream = data.periodStream;
+  if (data.shotClockStream) S.shotClockStream = data.shotClockStream;
+
+  render();
+}
+
+function getEffState() {
+  if (aiSyncActive) {
+    return {
+      ...S,
+      gameSeconds: aiState.gameSeconds !== null ? aiState.gameSeconds : S.gameSeconds,
+      clockStr: aiState.clockStr !== null ? aiState.clockStr : null,
+      homeScore: aiState.homeScore !== null ? aiState.homeScore : S.homeScore,
+      awayScore: aiState.awayScore !== null ? aiState.awayScore : S.awayScore,
+      quarter: aiState.quarter !== null ? aiState.quarter : S.quarter,
+      shotSeconds: aiState.shotSeconds !== null ? aiState.shotSeconds : S.shotSeconds,
+    };
+  }
+  return S;
+}
+
+let _lastLocalMsgTime = 0;
+let _lastStateMsgTime = 0;
+
+function hasStateNonClockChanged(oldS, newD) {
+  if (!oldS || !newD) return true;
+  for (const k of [
+    'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeRecord', 'awayRecord',
+    'homeColor', 'awayColor', 'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
+    'quarter', 'possession', 'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value', 'barColor'
+  ]) {
+    if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
+  }
+  return false;
+}
+
+function applyStateMessage(msgData) {
+  _lastStateMsgTime = Date.now();
+  if (!msgData) return;
+  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
+  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
+  const nonClockChanged = hasStateNonClockChanged(S, msgData);
+  S = { ...S, ...msgData };
+  if (nonClockChanged) {
+    render();
+  } else {
+    renderClocks();
+  }
+  syncLocalTick();
+}
+
+const bc = new BroadcastChannel('hc_scoreboard_sync');
+bc.onmessage = (e) => {
+  const msg = e.data;
+  if (!msg) return;
+  _lastLocalMsgTime = Date.now();
+  if (msg.type === 'state') {
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream') {
+    applyStreamData(msg.data);
+  } else if (msg.type === 'buzz') {
+    if (msg.timestamp > _lastBuzzTime) {
+      _lastBuzzTime = msg.timestamp;
+      if (msg.kind === 'game') playGameBuzzer(); else playShotBuzzer();
+    }
+  }
+};
+window.addEventListener('message', (e) => {
+  const msg = e.data;
+  if (!msg) return;
+  if (msg.type === 'state') {
+    _lastLocalMsgTime = Date.now();
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream') {
+    _lastLocalMsgTime = Date.now();
+    applyStreamData(msg.data);
+  }
+});
+
+const DEF = {
+  homeScore:0, awayScore:0,
+  homeAbbr:'HOME', homeRecord:'0-0', homeColor:'#f5c842', homeLogo:null,
+  awayAbbr:'AWAY', awayRecord:'0-0', awayColor:'#c8102e', awayLogo:null,
+  quarter:1, gameSeconds:600, shotSeconds:24,
+  possession:null,
+  rp1Title:'BROADCAST', rp1Value:'—',
+  rp2Title:'VENUE', rp2Value:'—',
+  barColor:'#0d1117',
+};
+const PERIODS = ['1ST','2ND','3RD','4TH','OT','2OT'];
+let S = {...DEF};
+let localTick = null;
+function startLocalTick(){
+  if(localTick) return;
+  localTick = setInterval(()=>{
+    if(Date.now() - _lastStateMsgTime < 3000) return;
+    if(S.gameRunning && S.gameSeconds > 0){ S.gameSeconds--; renderClocks(); }
+    if(S.shotRunning && S.shotSeconds > 0){ S.shotSeconds--; renderClocks(); }
+  }, 1000);
+}
+function stopLocalTick(){ clearInterval(localTick); localTick = null; }
+function syncLocalTick(){ if(S.gameRunning || S.shotRunning){ startLocalTick(); } else { stopLocalTick(); } }
+
+function renderStreamOrText(elId, streamImgUrl, fallbackText, maxHeightCss) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  if (aiSyncActive && streamImgUrl) {
+    let img = el.querySelector('img.stream-bin-img');
+    if (!img) {
+      el.innerHTML = '';
+      img = document.createElement('img');
+      img.className = 'stream-bin-img';
+      img.style.maxHeight = maxHeightCss || '100%';
+      img.style.maxWidth = '100%';
+      img.style.objectFit = 'contain';
+      img.style.flexShrink = '0';
+      img.style.verticalAlign = 'middle';
+      img.style.filter = 'brightness(1.25) contrast(1.25)';
+      img.style.borderRadius = '4px';
+      img.style.border = '1px solid rgba(255, 255, 255, 0.55)';
+      img.style.outline = '1px solid rgba(0, 0, 0, 0.9)';
+      img.style.background = '#080c14';
+      img.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.8), inset 0 0 3px rgba(255, 255, 255, 0.2)';
+      img.style.padding = '2px 4px';
+      img.style.boxSizing = 'border-box';
+      img.style.display = 'inline-block';
+      el.appendChild(img);
+    } else {
+      img.style.maxHeight = maxHeightCss || '100%';
+    }
+    if (img.src !== streamImgUrl) {
+      img.src = streamImgUrl;
+    }
+  } else {
+    const img = el.querySelector('img.stream-bin-img');
+    if (img) {
+      el.innerHTML = '';
+    }
+    const txt = (fallbackText !== null && fallbackText !== undefined) ? String(fallbackText) : '';
+    if (el.children.length === 0 && el.textContent !== txt) {
+      el.textContent = txt;
+    }
+  }
+}
+
+function renderClocks(){
+  const eff = getEffState();
+  let txt = '';
+  if (aiSyncActive && eff.clockStr) {
+    txt = eff.clockStr;
+  } else {
+    const m = Math.floor(eff.gameSeconds/60), sec = eff.gameSeconds%60;
+    txt = `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+  
+  renderStreamOrText('gameClkOv', S.gameClockStream, txt, '2.5vw');
+  const clkEl=document.getElementById('gameClkOv');
+  if(clkEl){
+    const targetWarn = eff.gameSeconds<=30;
+    if(clkEl.classList.contains('warn') !== targetWarn){
+      clkEl.classList.toggle('warn', targetWarn);
+    }
+  }
+
+  const shotText = eff.shotSeconds != null ? eff.shotSeconds : '--';
+  renderStreamOrText('shotClkOv', S.shotClockStream, shotText, '1.3vw');
+  const shotEl=document.getElementById('shotClkOv');
+  if(shotEl){
+    const targetUrgent = (eff.shotSeconds !== null && eff.shotSeconds<=5 && eff.shotSeconds > 0);
+    if(shotEl.classList.contains('urgent') !== targetUrgent){
+      shotEl.classList.toggle('urgent', targetUrgent);
+    }
+    const targetZero = (eff.shotSeconds !== null && eff.shotSeconds === 0);
+    if(shotEl.classList.contains('zero') !== targetZero){
+      shotEl.classList.toggle('zero', targetZero);
+    }
+  }
+}
+
+function s(id,val){
+  const e=document.getElementById(id);
+  const str = String(val !== undefined && val !== null ? val : '');
+  if(e && e.textContent !== str) e.textContent = str;
+}
+
+function setSafeLogo(elId, url) {
+  const el = typeof elId === 'string' ? document.getElementById(elId) : elId;
+  if (!el) return;
+  if (url) {
+    let img = el.querySelector('img');
+    if (!img) {
+      el.innerHTML = `<img src="${url}" alt="">`;
+    } else if (img.getAttribute('src') !== url) {
+      img.src = url;
+    }
+  } else {
+    if (!el.querySelector('.logo-ph')) {
+      el.innerHTML = '<div class="logo-ph">LOGO</div>';
+    }
+  }
+}
+
+function render(){
+  const eff = getEffState();
+  s('homeAbbrOv',  S.homeAbbr.toUpperCase());
+  s('homeRecordOv',S.homeRecord);
+  renderStreamOrText('homeScoreOv', S.homeScoreStream, eff.homeScore, '8vw');
+
+  s('awayAbbrOv',  S.awayAbbr.toUpperCase());
+  s('awayRecordOv',S.awayRecord);
+  renderStreamOrText('awayScoreOv', S.awayScoreStream, eff.awayScore, '8vw');
+
+  const qL = typeof eff.quarter==='number' ? (eff.quarter===0?PERIODS[0]:PERIODS[eff.quarter-1]||`Q${eff.quarter}`) : eff.quarter;
+  renderStreamOrText('periodOv', S.periodStream, qL, '4vw');
+
+  renderClocks();
+
+  s('rp1TOv',S.rp1Title); s('rp1VOv',S.rp1Value);
+  s('rp2TOv',S.rp2Title); s('rp2VOv',S.rp2Value);
+
+  setSafeLogo('homeLogoOv', S.homeLogo || S.homeLogoThumb);
+  setSafeLogo('awayLogoOv', S.awayLogo || S.awayLogoThumb);
+
+  const hCircle=document.getElementById('homeLogoOv');
+  const aCircle=document.getElementById('awayLogoOv');
+  const hc = S.homeColor||'#f5c842';
+  const ac = S.awayColor||'#c8102e';
+  if(hCircle && hCircle.dataset.color !== hc){
+    hCircle.dataset.color = hc;
+    hCircle.style.border=`0.26vw solid ${hc}`;
+    hCircle.style.boxShadow=`0 0 0.63vw ${hc}, 0 0.21vw 1.25vw rgba(0,0,0,0.8)`;
+  }
+  if(aCircle && aCircle.dataset.color !== ac){
+    aCircle.dataset.color = ac;
+    aCircle.style.border=`0.26vw solid ${ac}`;
+    aCircle.style.boxShadow=`0 0 0.63vw ${ac}, 0 0.21vw 1.25vw rgba(0,0,0,0.8)`;
+  }
+
+  const homeArrow=document.getElementById('possArrowHome');
+  const awayArrow=document.getElementById('possArrowAway');
+  if(homeArrow) homeArrow.classList.toggle('on', S.possession==='home');
+  if(awayArrow) awayArrow.classList.toggle('on', S.possession==='away');
+}
+
+const _gameBuzzer = new Audio('/buzzer.mp3');
+_gameBuzzer.volume = 1.0;
+_gameBuzzer.load();
+
+const _shotBuzzer = new Audio('/buzzer.mp3');
+_shotBuzzer.volume = 1.0;
+_shotBuzzer.load();
+
+window.addEventListener('load', () => {
+  [_gameBuzzer, _shotBuzzer].forEach(a => {
+    a.play().then(() => { a.pause(); a.currentTime = 0; }).catch(() => {});
+  });
+});
+
+function playGameBuzzer(){ _gameBuzzer.currentTime = 0; _gameBuzzer.play().catch(()=>{}); }
+function playShotBuzzer(){ _shotBuzzer.currentTime = 0; _shotBuzzer.play().catch(()=>{}); }
+
+let _lastBuzzTime = 0;
+
+function connectSSE(){
+  if (useFirebase && db) {
+    db.ref(`states/${fbUser}`).on('value', snapshot => {
+      if (Date.now() - _lastLocalMsgTime < 2000) return;
+      const d = snapshot.val();
+      if (!d) return;
+      applyStateMessage(d);
+    });
+    db.ref(`ocr/${fbUser}`).on('value', snapshot => {
+      const d = snapshot.val();
+      if (d) applyStreamData(d);
+    });
+    db.ref(`buzz/${fbUser}`).on('value', snapshot => {
+      if (Date.now() - _lastLocalMsgTime < 2000) return;
+      const msg = snapshot.val();
+      if (!msg || msg.timestamp <= _lastBuzzTime) return;
+      _lastBuzzTime = msg.timestamp;
+      if(msg.kind==='game') playGameBuzzer(); else playShotBuzzer();
+    });
+    return;
+  }
+  const es=new EventSource(`${SERVER_URL}/events?user=${encodeURIComponent(currentUser)}`);
+  es.onmessage=(e)=>{
+    try {
+      const msg=JSON.parse(e.data);
+      if(msg.type==='buzz'){
+        if (Date.now() - _lastLocalMsgTime < 2000) return;
+        if(msg.kind==='game') playGameBuzzer(); else playShotBuzzer();
+      }
+      else if(msg.type==='state'){
+        if (Date.now() - _lastLocalMsgTime < 2000) return;
+        applyStateMessage(msg.data);
+      }
+      else if(msg.type==='stream'){
+        applyStreamData(msg.data);
+      }
+    } catch(err){}
+  };
+  es.onerror=()=>{ es.close(); setTimeout(connectSSE,2000); };
+}
+
+if (useFirebase && db) {
+  render();
+  db.ref(`states/${fbUser}`).once('value').then(snapshot => {
+    const data = snapshot.val();
+    if (data) { S={...DEF,...data}; render(); syncLocalTick(); }
+  }).catch(()=>{}).finally(()=>{ connectSSE(); });
+} else {
+  render();
+  fetch(`${SERVER_URL}/state?user=${encodeURIComponent(currentUser)}`).then(r=>r.json()).then(data=>{
+    if(Object.keys(data).length){ S={...DEF,...data}; render(); syncLocalTick(); }
+  }).catch(()=>{}).finally(()=>{ connectSSE(); });
+}
+</script>
+</body>
+</html>
