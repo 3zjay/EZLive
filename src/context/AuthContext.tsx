@@ -69,13 +69,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Check if Facebook OAuth just completed in same-window redirect mode
+    // Check if Facebook OAuth just completed in same-window redirect mode (or via cookie)
     try {
-      const fbPayloadRaw = localStorage.getItem('fb_auth_callback_payload');
+      let fbPayloadRaw = localStorage.getItem('fb_auth_callback_payload');
+      if (!fbPayloadRaw && typeof document !== 'undefined') {
+        const match = document.cookie.match(/(?:^|;\s*)ezlive_fb_session=([^;]*)/);
+        if (match && match[1]) {
+          fbPayloadRaw = decodeURIComponent(match[1]);
+          // Clear the one-time transfer cookie after reading
+          document.cookie = 'ezlive_fb_session=; path=/; max-age=0';
+        }
+      }
       if (fbPayloadRaw) {
         localStorage.removeItem('fb_auth_callback_payload');
         const parsed = JSON.parse(fbPayloadRaw);
         if (parsed?.token && parsed?.user) {
+          localStorage.setItem('fb_user_access_token', parsed.token);
+          if (parsed.user.name) localStorage.setItem('fb_user_name', parsed.user.name);
+          if (parsed.user.picture) localStorage.setItem('fb_user_picture', parsed.user.picture);
           const email = (parsed.user.email || '').trim().toLowerCase();
           const safeUid = email
             ? 'fb_' + email.replace(/[\.\#\$\[\]@]/g, '_')

@@ -32,12 +32,16 @@ export async function GET(req: NextRequest) {
     <div style="font-size:36px;margin-bottom:12px;">⚠️</div>
     <h3 style="margin:0 0 8px 0;color:#fca5a5;">Authentication Cancelled</h3>
     <p style="color:#a8a29e;font-size:13px;line-height:1.5;">${escapeHtml(errorMsg)}</p>
-    <button onclick="if(window.opener){window.close()}else{window.location.href=${JSON.stringify(returnTo)}}" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Return to EZLive</button>
+    <a href=${JSON.stringify(returnTo)} onclick="try{window.close();}catch(e){}" style="display:inline-block;text-decoration:none;margin-top:20px;padding:10px 24px;background:#e8430a;color:#ffffff;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer;">Return to EZLive Studio</a>
   </div>
   <script>
     if (window.opener) {
-      window.opener.postMessage({ type: 'FB_AUTH_ERROR', error: ${JSON.stringify(errorMsg)} }, '*');
-      setTimeout(function() { window.close(); }, 2000);
+      try {
+        window.opener.postMessage({ type: 'FB_AUTH_ERROR', error: ${JSON.stringify(errorMsg)} }, '*');
+      } catch (e) {}
+      setTimeout(function() {
+        try { window.close(); } catch (e) {}
+      }, 1500);
     }
   </script>
 </body>
@@ -60,11 +64,13 @@ export async function GET(req: NextRequest) {
     <div style="font-size:36px;margin-bottom:12px;">🔑</div>
     <h3 style="margin:0 0 8px 0;color:#fbbf24;">Server Setup Required</h3>
     <p style="color:#d6d3d1;font-size:13px;line-height:1.5;">${escapeHtml(msg)}</p>
-    <button onclick="if(window.opener){window.close()}else{window.location.href=${JSON.stringify(returnTo)}}" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Close</button>
+    <a href=${JSON.stringify(returnTo)} onclick="try{window.close();}catch(e){}" style="display:inline-block;text-decoration:none;margin-top:20px;padding:10px 24px;background:#e8430a;color:#ffffff;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer;">Return to EZLive Studio</a>
   </div>
   <script>
     if (window.opener) {
-      window.opener.postMessage({ type: 'FB_AUTH_ERROR', error: ${JSON.stringify(msg)} }, '*');
+      try {
+        window.opener.postMessage({ type: 'FB_AUTH_ERROR', error: ${JSON.stringify(msg)} }, '*');
+      } catch (e) {}
     }
   </script>
 </body>
@@ -128,16 +134,21 @@ export async function GET(req: NextRequest) {
       user: userData,
     };
 
-    return new NextResponse(
+    const response = new NextResponse(
       `<!DOCTYPE html>
 <html>
-<head><title>Connected to Facebook</title></head>
+<head>
+  <title>Connected to Facebook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="1;url=${escapeHtml(returnTo)}" />
+</head>
 <body style="background:#080605;color:#f2ede8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;padding:20px;text-align:center;">
-  <div style="background:#140e0c;border:1px solid #16a34a;border-radius:16px;padding:32px;max-width:440px;">
+  <div style="background:#140e0c;border:1px solid #16a34a;border-radius:16px;padding:32px;max-width:440px;width:100%;">
     <div style="width:48px;height:48px;background:#1877f2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px auto;color:white;font-weight:900;font-size:24px;">f</div>
     <h3 style="margin:0 0 8px 0;color:#4ade80;">Successfully Connected!</h3>
     <p style="color:#d6d3d1;font-size:13px;line-height:1.5;">Linked Facebook account: <strong>${escapeHtml(userData.name)}</strong></p>
-    <p style="color:#78716c;font-size:11px;margin-top:8px;">Syncing profile &amp; returning to EZLive Studio...</p>
+    <p style="color:#78716c;font-size:11px;margin-top:8px;">Returning to EZLive Studio automatically...</p>
+    <a href=${JSON.stringify(returnTo)} onclick="try{window.close();}catch(e){}" style="display:inline-block;text-decoration:none;margin-top:18px;padding:12px 24px;background:linear-gradient(90deg,#e8430a,#ff6b1a);color:#ffffff;border-radius:12px;font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:0.5px;box-shadow:0 6px 20px rgba(232,67,10,0.35);">Continue to Studio →</a>
   </div>
   <script>
     (function() {
@@ -154,18 +165,27 @@ export async function GET(req: NextRequest) {
       try {
         var bc = new BroadcastChannel('ezlive_auth_channel');
         bc.postMessage(payload);
-        setTimeout(function() { bc.close(); }, 600);
+        setTimeout(function() { try { bc.close(); } catch (e) {} }, 300);
       } catch (e) {}
 
       if (window.opener) {
         try {
           window.opener.postMessage(payload, '*');
         } catch (e) {}
-        setTimeout(function() { window.close(); }, 600);
+        try {
+          window.close();
+        } catch (e) {}
+        // Fallback: on Android WebView or mobile tabs where window.close() is ignored by the OS,
+        // automatically navigate this window directly to the Studio after 600ms so it never hangs!
+        setTimeout(function() {
+          if (!window.closed) {
+            window.location.replace(targetUrl);
+          }
+        }, 600);
       } else {
         setTimeout(function() {
-          window.location.href = targetUrl;
-        }, 500);
+          window.location.replace(targetUrl);
+        }, 250);
       }
     })();
   </script>
@@ -175,6 +195,17 @@ export async function GET(req: NextRequest) {
         headers: { 'Content-Type': 'text/html' },
       }
     );
+
+    // Also set a readable cookie with the payload so even if popup & parent are isolated, the Studio page picks it up
+    response.cookies.set('ezlive_fb_session', JSON.stringify(payload), {
+      httpOnly: false,
+      secure: proto === 'https',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 60, // 60 days
+      path: '/',
+    });
+
+    return response;
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Failed to authenticate with Facebook';
     return new NextResponse(
@@ -186,11 +217,13 @@ export async function GET(req: NextRequest) {
     <div style="font-size:36px;margin-bottom:12px;">⚠️</div>
     <h3 style="margin:0 0 8px 0;color:#fca5a5;">OAuth Error</h3>
     <p style="color:#a8a29e;font-size:13px;line-height:1.5;">${escapeHtml(errorMsg)}</p>
-    <button onclick="if(window.opener){window.close()}else{window.location.href=${JSON.stringify(returnTo)}}" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Return to EZLive</button>
+    <a href=${JSON.stringify(returnTo)} onclick="try{window.close();}catch(e){}" style="display:inline-block;text-decoration:none;margin-top:20px;padding:10px 24px;background:#e8430a;color:#ffffff;border-radius:10px;font-size:13px;font-weight:bold;cursor:pointer;">Return to EZLive Studio</a>
   </div>
   <script>
     if (window.opener) {
-      window.opener.postMessage({ type: 'FB_AUTH_ERROR', error: ${JSON.stringify(errorMsg)} }, '*');
+      try {
+        window.opener.postMessage({ type: 'FB_AUTH_ERROR', error: ${JSON.stringify(errorMsg)} }, '*');
+      } catch (e) {}
     }
   </script>
 </body>

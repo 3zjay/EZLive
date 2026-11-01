@@ -656,14 +656,25 @@ const FacebookDestinationManager: React.FC<{
   const handleConnectFacebook = () => {
     setIsLoading(true);
     setStatusMsg('Opening Facebook authentication...');
-    const width = 600;
-    const height = 750;
-    const left = window.screen.width / 2 - width / 2;
-    const top = window.screen.height / 2 - height / 2;
     const params = new URLSearchParams();
     params.set('return_to', '/studio');
     if (fb.appId) params.set('app_id', fb.appId);
     const loginUrl = `/api/auth/facebook/login?${params.toString()}`;
+
+    const isMobileOrAndroidApp =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Boolean((window as any).EZLiveNativeRTMP) ||
+      /Android|iPhone|iPad|iPod|Mobile|EZLiveAndroidApp/i.test(navigator.userAgent);
+
+    if (isMobileOrAndroidApp) {
+      window.location.href = loginUrl;
+      return;
+    }
+
+    const width = 600;
+    const height = 750;
+    const left = window.screen.width / 2 - width / 2;
+    const top = window.screen.height / 2 - height / 2;
 
     const popup = window.open(
       loginUrl,

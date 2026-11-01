@@ -430,17 +430,28 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   if (!isOpen) return null;
 
   const handleConnectFacebook = () => {
+    const loginUrl = '/api/auth/facebook/login?return_to=%2Fstudio';
+    const isMobileOrAndroidApp =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Boolean((window as any).EZLiveNativeRTMP) ||
+      /Android|iPhone|iPad|iPod|Mobile|EZLiveAndroidApp/i.test(navigator.userAgent);
+
+    if (isMobileOrAndroidApp) {
+      window.location.href = loginUrl;
+      return;
+    }
+
     const w = 650;
     const h = 700;
     const left = window.screenX + (window.outerWidth - w) / 2;
     const top = window.screenY + (window.outerHeight - h) / 2;
     const popup = window.open(
-      '/api/auth/facebook/login?return_to=%2Fstudio',
+      loginUrl,
       'FacebookLoginPopup',
       `width=${w},height=${h},top=${top},left=${left},toolbar=no,menubar=no`
     );
     if (!popup) {
-      window.location.href = '/api/auth/facebook/login?return_to=%2Fstudio';
+      window.location.href = loginUrl;
     }
   };
 

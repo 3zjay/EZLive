@@ -425,6 +425,11 @@ export async function connectYouTubeWithGoogle(): Promise<{ user: User; accessTo
 export async function signInWithFacebook(): Promise<User | null> {
   if (typeof window === 'undefined') return null;
 
+  const isMobileOrAndroidApp =
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Boolean((window as any).EZLiveNativeRTMP) ||
+    /Android|iPhone|iPad|iPod|Mobile|EZLiveAndroidApp/i.test(navigator.userAgent);
+
   return new Promise<User | null>((resolve, reject) => {
     const w = 620;
     const h = 720;
@@ -433,13 +438,19 @@ export async function signInWithFacebook(): Promise<User | null> {
     const returnTo = encodeURIComponent(window.location.pathname || '/studio');
     const loginUrl = `/api/auth/facebook/login?return_to=${returnTo}`;
 
+    // On Android WebView or mobile phones/tablets, use direct same-window redirect so it never gets stuck in an uncloseable popup tab
+    if (isMobileOrAndroidApp) {
+      window.location.href = loginUrl;
+      resolve(null);
+      return;
+    }
+
     const popup = window.open(
       loginUrl,
       'EZLiveFacebookAuth',
       `width=${w},height=${h},top=${top},left=${left},toolbar=no,menubar=no,scrollbars=yes`
     );
 
-    // If popup is blocked or on Android WebView where same-window navigation is preferred
     if (!popup) {
       window.location.href = loginUrl;
       resolve(null);
