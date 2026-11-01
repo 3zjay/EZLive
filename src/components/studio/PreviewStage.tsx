@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
-import { Maximize2, Minimize2, Grid, Lock, Camera, Monitor, RefreshCw } from 'lucide-react';
+import { Maximize2, Minimize2, Grid, Lock, Camera, Monitor, RefreshCw, RotateCcw, Zap, Radio, Sliders } from 'lucide-react';
 import { Scene, Source } from '@/types/broadcast';
 
 interface PreviewStageProps {
@@ -19,6 +19,10 @@ interface PreviewStageProps {
   onSelectVideoDevice?: (deviceId: string) => void;
   onRetryCamera?: () => void;
   onToggleScreenShare?: () => void;
+  onFlipCamera?: () => void;
+  onTriggerInstantReplay?: () => void;
+  onOpenScoreboardControl?: () => void;
+  isStreaming?: boolean;
 }
 
 const PreviewStageComponent: React.FC<PreviewStageProps> = ({
@@ -36,6 +40,10 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   onSelectVideoDevice,
   onRetryCamera,
   onToggleScreenShare,
+  onFlipCamera,
+  onTriggerInstantReplay,
+  onOpenScoreboardControl,
+  isStreaming = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageBoxRef = useRef<HTMLDivElement>(null);
@@ -351,17 +359,57 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
 
         {/* Program Active Scene Badge */}
         <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1.5 sm:gap-2 z-20 pointer-events-none">
-          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-red-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-widest rounded-md shadow flex items-center gap-1">
+          <div
+            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-widest rounded-md shadow flex items-center gap-1 ${
+              isStreaming ? 'bg-rose-600 ring-1 ring-rose-400' : 'bg-red-600'
+            }`}
+          >
             <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-white animate-pulse" />
-            PROGRAM
+            {isStreaming ? 'ON AIR (RTMP)' : 'PROGRAM'}
           </div>
           <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-900/90 text-slate-200 text-[10px] sm:text-xs font-bold rounded-md border border-slate-700/80 backdrop-blur-sm truncate max-w-[140px] sm:max-w-none">
             {activeScene.name}
           </div>
         </div>
 
-        {/* Viewport Control Buttons */}
-        <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 sm:gap-2 z-20">
+        {/* Viewport Control & Native Camera Action Pills */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 sm:gap-2 z-20"
+        >
+          {onFlipCamera && hasCamera && (
+            <button
+              onClick={onFlipCamera}
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-900/85 hover:bg-slate-800 text-[#ff6b1a] rounded-lg border border-[#ff6b1a]/40 backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
+              title="Flip Front / Rear Camera"
+            >
+              <RotateCcw size={13} />
+              <span className="hidden xs:inline">Flip Cam</span>
+            </button>
+          )}
+
+          {onTriggerInstantReplay && (
+            <button
+              onClick={onTriggerInstantReplay}
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 bg-amber-950/85 hover:bg-amber-900 text-amber-300 rounded-lg border border-amber-500/40 backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
+              title="10s Slow-Mo Instant Replay"
+            >
+              <Zap size={13} className="text-amber-400" />
+              <span className="hidden xs:inline">10s Replay</span>
+            </button>
+          )}
+
+          {onOpenScoreboardControl && (
+            <button
+              onClick={onOpenScoreboardControl}
+              className="xl:hidden px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-900/85 hover:bg-slate-800 text-emerald-300 rounded-lg border border-emerald-500/40 backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
+              title="Open Scoreboard & Streamlabs Controls"
+            >
+              <Sliders size={13} />
+              <span className="hidden sm:inline">Score / Tools</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowGrid(!showGrid)}
             className={`p-1.5 rounded-lg border backdrop-blur-sm transition ${

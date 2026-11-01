@@ -141,6 +141,8 @@ export default function StudioPage() {
           targetKey?: string;
           facebookKey?: string;
           youtubeKey?: string;
+          customRtmpUrl?: string;
+          customRtmpKey?: string;
           bitrateKbps?: number;
           fps?: number;
           width?: number;
@@ -152,6 +154,8 @@ export default function StudioPage() {
     try {
       let fbKey = '';
       let ytKey = '';
+      let customRtmpUrl = '';
+      let customRtmpKey = '';
       let targetRtmps = settings.rtmpsUrl;
       let bitrateKbps = 6000; // 6 Mbps Meta official standard for 1080p60
       let streamFps = 60;     // 60 FPS buttery-smooth sports broadcast standard
@@ -165,6 +169,8 @@ export default function StudioPage() {
         targetRtmps = options.targetRtmps || settings.rtmpsUrl;
         fbKey = options.facebookKey || options.targetKey || '';
         ytKey = options.youtubeKey || '';
+        customRtmpUrl = options.customRtmpUrl || '';
+        customRtmpKey = options.customRtmpKey || '';
         bitrateKbps = options.bitrateKbps || 6000;
         streamFps = options.fps || 60;
         streamWidth = options.width || 1920;
@@ -244,6 +250,14 @@ export default function StudioPage() {
         if (!fbKey) {
           query.set('streamKey', ytKey);
           query.set('rtmpsUrl', 'rtmp://a.rtmp.youtube.com/live2/');
+        }
+      }
+      if (customRtmpUrl && customRtmpKey) {
+        query.set('customRtmpUrl', customRtmpUrl);
+        query.set('customRtmpKey', customRtmpKey);
+        if (!fbKey && !ytKey) {
+          query.set('streamKey', customRtmpKey);
+          query.set('rtmpsUrl', customRtmpUrl);
         }
       }
       query.set('bitrate', String(bitrateKbps));
@@ -1468,6 +1482,9 @@ export default function StudioPage() {
     facebookKey: string;
     youtubeEnabled: boolean;
     youtubeKey: string;
+    customRtmpEnabled?: boolean;
+    customRtmpUrl?: string;
+    customRtmpKey?: string;
     bandwidthPreset: StreamBandwidthPreset;
     bitrateKbps: number;
     fps: number;
@@ -1599,22 +1616,29 @@ export default function StudioPage() {
         enabled: config.youtubeEnabled,
         streamKey: config.youtubeKey,
       },
+      customRtmpSettings: {
+        enabled: Boolean(config.customRtmpEnabled),
+        serverUrl: config.customRtmpUrl || '',
+        streamKey: config.customRtmpKey || '',
+      },
     };
     handleSaveSettings(updatedSettings);
 
-    const pageLabel = config.facebookPageName ? config.facebookPageName.split(' ')[0] : 'FB Page';
-    const summary =
-      config.facebookEnabled && config.youtubeEnabled
-        ? `${pageLabel} + YT`
-        : config.facebookEnabled
-          ? pageLabel
-          : 'YT';
+    const pageLabel = config.facebookPageName ? config.facebookPageName.split(' ')[0] : 'FB';
+    const destLabels = [
+      config.facebookEnabled ? pageLabel : '',
+      config.youtubeEnabled ? 'YT' : '',
+      config.customRtmpEnabled ? 'RTMP' : '',
+    ].filter(Boolean);
+    const summary = destLabels.join(' + ') || 'LIVE';
     setStreamDestinationsSummary(summary);
 
     startRelayPipeline({
       targetRtmps: resolvedRtmps,
       facebookKey: config.facebookEnabled ? resolvedFbKey : '',
       youtubeKey: config.youtubeEnabled ? config.youtubeKey : '',
+      customRtmpUrl: config.customRtmpEnabled ? config.customRtmpUrl : '',
+      customRtmpKey: config.customRtmpEnabled ? config.customRtmpKey : '',
       bitrateKbps: config.bitrateKbps,
       fps: config.fps,
       width: config.width,
@@ -1779,6 +1803,10 @@ export default function StudioPage() {
                     }}
                     onRetryCamera={() => startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined)}
                     onToggleScreenShare={handleToggleScreenShare}
+                    onFlipCamera={handleFlipCamera}
+                    onTriggerInstantReplay={handleTriggerInstantReplay}
+                    onOpenScoreboardControl={() => setIsSidebarOpen(true)}
+                    isStreaming={isStreaming}
                   />
                 </div>
               </div>
@@ -1802,6 +1830,10 @@ export default function StudioPage() {
               }}
               onRetryCamera={() => startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined)}
               onToggleScreenShare={handleToggleScreenShare}
+              onFlipCamera={handleFlipCamera}
+              onTriggerInstantReplay={handleTriggerInstantReplay}
+              onOpenScoreboardControl={() => setIsSidebarOpen(true)}
+              isStreaming={isStreaming}
             />
           )}
         </div>

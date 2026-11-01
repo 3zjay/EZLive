@@ -78,6 +78,10 @@ wss.on('connection', (ws, req) => {
   const ytKey = url.searchParams.get('ytKey') || url.searchParams.get('youtubeKey');
   const ytRtmpUrl = url.searchParams.get('ytRtmpUrl') || 'rtmp://a.rtmp.youtube.com/live2/';
 
+  // Destination 3: Custom RTMP / RTMPS Server (Twitch, Kick, Restream, Custom OBS Ingest)
+  const customRtmpUrl = url.searchParams.get('customRtmpUrl');
+  const customRtmpKey = url.searchParams.get('customRtmpKey');
+
   // Bandwidth & Profile Control (Capped sports broadcast standard)
   const requestedBitrate = parseInt(url.searchParams.get('bitrate'), 10) || 4200;
   const targetBitrate = Math.min(requestedBitrate, 5000);
@@ -112,6 +116,15 @@ wss.on('connection', (ws, req) => {
     }
     const maskedYt = ytKey.length > 8 ? `${ytKey.slice(0, 4)}...${ytKey.slice(-4)}` : '***';
     destinations.push({ name: 'YouTube Live', url: ytDest, maskedKey: maskedYt });
+  }
+
+  if (customRtmpUrl && customRtmpKey) {
+    const cleanBase = customRtmpUrl.endsWith('/') ? customRtmpUrl : `${customRtmpUrl}/`;
+    const customDest = `${cleanBase}${customRtmpKey}`;
+    const maskedCustom = customRtmpKey.length > 8 ? `${customRtmpKey.slice(0, 4)}...${customRtmpKey.slice(-4)}` : '***';
+    destinations.push({ name: 'Custom RTMP', url: customDest, maskedKey: maskedCustom });
+  } else if (customRtmpUrl && customRtmpUrl.startsWith('rtmp')) {
+    destinations.push({ name: 'Custom RTMP', url: customRtmpUrl, maskedKey: 'url-embedded' });
   }
 
   if (destinations.length === 0) {

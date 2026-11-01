@@ -37,6 +37,9 @@ interface GoLiveModalProps {
     facebookKey: string;
     youtubeEnabled: boolean;
     youtubeKey: string;
+    customRtmpEnabled?: boolean;
+    customRtmpUrl?: string;
+    customRtmpKey?: string;
     bandwidthPreset: StreamBandwidthPreset;
     bitrateKbps: number;
     fps: number;
@@ -159,6 +162,18 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   const [showYtKey, setShowYtKey] = useState(false);
   const [ytChannelName, setYtChannelName] = useState(settings.ytSettings?.channelTitle || '');
   const [isConnectingYt, setIsConnectingYt] = useState(false);
+
+  // Custom RTMP / RTMPS Settings (Twitch, Kick, Restream, Custom Server)
+  const initialCustomUrl =
+    settings.customRtmpSettings?.serverUrl ||
+    (typeof window !== 'undefined' ? localStorage.getItem('hc_custom_rtmp_url') || '' : '');
+  const initialCustomKey =
+    settings.customRtmpSettings?.streamKey ||
+    (typeof window !== 'undefined' ? localStorage.getItem('hc_custom_rtmp_key') || '' : '');
+  const [customRtmpEnabled, setCustomRtmpEnabled] = useState(Boolean(settings.customRtmpSettings?.enabled));
+  const [customRtmpUrl, setCustomRtmpUrl] = useState(initialCustomUrl);
+  const [customRtmpKey, setCustomRtmpKey] = useState(initialCustomKey);
+  const [showCustomKey, setShowCustomKey] = useState(false);
 
   const handleAutoProvisionYouTube = async () => {
     setIsConnectingYt(true);
@@ -331,8 +346,10 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       (fbDestType === 'stream_key' && fbKey.trim()));
 
   const isYtReady = ytEnabled && ytKey.trim().length > 0;
-  const hasAtLeastOneDestination = isFbReady || isYtReady;
-  const isDualStream = isFbReady && isYtReady;
+  const isCustomReady = customRtmpEnabled && customRtmpUrl.trim().length > 0 && customRtmpKey.trim().length > 0;
+  const hasAtLeastOneDestination = isFbReady || isYtReady || isCustomReady;
+  const activeDestCount = [isFbReady, isYtReady, isCustomReady].filter(Boolean).length;
+  const isDualStream = activeDestCount >= 2;
 
   const handleFillGameInfo = () => {
     const autoTitle = `🏀 ${scoreboard.homeTeam || 'HOME'} vs ${scoreboard.awayTeam || 'AWAY'} | Hoop Culture Live`;
@@ -351,6 +368,8 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
         localStorage.removeItem('hc_fb_stream_key');
       }
       if (ytKey.trim()) localStorage.setItem('hc_yt_stream_key', ytKey.trim());
+      if (customRtmpUrl.trim()) localStorage.setItem('hc_custom_rtmp_url', customRtmpUrl.trim());
+      if (customRtmpKey.trim()) localStorage.setItem('hc_custom_rtmp_key', customRtmpKey.trim());
       localStorage.setItem('ezlive_stream_title', title);
       localStorage.setItem('ezlive_stream_desc', description);
     }
@@ -368,6 +387,9 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       facebookKey: cleanedKey,
       youtubeEnabled: ytEnabled && ytKey.trim().length > 0,
       youtubeKey: ytKey.trim(),
+      customRtmpEnabled: isCustomReady,
+      customRtmpUrl: customRtmpUrl.trim(),
+      customRtmpKey: customRtmpKey.trim(),
       bandwidthPreset: qualityPreset,
       bitrateKbps: bitrateCapKbps || selectedPresetObj.bitrateKbps,
       fps: selectedPresetObj.fps,
@@ -785,6 +807,76 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                       </span>
                     ) : (
                       <span className="text-amber-400 font-medium">Connect or paste key</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Destination 3: Custom RTMP / RTMPS Server Card */}
+            <div
+              className={`border rounded-xl p-3.5 transition ${
+                customRtmpEnabled
+                  ? 'bg-purple-950/20 border-purple-500/50 shadow-sm'
+                  : 'bg-slate-900/40 border-slate-800 opacity-70'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-purple-600 flex items-center justify-center text-white font-black text-[10px] shadow">
+                    RTMP
+                  </div>
+                  <div>
+                    <span className="font-bold text-white text-xs">Custom RTMP / RTMPS Server</span>
+                    <span className="text-[10px] text-slate-400 ml-2">Twitch, Kick, Restream, or Custom Ingest</span>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={customRtmpEnabled}
+                    onChange={(e) => setCustomRtmpEnabled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                </label>
+              </div>
+
+              {customRtmpEnabled && (
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <input
+                      type="text"
+                      value={customRtmpUrl}
+                      onChange={(e) => setCustomRtmpUrl(e.target.value)}
+                      placeholder="RTMP Server URL (e.g. rtmp://live.twitch.tv/app/ or rtmps://...)"
+                      className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-1.5 text-white font-mono text-[11px] placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showCustomKey ? 'text' : 'password'}
+                      value={customRtmpKey}
+                      onChange={(e) => setCustomRtmpKey(e.target.value)}
+                      placeholder="Paste RTMP Stream Key..."
+                      className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-1.5 pr-9 text-white font-mono text-[11px] placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomKey(!showCustomKey)}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
+                    >
+                      {showCustomKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                    <span>Works with any RTMP / RTMPS endpoint simultaneously</span>
+                    {isCustomReady ? (
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        <Check size={11} /> Ready
+                      </span>
+                    ) : (
+                      <span className="text-amber-400 font-medium">Enter Server URL &amp; Stream Key</span>
                     )}
                   </div>
                 </div>

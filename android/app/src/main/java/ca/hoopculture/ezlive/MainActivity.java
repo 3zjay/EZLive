@@ -31,6 +31,13 @@ public class MainActivity extends BridgeActivity {
 
         // Grant WebRTC getUserMedia camera/audio permissions inside the Capacitor WebView
         if (this.bridge != null && this.bridge.getWebView() != null) {
+            android.webkit.WebSettings webSettings = this.bridge.getWebView().getSettings();
+            webSettings.setMediaPlaybackRequiresUserGesture(false);
+            String currentUa = webSettings.getUserAgentString();
+            if (!currentUa.contains("EZLiveAndroidApp")) {
+                webSettings.setUserAgentString(currentUa + " EZLiveAndroidApp/1.0");
+            }
+
             this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
                 @Override
                 public void onPermissionRequest(final PermissionRequest request) {

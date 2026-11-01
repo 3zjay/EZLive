@@ -165,6 +165,12 @@ export interface YouTubeLiveSettings {
   watchUrl?: string;
 }
 
+export interface CustomRtmpSettings {
+  enabled: boolean;
+  serverUrl: string;
+  streamKey: string;
+}
+
 export type StreamBandwidthPreset = 'eco_720' | 'balanced_720' | 'high_1080' | 'pro_1080_60';
 export type PerformanceProfile = 'auto' | 'lite' | 'balanced' | 'pro';
 
@@ -182,6 +188,7 @@ export interface StreamSettings {
   transitionDurationMs: number;
   fbSettings?: FacebookLiveSettings;
   ytSettings?: YouTubeLiveSettings;
+  customRtmpSettings?: CustomRtmpSettings;
   bandwidthPreset?: StreamBandwidthPreset;
   broadcastTitle?: string;
   broadcastDescription?: string;

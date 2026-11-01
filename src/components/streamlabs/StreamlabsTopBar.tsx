@@ -107,6 +107,11 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   onTriggerInstantReplay,
 }) => {
   const [isCourtDropdownOpen, setIsCourtDropdownOpen] = useState(false);
+  const isNativeAndroid =
+    typeof window !== 'undefined' &&
+    (navigator.userAgent.includes('EZLiveAndroidApp') ||
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Boolean((window as any).Capacitor?.isNativePlatform?.()));
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -143,8 +148,14 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
             <div className="text-[11px] sm:text-xs font-black tracking-tight flex items-center gap-1 leading-none">
               <span>EZLive</span>
               <span className="hidden md:inline">Studio</span>
-              <span className="text-[8px] sm:text-[9px] font-bold px-1 py-0.2 rounded bg-[#e8430a]/20 text-[#ff6b1a] border border-[#e8430a]/30">
-                PRO
+              <span
+                className={`text-[8px] sm:text-[9px] font-bold px-1 py-0.2 rounded border ${
+                  isNativeAndroid
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                    : 'bg-[#e8430a]/20 text-[#ff6b1a] border-[#e8430a]/30'
+                }`}
+              >
+                {isNativeAndroid ? 'ANDROID RTMP' : 'PRO'}
               </span>
             </div>
             <div className="text-[9px] sm:text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
