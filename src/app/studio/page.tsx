@@ -18,7 +18,7 @@ import {
   StreamlabsBanner,
 } from '@/types/streamlabs';
 import { StreamlabsTopBar } from '@/components/streamlabs/StreamlabsTopBar';
-import { PreviewStage } from '@/components/studio/PreviewStage';
+import { PreviewStage, ProCameraCapabilities, ProCameraSettings } from '@/components/studio/PreviewStage';
 import { BackstageStrip } from '@/components/streamlabs/BackstageStrip';
 import { SidebarTabs } from '@/components/streamlabs/SidebarTabs';
 import { SettingsModal } from '@/components/studio/SettingsModal';
@@ -560,6 +560,38 @@ export default function StudioPage() {
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState('');
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState('');
+  const cameraLockRef = useRef<boolean>(false);
+  const selectedVideoDeviceIdRef = useRef<string>('');
+  const selectedAudioDeviceIdRef = useRef<string>('');
+  const facingModeRef = useRef<'environment' | 'user'>('environment');
+
+  // Pro Camera Capabilities & Settings (Galaxy Z Fold / S Ultra / Multi-Lens / Optical & Digital Zoom)
+  const [cameraCapabilities, setCameraCapabilities] = useState<ProCameraCapabilities>({
+    zoomSupported: false,
+    zoomMin: 1,
+    zoomMax: 10,
+    torchSupported: false,
+    focusModes: ['continuous'],
+    exposureModes: ['continuous'],
+    exposureCompMin: -2,
+    exposureCompMax: 2,
+    whiteBalanceModes: ['continuous'],
+  });
+  const [proCameraSettings, setProCameraSettings] = useState<ProCameraSettings>({
+    zoom: 1,
+    panX: 0,
+    panY: 0,
+    torch: false,
+    focusMode: 'continuous',
+    exposureCompensation: 0,
+    whiteBalanceMode: 'continuous',
+    colorTemperature: 5500,
+    brightness: 100,
+    contrast: 100,
+    saturation: 100,
+    mirror: false,
+    resolutionPreset: '1080p30',
+  });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isGuestInviteOpen, setIsGuestInviteOpen] = useState(false);
@@ -825,7 +857,7 @@ export default function StudioPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Sync Streamlabs layout, ticker, highlighted chat to Compositor
+  // Sync Streamlabs layout, ticker, highlighted chat & Pro Camera settings to Compositor
   useEffect(() => {
     if (compositorRef.current) {
       compositorRef.current.layout = stageLayout;
@@ -835,8 +867,74 @@ export default function StudioPage() {
       compositorRef.current.brandKit = brandKit;
       compositorRef.current.isBroadcastingOrRecording =
         isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer);
+      compositorRef.current.cameraBrightness = proCameraSettings.brightness;
+      compositorRef.current.cameraContrast = proCameraSettings.contrast;
+      compositorRef.current.cameraSaturation = proCameraSettings.saturation;
+      compositorRef.current.cameraMirror = proCameraSettings.mirror;
+      compositorRef.current.cameraPanX = proCameraSettings.panX;
+      compositorRef.current.cameraPanY = proCameraSettings.panY;
+      // If hardware zoom isn't supported (or beyond hardware range), compositor applies crisp digital zoom
+      if (!cameraCapabilities.zoomSupported) {
+        compositorRef.current.cameraZoom = proCameraSettings.zoom;
+      } else {
+        const hwMax = cameraCapabilities.zoomMax || 1;
+        compositorRef.current.cameraZoom = proCameraSettings.zoom > hwMax ? proCameraSettings.zoom / hwMax : 1;
+      }
     }
-  }, [stageLayout, tickerConfig, highlightedChat, activeBanner, brandKit, isStreaming, recordingState.isRecording, settings.enableReplayBuffer]);
+  }, [
+    stageLayout,
+    tickerConfig,
+    highlightedChat,
+    activeBanner,
+    brandKit,
+    isStreaming,
+    recordingState.isRecording,
+    settings.enableReplayBuffer,
+    proCameraSettings,
+    cameraCapabilities,
+  ]);
+
+  const handleUpdateProCamera = useCallback(
+    async (partial: Partial<ProCameraSettings>) => {
+      setProCameraSettings((prev) => {
+        const next = { ...prev, ...partial };
+        // Apply hardware track constraints where supported (Optical Zoom, Torch, Focus, Exposure)
+        if (mediaStreamRef.current) {
+          const videoTrack = mediaStreamRef.current.getVideoTracks()[0];
+          if (videoTrack && typeof videoTrack.applyConstraints === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const caps: any = typeof (videoTrack as any).getCapabilities === 'function' ? (videoTrack as any).getCapabilities() : {};
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const advanced: Record<string, any> = {};
+
+            if (partial.zoom !== undefined && caps.zoom) {
+              const minZ = caps.zoom.min ?? 1;
+              const maxZ = caps.zoom.max ?? 10;
+              advanced.zoom = Math.max(minZ, Math.min(maxZ, partial.zoom));
+            }
+            if (partial.torch !== undefined && caps.torch) {
+              advanced.torch = partial.torch;
+            }
+            if (partial.focusMode !== undefined && Array.isArray(caps.focusMode) && caps.focusMode.includes(partial.focusMode)) {
+              advanced.focusMode = partial.focusMode;
+            }
+            if (partial.exposureCompensation !== undefined && caps.exposureCompensation) {
+              const minEv = caps.exposureCompensation.min ?? -2;
+              const maxEv = caps.exposureCompensation.max ?? 2;
+              advanced.exposureCompensation = Math.max(minEv, Math.min(maxEv, partial.exposureCompensation));
+            }
+
+            if (Object.keys(advanced).length > 0) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              videoTrack.applyConstraints({ advanced: [advanced] } as any).catch(() => {});
+            }
+          }
+        }
+        return next;
+      });
+    },
+    []
+  );
 
   // Audio VU Meter Setup
   const setupAudioMeter = useCallback((stream: MediaStream) => {
@@ -876,11 +974,24 @@ export default function StudioPage() {
     }
   }, []);
 
-  // Camera Initialization with Robust Laptop Webcam, Mobile, Android WebView & iOS Safari Fallbacks
+  // Camera Initialization with Hardware Mutex, Auto-Recovery & Multi-Lens Discovery for Galaxy Z Fold 8 Ultra / Tablets / Laptops
   const startCamera = useCallback(
-    async (facing: 'environment' | 'user' = 'environment', videoDevId?: string, audioDevId?: string) => {
+    async (
+      facing: 'environment' | 'user' = 'environment',
+      videoDevId?: string,
+      audioDevId?: string,
+      resOverride?: '720p30' | '1080p30' | '1080p60'
+    ) => {
+      if (cameraLockRef.current) {
+        return;
+      }
+      cameraLockRef.current = true;
+
       try {
         setCameraError(null);
+        facingModeRef.current = facing;
+        if (videoDevId !== undefined) selectedVideoDeviceIdRef.current = videoDevId;
+        if (audioDevId !== undefined) selectedAudioDeviceIdRef.current = audioDevId;
 
         // If running inside the Native Android App, ensure OS Camera/Mic permissions are requested
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -891,18 +1002,19 @@ export default function StudioPage() {
           } catch {}
         }
 
+        // Stop previous tracks and pause briefly (120ms) so Android Camera2 HAL cleanly releases the sensor on Fold/Ultra
         if (mediaStreamRef.current) {
-          mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+          mediaStreamRef.current.getTracks().forEach((track) => {
+            track.onended = null;
+            track.stop();
+          });
+          mediaStreamRef.current = null;
+          await new Promise((r) => setTimeout(r, 120));
         }
 
-        const resolvedProfile =
-          (settings.performanceProfile === 'auto' || !settings.performanceProfile)
-            ? VideoCompositor.detectOptimalProfile()
-            : settings.performanceProfile;
-
-        // On Lite/Balanced devices (laptops without discrete GPU, phones, tablets), request 720p @ 30fps
-        const is1080p = resolvedProfile === 'pro' && settings.targetResolution.startsWith('1080');
-        const is60fps = resolvedProfile === 'pro' && settings.targetResolution.endsWith('60');
+        const activePreset = resOverride || settings.targetResolution || '1080p30';
+        const is1080p = activePreset.startsWith('1080');
+        const is60fps = activePreset.endsWith('60');
 
         const isMobileOrTablet =
           typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile|EZLiveAndroidApp/i.test(navigator.userAgent);
@@ -924,12 +1036,16 @@ export default function StudioPage() {
             },
             audio: audioDevId
               ? { deviceId: { exact: audioDevId } }
-              : true,
+              : {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                },
           });
         } catch (initialErr) {
           console.warn('Primary getUserMedia rejected, attempting universal laptop/mobile fallback:', initialErr);
           try {
-            // Attempt 2: Universal video + audio (works on all Windows/Mac laptop webcams & mobile browsers)
+            // Attempt 2: Universal video + audio
             stream = await navigator.mediaDevices.getUserMedia({
               video: videoDevId
                 ? { deviceId: { ideal: videoDevId } }
@@ -941,7 +1057,7 @@ export default function StudioPage() {
           } catch (audioErr) {
             console.warn('Audio+video rejected, attempting video-only mode with facingMode:', audioErr);
             try {
-              // Attempt 3: Video only with facingMode / deviceId (if laptop/phone has no mic or mic permission denied)
+              // Attempt 3: Video only with facingMode / deviceId
               stream = await navigator.mediaDevices.getUserMedia({
                 video: videoDevId
                   ? { deviceId: { ideal: videoDevId } }
@@ -981,6 +1097,54 @@ export default function StudioPage() {
 
         mediaStreamRef.current = stream;
 
+        // Inspect hardware camera capabilities (Optical Zoom range, Torch, Continuous Autofocus, EV Exposure)
+        const vTrack = stream.getVideoTracks()[0];
+        if (vTrack) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const caps: any = typeof (vTrack as any).getCapabilities === 'function' ? (vTrack as any).getCapabilities() : {};
+            setCameraCapabilities({
+              zoomSupported: Boolean(caps.zoom && caps.zoom.max > caps.zoom.min),
+              zoomMin: caps.zoom?.min ?? 1,
+              zoomMax: caps.zoom?.max ?? 10,
+              torchSupported: Boolean(caps.torch),
+              focusModes: Array.isArray(caps.focusMode) ? caps.focusMode : ['continuous'],
+              exposureModes: Array.isArray(caps.exposureMode) ? caps.exposureMode : ['continuous'],
+              exposureCompMin: caps.exposureCompensation?.min ?? -2,
+              exposureCompMax: caps.exposureCompensation?.max ?? 2,
+              whiteBalanceModes: Array.isArray(caps.whiteBalanceMode) ? caps.whiteBalanceMode : ['continuous'],
+            });
+
+            // Enable continuous court autofocus & auto-exposure by default if supported
+            if (typeof vTrack.applyConstraints === 'function') {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const initAdv: Record<string, any> = {};
+              if (Array.isArray(caps.focusMode) && caps.focusMode.includes('continuous')) {
+                initAdv.focusMode = 'continuous';
+              }
+              if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) {
+                initAdv.exposureMode = 'continuous';
+              }
+              if (Object.keys(initAdv).length > 0) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                vTrack.applyConstraints({ advanced: [initAdv] } as any).catch(() => {});
+              }
+            }
+          } catch {}
+
+          // Auto-Reconnect Watchdog: if folding/unfolding the Galaxy Fold 8 Ultra or Android HAL drops the track, auto-recover!
+          vTrack.onended = () => {
+            console.warn('Camera video track ended (fold/unfold or HAL switch) — auto-reconnecting...');
+            setTimeout(() => {
+              startCamera(
+                facingModeRef.current,
+                selectedVideoDeviceIdRef.current || undefined,
+                selectedAudioDeviceIdRef.current || undefined
+              );
+            }, 350);
+          };
+        }
+
         // Apply active microphone mute state to physical stream tracks
         if (stream.getAudioTracks().length > 0) {
           stream.getAudioTracks().forEach((track) => {
@@ -999,7 +1163,6 @@ export default function StudioPage() {
 
         if (compositorRef.current && videoRef.current) {
           compositorRef.current.setVideoSource(videoRef.current);
-          // Only run continuous background Replay Buffer encoding if explicitly enabled (saves huge CPU/GPU on laptops without discrete GPU)
           if (settings.enableReplayBuffer) {
             const compStream = compositorRef.current.getCompositeStream(stream);
             recorderRef.current?.startReplayBuffer(compStream);
@@ -1022,46 +1185,77 @@ export default function StudioPage() {
         setHasCamera(false);
         const errName = (err as { name?: string })?.name || '';
         if (errName === 'NotReadableError' || errName === 'TrackStartError') {
-          setCameraError('Webcam is currently in use by another app (e.g., OBS, Zoom, or another browser tab). Close the other app or select a different camera.');
+          setCameraError('Camera is currently in use or switching lenses. Tap Connect Camera to re-sync.');
         } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-          setCameraError('Camera permission was blocked by your browser. Click the camera/tune icon in your browser address bar to allow access.');
+          setCameraError('Camera permission was blocked. Allow Camera access and tap Connect Camera.');
         } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
-          setCameraError('No physical webcam detected on this laptop. You can plug in a USB webcam/capture card or click "Share Screen" to broadcast.');
+          setCameraError('No physical camera detected. Select a camera lens or click Share Screen.');
         } else {
-          setCameraError('Camera not connected yet. Click Retry Camera or choose a webcam device.');
+          setCameraError('Camera not connected yet. Tap Connect Camera or choose a lens.');
         }
-        // Still enumerate devices so user can see what is plugged in
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           setVideoDevices(devices.filter((d) => d.kind === 'videoinput'));
           setAudioDevices(devices.filter((d) => d.kind === 'audioinput'));
         } catch {}
+      } finally {
+        cameraLockRef.current = false;
       }
     },
-    [settings.targetResolution, settings.performanceProfile, settings.enableReplayBuffer, setupAudioMeter]
+    [settings.targetResolution, settings.enableReplayBuffer, setupAudioMeter]
   );
 
   const hasInitiatedCamera = useRef(false);
   useEffect(() => {
     if (!hasInitiatedCamera.current) {
       hasInitiatedCamera.current = true;
-      startCamera(facingMode);
+      startCamera('environment');
     }
 
     // Listen for Android Native Runtime Permission Grant event so camera starts immediately after tapping "Allow"
     const handleAndroidPermGranted = () => {
-      startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined);
+      if (!mediaStreamRef.current || mediaStreamRef.current.getVideoTracks().length === 0) {
+        startCamera(
+          facingModeRef.current,
+          selectedVideoDeviceIdRef.current || undefined,
+          selectedAudioDeviceIdRef.current || undefined
+        );
+      }
     };
     window.addEventListener('ANDROID_PERMISSIONS_GRANTED', handleAndroidPermGranted);
 
+    // Auto-resume camera if app returns from background or foldable screen state changes
+    const handleVisibilityRecovery = () => {
+      if (document.visibilityState === 'visible') {
+        const vTrack = mediaStreamRef.current?.getVideoTracks()[0];
+        if (!vTrack || vTrack.readyState === 'ended') {
+          startCamera(
+            facingModeRef.current,
+            selectedVideoDeviceIdRef.current || undefined,
+            selectedAudioDeviceIdRef.current || undefined
+          );
+        } else if (videoRef.current && videoRef.current.paused) {
+          videoRef.current.play().catch(() => {});
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityRecovery);
+
     return () => {
       window.removeEventListener('ANDROID_PERMISSIONS_GRANTED', handleAndroidPermGranted);
+      document.removeEventListener('visibilitychange', handleVisibilityRecovery);
+    };
+  }, [startCamera]);
+
+  // Separate unmount cleanup so changing lens/resolution never kills the active stream via effect re-run
+  useEffect(() => {
+    return () => {
       if (audioLevelInterval.current) clearInterval(audioLevelInterval.current);
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [startCamera, facingMode, selectedVideoDeviceId, selectedAudioDeviceId]);
+  }, []);
 
   const handleFlipCamera = () => {
     const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
@@ -1929,6 +2123,22 @@ export default function StudioPage() {
                     onTriggerInstantReplay={handleTriggerInstantReplay}
                     onOpenScoreboardControl={() => setIsSidebarOpen(true)}
                     isStreaming={isStreaming}
+                    cameraCapabilities={cameraCapabilities}
+                    proCameraSettings={proCameraSettings}
+                    onUpdateProCamera={handleUpdateProCamera}
+                    onSelectCameraResolution={(preset) => {
+                      setProCameraSettings((prev) => ({ ...prev, resolutionPreset: preset }));
+                      const nextSettings = { ...settings, targetResolution: preset };
+                      handleSaveSettings(nextSettings);
+                      if (compositorRef.current) {
+                        compositorRef.current.setTargetFps(preset.endsWith('60') ? 60 : 30);
+                        compositorRef.current.setStreamResolution(
+                          preset.startsWith('1080') ? 1920 : 1280,
+                          preset.startsWith('1080') ? 1080 : 720
+                        );
+                      }
+                      startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined, preset);
+                    }}
                   />
                 </div>
               </div>
@@ -1956,6 +2166,22 @@ export default function StudioPage() {
               onTriggerInstantReplay={handleTriggerInstantReplay}
               onOpenScoreboardControl={() => setIsSidebarOpen(true)}
               isStreaming={isStreaming}
+              cameraCapabilities={cameraCapabilities}
+              proCameraSettings={proCameraSettings}
+              onUpdateProCamera={handleUpdateProCamera}
+              onSelectCameraResolution={(preset) => {
+                setProCameraSettings((prev) => ({ ...prev, resolutionPreset: preset }));
+                const nextSettings = { ...settings, targetResolution: preset };
+                handleSaveSettings(nextSettings);
+                if (compositorRef.current) {
+                  compositorRef.current.setTargetFps(preset.endsWith('60') ? 60 : 30);
+                  compositorRef.current.setStreamResolution(
+                    preset.startsWith('1080') ? 1920 : 1280,
+                    preset.startsWith('1080') ? 1080 : 720
+                  );
+                }
+                startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined, preset);
+              }}
             />
           )}
         </div>

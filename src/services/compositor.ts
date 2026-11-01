@@ -39,7 +39,14 @@ export class VideoCompositor {
   private micGainNode: GainNode | null = null;
   private compositeStream: MediaStream | null = null;
 
-  // Video Media Cache & Instant Replay Video
+  // Camera Digital/Optical Fallback Zoom & Image Filters (Fold 8 Ultra / Pro Camera Controls)
+  public cameraZoom: number = 1;
+  public cameraPanX: number = 0; // -1 to 1
+  public cameraPanY: number = 0; // -1 to 1
+  public cameraBrightness: number = 100; // 50 to 150 (%)
+  public cameraContrast: number = 100;   // 50 to 150 (%)
+  public cameraSaturation: number = 100; // 50 to 150 (%)
+  public cameraMirror: boolean = false;
   private videoMediaCache: Map<string, HTMLVideoElement> = new Map();
   private instantReplayVideo: HTMLVideoElement | null = null;
   public isReplaying: boolean = false;
@@ -109,8 +116,9 @@ export class VideoCompositor {
     const ua = navigator.userAgent || '';
     const isMobileOrTablet = /Android|iPhone|iPad|iPod|Mobile/i.test(ua);
 
-    // Check WebGL renderer string for Intel integrated graphics or software renderers
+    // Check WebGL renderer string for Intel integrated graphics, software renderers, or flagship Snapdragon/Apple GPUs
     let isIntegratedOrWeakGpu = false;
+    let isFlagshipMobileGpu = false;
     try {
       const testCanvas = document.createElement('canvas');
       const gl = (testCanvas.getContext('webgl') || testCanvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
@@ -126,15 +134,30 @@ export class VideoCompositor {
             renderer.includes('swiftshader') ||
             renderer.includes('llvmpipe') ||
             renderer.includes('microsoft basic') ||
-            renderer.includes('mali-g') ||
-            renderer.includes('adreno (tm) 6')
+            renderer.includes('mali-g5') ||
+            renderer.includes('adreno (tm) 61')
           ) {
             isIntegratedOrWeakGpu = true;
+          }
+          if (
+            renderer.includes('adreno (tm) 7') ||
+            renderer.includes('adreno (tm) 8') ||
+            renderer.includes('adreno 7') ||
+            renderer.includes('adreno 8') ||
+            renderer.includes('immortalis') ||
+            renderer.includes('apple m') ||
+            renderer.includes('apple a1')
+          ) {
+            isFlagshipMobileGpu = true;
           }
         }
       }
     } catch {}
 
+    // Flagship foldables & phones (Samsung Galaxy Z Fold / S Ultra, iPad Pro) get full Pro 1080p60 capability
+    if (isFlagshipMobileGpu || /SM-F9|Fold|Ultra|iPad/i.test(ua) || (cores >= 8 && memory >= 8 && !isIntegratedOrWeakGpu)) {
+      return 'pro';
+    }
     if (cores <= 4 || memory <= 4 || isIntegratedOrWeakGpu) {
       return 'lite';
     }
@@ -605,7 +628,39 @@ export class VideoCompositor {
       }
     }
 
+    // Apply digital/software zoom & pan (smoothly augments or replaces hardware optical zoom across all lenses)
+    const zoom = Math.max(0.5, Math.min(10, this.cameraZoom || 1));
+    if (zoom > 1.01 && video === this.videoElement) {
+      const zoomedW = sWidth / zoom;
+      const zoomedH = sHeight / zoom;
+      const maxOffsetX = (sWidth - zoomedW) / 2;
+      const maxOffsetY = (sHeight - zoomedH) / 2;
+      sx += maxOffsetX + (this.cameraPanX || 0) * maxOffsetX;
+      sy += maxOffsetY + (this.cameraPanY || 0) * maxOffsetY;
+      sWidth = zoomedW;
+      sHeight = zoomedH;
+    }
+
+    ctx.save();
+    if (video === this.videoElement) {
+      const hasColorAdjust =
+        this.cameraBrightness !== 100 ||
+        this.cameraContrast !== 100 ||
+        this.cameraSaturation !== 100;
+      if (hasColorAdjust) {
+        ctx.filter = `brightness(${this.cameraBrightness}%) contrast(${this.cameraContrast}%) saturate(${this.cameraSaturation}%)`;
+      }
+      if (this.cameraMirror) {
+        ctx.translate(x + w, y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, w, h);
+        ctx.restore();
+        return;
+      }
+    }
+
     ctx.drawImage(video, sx, sy, sWidth, sHeight, x, y, w, h);
+    ctx.restore();
   }
 
   private drawVideoMediaSource(source: VideoMediaSource) {
