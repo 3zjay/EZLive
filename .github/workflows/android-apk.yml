@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-android-apk:
     runs-on: ubuntu-latest
@@ -25,8 +28,9 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Install NPM Dependencies & Sync Capacitor Android
         run: |
@@ -56,7 +60,7 @@ jobs:
         with:
           tag_name: latest-apk
           name: "EZLiveStudio by HoopCulture — Official Android APK"
-          body: "Installable Android Broadcast Studio APK (`EZLiveStudio.apk`) for Android tablets and phones."
+          body: "Installable Android Broadcast Studio APK (`EZLiveStudio.apk`) with Direct On-Device Native RTMP/RTMPS Engine for Android tablets and phones."
           files: EZLiveStudio.apk
           prerelease: false
         env:
