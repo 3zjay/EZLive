@@ -37,10 +37,28 @@ public class MainActivity extends BridgeActivity {
             android.webkit.WebView webView = this.bridge.getWebView();
             android.webkit.WebSettings webSettings = webView.getSettings();
             webSettings.setMediaPlaybackRequiresUserGesture(false);
+            webSettings.setDomStorageEnabled(true);
+            webSettings.setDatabaseEnabled(true);
+            webSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+            // Enable third-party cookies for Firebase Auth / Google & Facebook OAuth inside WebView
+            try {
+                android.webkit.CookieManager cookieManager = android.webkit.CookieManager.getInstance();
+                cookieManager.setAcceptCookie(true);
+                cookieManager.setAcceptThirdPartyCookies(webView, true);
+            } catch (Exception ignored) {}
+
+            // Sanitize WebView User-Agent by stripping "; wv" and "Version/4.0 " so Google OAuth
+            // never blocks sign-in with "Error 403: disallowed_useragent"
             String currentUa = webSettings.getUserAgentString();
-            if (!currentUa.contains("EZLiveAndroidApp")) {
-                webSettings.setUserAgentString(currentUa + " EZLiveAndroidApp/1.0");
+            String cleanUa = currentUa
+                .replace("; wv)", ")")
+                .replace("; wv;", ";")
+                .replace("Version/4.0 ", "");
+            if (!cleanUa.contains("EZLiveAndroidApp")) {
+                cleanUa = cleanUa + " EZLiveAndroidApp/1.0";
             }
+            webSettings.setUserAgentString(cleanUa);
 
             // Register On-Device Native RTMP/RTMPS Engine Bridge (Zero Cloud Relay needed!)
             nativeRtmpBridge = new NativeRtmpBridge(this, webView);

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const customAppId = searchParams.get('app_id');
+  const returnTo = searchParams.get('return_to') || '/studio';
 
   const appId =
     customAppId ||
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // Derive redirect URI dynamically based on current host (supports localhost & Vercel production)
+  // Derive redirect URI dynamically based on current host (supports localhost, ezlive.vercel.app & live.hoopculture.ca)
   const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
   const proto = req.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https');
   const redirectUri = `${proto}://${host}/api/auth/facebook/callback`;
@@ -46,12 +47,20 @@ export async function GET(req: NextRequest) {
 
   const response = NextResponse.redirect(fbAuthUrl.toString());
 
-  // Store state and optional customAppId in secure cookies for callback validation
+  // Store state, return_to, and optional customAppId in secure cookies for callback validation
   response.cookies.set('fb_oauth_state', state, {
     httpOnly: true,
     secure: proto === 'https',
     sameSite: 'lax',
     maxAge: 600, // 10 minutes
+    path: '/',
+  });
+
+  response.cookies.set('fb_return_to', returnTo, {
+    httpOnly: true,
+    secure: proto === 'https',
+    sameSite: 'lax',
+    maxAge: 600,
     path: '/',
   });
 

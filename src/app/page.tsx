@@ -217,30 +217,69 @@ export default function LandingPage() {
 
         {/* Operator Profile Card if Logged In */}
         {user && (
-          <div className="mt-8 max-w-md mx-auto p-4 rounded-2xl bg-[#140f0c] border border-[#3a2818] text-left flex items-center justify-between shadow-xl">
-            <div className="flex items-center gap-3">
-              {user.photoURL ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.photoURL} alt={user.displayName || 'Operator'} className="w-12 h-12 rounded-xl border-2 border-[#ff6b1a]" />
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-[#e8430a] text-white flex items-center justify-center font-black text-lg">
-                  {(user.displayName || 'O')[0].toUpperCase()}
-                </div>
-              )}
-              <div>
-                <div className="font-black text-sm text-white">{user.displayName}</div>
-                <div className="text-xs text-[#ff6b1a] font-bold flex items-center gap-1 mt-0.5">
-                  <MapPin size={12} />
-                  <span>{profile?.assignedCourt || selectedCourt}</span>
+          <div className="mt-8 max-w-lg mx-auto p-4 rounded-2xl bg-[#140f0c] border border-[#3a2818] text-left shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {user.photoURL ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.photoURL} alt={user.displayName || 'Operator'} className="w-12 h-12 rounded-xl border-2 border-[#ff6b1a]" />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-[#e8430a] text-white flex items-center justify-center font-black text-lg">
+                    {(user.displayName || 'O')[0].toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <div className="font-black text-sm text-white flex items-center gap-2">
+                    <span>{user.displayName}</span>
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-mono uppercase">
+                      Cloud Synced
+                    </span>
+                  </div>
+                  <div className="text-xs text-[#ff6b1a] font-bold flex items-center gap-1 mt-0.5">
+                    <MapPin size={12} />
+                    <span>{profile?.assignedCourt || selectedCourt}</span>
+                  </div>
                 </div>
               </div>
+              <Link
+                href="/studio"
+                className="px-4 py-2 bg-[#e8430a] hover:bg-[#ff6b1a] text-white text-xs font-black uppercase rounded-xl transition"
+              >
+                Enter Studio
+              </Link>
             </div>
-            <Link
-              href="/studio"
-              className="px-4 py-2 bg-[#e8430a] hover:bg-[#ff6b1a] text-white text-xs font-black uppercase rounded-xl transition"
-            >
-              Enter Studio
-            </Link>
+
+            {/* Streamlabs Connected Destinations Summary */}
+            <div className="pt-2.5 border-t border-[#2a1e14] flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="text-slate-400 font-bold uppercase text-[10px]">Linked Profile:</span>
+              <span
+                className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                  profile?.connectedAccounts?.facebook?.connected
+                    ? 'bg-blue-600/20 text-blue-300 border border-blue-500/40'
+                    : 'bg-slate-900 text-slate-500 border border-slate-800'
+                }`}
+              >
+                <span>f</span>
+                <span>
+                  {profile?.connectedAccounts?.facebook?.selectedPageName ||
+                    profile?.connectedAccounts?.facebook?.userName ||
+                    (profile?.connectedAccounts?.facebook?.connected ? 'Facebook Linked' : 'FB Not Linked')}
+                </span>
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                  profile?.connectedAccounts?.youtube?.connected
+                    ? 'bg-red-600/20 text-red-300 border border-red-500/40'
+                    : 'bg-slate-900 text-slate-500 border border-slate-800'
+                }`}
+              >
+                <span>▶</span>
+                <span>
+                  {profile?.connectedAccounts?.youtube?.channelTitle ||
+                    (profile?.connectedAccounts?.youtube?.connected ? 'YouTube Linked' : 'YT Not Linked')}
+                </span>
+              </span>
+            </div>
           </div>
         )}
       </section>

@@ -61,8 +61,152 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ACTION 1B: Streamlabs-style Profile Connect — Fetch Channel + Reusable Stream Key
+    if (action === 'connect_profile') {
+      // 1. Fetch YouTube Channel Info
+      let channelInfo = {
+        id: '',
+        title: 'YouTube Live Channel',
+        avatar: '',
+        subscriberCount: '0',
+      };
+
+      try {
+        const chRes = await fetch(
+          `${YT_API_BASE}/channels?part=snippet,statistics,status&mine=true`,
+          { headers: authHeaders }
+        );
+        const chData = await chRes.json();
+        const chItem = chData.items?.[0];
+        if (chItem) {
+          channelInfo = {
+            id: chItem.id || '',
+            title: chItem.snippet?.title || 'YouTube Channel',
+            avatar: chItem.snippet?.thumbnails?.default?.url || '',
+            subscriberCount: chItem.statistics?.subscriberCount || '0',
+          };
+        }
+      } catch {}
+
+      // 2. Check for existing reusable YouTube liveStreams on the user's channel
+      let streamKey = '';
+      let rtmpUrl = 'rtmp://a.rtmp.youtube.com/live2';
+      let streamId = '';
+      let warningMessage = '';
+
+      try {
+        const listRes = await fetch(
+          `${YT_API_BASE}/liveStreams?part=snippet,cdn,contentDetails&mine=true&maxResults=10`,
+          { headers: authHeaders }
+        );
+        const listData = await listRes.json();
+
+        if (listData.error) {
+          warningMessage =
+            listData.error.message ||
+            'YouTube Live Streaming is not enabled on this channel yet (enable it once in studio.youtube.com).';
+        } else if (Array.isArray(listData.items) && listData.items.length > 0) {
+          // Pick the first reusable stream (or first available stream)
+          const reusable =
+            listData.items.find(
+              (item: { contentDetails?: { isReusable?: boolean }; cdn?: { ingestionInfo?: { streamName?: string } } }) =>
+                item.contentDetails?.isReusable && item.cdn?.ingestionInfo?.streamName
+            ) || listData.items[0];
+          const ingestion = reusable?.cdn?.ingestionInfo || {};
+          if (ingestion.streamName) {
+            streamKey = ingestion.streamName;
+            rtmpUrl = ingestion.ingestionAddress || 'rtmp://a.rtmp.youtube.com/live2';
+            streamId = reusable.id || '';
+          }
+        }
+
+        // 3. If no existing stream was found and no error, create a persistent reusable liveStream
+        if (!streamKey && !warningMessage) {
+          const createStreamRes = await fetch(
+            `${YT_API_BASE}/liveStreams?part=snippet,cdn,contentDetails`,
+            {
+              method: 'POST',
+              headers: authHeaders,
+              body: JSON.stringify({
+                snippet: {
+                  title: 'EZLiveStudio by HoopCulture — Reusable 1080p60 Key',
+                },
+                cdn: {
+                  frameRate: '60fps',
+                  ingestionType: 'rtmp',
+                  resolution: '1080p',
+                },
+                contentDetails: {
+                  isReusable: true,
+                },
+              }),
+            }
+          );
+          const createStreamData = await createStreamRes.json();
+          if (createStreamData.error) {
+            warningMessage = createStreamData.error.message || 'Could not auto-create YouTube stream key.';
+          } else {
+            const ingestion = createStreamData.cdn?.ingestionInfo || {};
+            streamKey = ingestion.streamName || '';
+            rtmpUrl = ingestion.ingestionAddress || 'rtmp://a.rtmp.youtube.com/live2';
+            streamId = createStreamData.id || '';
+          }
+        }
+      } catch (e: unknown) {
+        warningMessage = e instanceof Error ? e.message : 'Failed to query YouTube liveStreams';
+      }
+
+      return NextResponse.json({
+        channel: channelInfo,
+        streamId,
+        streamKey,
+        rtmpUrl,
+        warning: warningMessage || undefined,
+      });
+    }
+
     // ACTION 2: Create a YouTube Live Broadcast + Stream and bind them (OBS / Streamlabs Auto-Connect)
     if (action === 'create_live') {
+      // First fetch channel title/avatar so UI shows the exact YouTube channel name
+      let channelTitle = '';
+      let channelAvatar = '';
+      let channelId = '';
+      try {
+        const chRes = await fetch(`${YT_API_BASE}/channels?part=snippet&mine=true`, { headers: authHeaders });
+        const chData = await chRes.json();
+        const chItem = chData.items?.[0];
+        if (chItem) {
+          channelId = chItem.id || '';
+          channelTitle = chItem.snippet?.title || '';
+          channelAvatar = chItem.snippet?.thumbnails?.default?.url || '';
+        }
+      } catch {}
+
+      // Check if user already has a reusable liveStream so we don't spam duplicate stream keys
+      let existingStreamId = '';
+      let existingStreamKey = '';
+      let existingRtmpUrl = 'rtmp://a.rtmp.youtube.com/live2';
+
+      try {
+        const listRes = await fetch(
+          `${YT_API_BASE}/liveStreams?part=snippet,cdn,contentDetails&mine=true&maxResults=10`,
+          { headers: authHeaders }
+        );
+        const listData = await listRes.json();
+        if (Array.isArray(listData.items) && listData.items.length > 0) {
+          const found =
+            listData.items.find(
+              (s: { contentDetails?: { isReusable?: boolean }; cdn?: { ingestionInfo?: { streamName?: string } } }) =>
+                s.contentDetails?.isReusable && s.cdn?.ingestionInfo?.streamName
+            ) || listData.items[0];
+          if (found?.cdn?.ingestionInfo?.streamName) {
+            existingStreamId = found.id;
+            existingStreamKey = found.cdn.ingestionInfo.streamName;
+            existingRtmpUrl = found.cdn.ingestionInfo.ingestionAddress || existingRtmpUrl;
+          }
+        }
+      } catch {}
+
       const scheduledStartTime = new Date().toISOString();
 
       // Step 2A: Create liveBroadcast
@@ -96,11 +240,25 @@ export async function POST(req: NextRequest) {
 
       const broadcastData = await broadcastRes.json();
       if (broadcastData.error) {
+        // Even if broadcast creation failed (e.g. account still in 24hr activation or using default stream),
+        // if we found an existing reusable stream key, return it so the user is still connected!
+        if (existingStreamKey) {
+          return NextResponse.json({
+            streamId: existingStreamId,
+            rtmpUrl: existingRtmpUrl,
+            streamKey: existingStreamKey,
+            channelId,
+            channelTitle,
+            channelAvatar,
+            status: 'READY',
+          });
+        }
         return NextResponse.json(
           {
             error:
               broadcastData.error.message ||
-              'Failed to create YouTube liveBroadcast. Ensure YouTube Live Streaming is enabled on your channel.',
+              'Failed to create YouTube liveBroadcast. Ensure YouTube Live Streaming is enabled on your channel at studio.youtube.com.',
+            channelTitle,
           },
           { status: 400 }
         );
@@ -109,62 +267,64 @@ export async function POST(req: NextRequest) {
       const createdBroadcastId = broadcastData.id;
       const createdLiveChatId = broadcastData.snippet?.liveChatId || '';
 
-      // Step 2B: Create liveStream (1080p 60fps RTMP ingestion)
-      const streamRes = await fetch(
-        `${YT_API_BASE}/liveStreams?part=snippet,cdn,contentDetails`,
-        {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({
-            snippet: {
-              title: `EZLiveStudio Stream - ${new Date().toLocaleTimeString()}`,
-            },
-            cdn: {
-              frameRate: '60fps',
-              ingestionType: 'rtmp',
-              resolution: '1080p',
-            },
-            contentDetails: {
-              isReusable: true,
-            },
-          }),
-        }
-      );
+      let createdStreamId = existingStreamId;
+      let rtmpUrl = existingRtmpUrl;
+      let streamKey = existingStreamKey;
 
-      const streamData = await streamRes.json();
-      if (streamData.error) {
-        return NextResponse.json(
-          { error: streamData.error.message || 'Failed to create YouTube liveStream' },
-          { status: 400 }
+      // Step 2B: Create liveStream (1080p 60fps RTMP ingestion) if none existed yet
+      if (!createdStreamId || !streamKey) {
+        const streamRes = await fetch(
+          `${YT_API_BASE}/liveStreams?part=snippet,cdn,contentDetails`,
+          {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              snippet: {
+                title: `EZLiveStudio Reusable Stream Key`,
+              },
+              cdn: {
+                frameRate: '60fps',
+                ingestionType: 'rtmp',
+                resolution: '1080p',
+              },
+              contentDetails: {
+                isReusable: true,
+              },
+            }),
+          }
         );
+
+        const streamData = await streamRes.json();
+        if (streamData.error) {
+          return NextResponse.json(
+            { error: streamData.error.message || 'Failed to create YouTube liveStream' },
+            { status: 400 }
+          );
+        }
+
+        createdStreamId = streamData.id;
+        const ingestionInfo = streamData.cdn?.ingestionInfo || {};
+        rtmpUrl = ingestionInfo.ingestionAddress || 'rtmp://a.rtmp.youtube.com/live2';
+        streamKey = ingestionInfo.streamName || '';
       }
 
-      const createdStreamId = streamData.id;
-      const ingestionInfo = streamData.cdn?.ingestionInfo || {};
-      const rtmpUrl = ingestionInfo.ingestionAddress || 'rtmp://a.rtmp.youtube.com/live2';
-      const streamKey = ingestionInfo.streamName || '';
-
       // Step 2C: Bind liveBroadcast to liveStream
-      const bindRes = await fetch(
+      await fetch(
         `${YT_API_BASE}/liveBroadcasts/bind?id=${encodeURIComponent(createdBroadcastId)}&part=id,contentDetails&streamId=${encodeURIComponent(createdStreamId)}`,
         {
           method: 'POST',
           headers: authHeaders,
         }
-      );
-      const bindData = await bindRes.json();
-      if (bindData.error) {
-        return NextResponse.json(
-          { error: bindData.error.message || 'Failed to bind YouTube broadcast to stream' },
-          { status: 400 }
-        );
-      }
+      ).catch(() => {});
 
       return NextResponse.json({
         broadcastId: createdBroadcastId,
         streamId: createdStreamId,
         rtmpUrl,
         streamKey,
+        channelId,
+        channelTitle,
+        channelAvatar,
         liveChatId: createdLiveChatId,
         watchUrl: `https://www.youtube.com/live/${createdBroadcastId}`,
         status: 'READY',

@@ -14,6 +14,8 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { StreamSettings } from '@/types/broadcast';
+import { useAuth } from '@/context/AuthContext';
+import { autoLinkFacebookToProfile } from '@/services/firebase';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -454,7 +456,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Modal Footer */}
         <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
-          <span className="text-xs text-slate-500">Config persists locally in browser storage</span>
+          <span className="text-xs text-emerald-400 font-medium">☁️ Syncs automatically to your Cloud Profile across all devices</span>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}
@@ -497,6 +499,7 @@ const FacebookDestinationManager: React.FC<{
   showStreamKey: boolean;
   setShowStreamKey: (show: boolean) => void;
 }> = ({ localSettings, setLocalSettings, showStreamKey, setShowStreamKey }) => {
+  const { user } = useAuth();
   const [groups, setGroups] = React.useState<FbGroup[]>([]);
   const [pages, setPages] = React.useState<FbPage[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -561,8 +564,11 @@ const FacebookDestinationManager: React.FC<{
             },
           }));
 
-          setStatusMsg(`✓ Successfully linked Facebook account (${authUser?.name || 'User'})!`);
+          setStatusMsg(`✓ Successfully linked Facebook account (${authUser?.name || 'User'}) & synced to Cloud Profile!`);
           fetchDestinations(authTok);
+          if (user) {
+            autoLinkFacebookToProfile(user.uid, user.email || '', authTok, authUser || {}).catch(() => {});
+          }
         }
       } else if (event.data?.type === 'FB_AUTH_ERROR') {
         setStatusMsg(`Facebook Login Error: ${event.data.error || 'Login window closed'}`);
@@ -570,7 +576,19 @@ const FacebookDestinationManager: React.FC<{
     };
 
     window.addEventListener('message', handleAuthMessage);
-    return () => window.removeEventListener('message', handleAuthMessage);
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('ezlive_auth_channel');
+      bc.onmessage = handleAuthMessage;
+    } catch {}
+    return () => {
+      window.removeEventListener('message', handleAuthMessage);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
+    };
   }, []);
 
   const fetchDestinations = async (token?: string) => {
@@ -637,22 +655,25 @@ const FacebookDestinationManager: React.FC<{
 
   const handleConnectFacebook = () => {
     setIsLoading(true);
-    setStatusMsg('Opening Facebook authentication popup...');
+    setStatusMsg('Opening Facebook authentication...');
     const width = 600;
     const height = 750;
     const left = window.screen.width / 2 - width / 2;
     const top = window.screen.height / 2 - height / 2;
-    const customAppId = fb.appId ? `?app_id=${encodeURIComponent(fb.appId)}` : '';
+    const params = new URLSearchParams();
+    params.set('return_to', '/studio');
+    if (fb.appId) params.set('app_id', fb.appId);
+    const loginUrl = `/api/auth/facebook/login?${params.toString()}`;
 
     const popup = window.open(
-      `/api/auth/facebook/login${customAppId}`,
+      loginUrl,
       'FacebookOAuth',
       `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no`
     );
 
     if (!popup || popup.closed) {
-      alert('Pop-up was blocked. Please allow popups for ezlive.vercel.app to log into Facebook.');
-      setIsLoading(false);
+      // Fallback to same-window redirect on Android WebView or mobile popup blocker
+      window.location.href = loginUrl;
       return;
     }
 

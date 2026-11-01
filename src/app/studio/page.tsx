@@ -489,6 +489,8 @@ export default function StudioPage() {
         localStorage.setItem('ezlive_settings_v1', JSON.stringify(newSettings));
       } catch {}
     }
+    // Automatically sync updated settings (Facebook, YouTube, Custom RTMP, Scoreboard, Resolution) to Firebase RTDB Cloud Profile!
+    saveSessionState({ settings: newSettings }).catch(() => {});
   };
 
   // Streamlabs Add-ons
@@ -2359,6 +2361,7 @@ export default function StudioPage() {
         onClose={() => setIsGoLiveModalOpen(false)}
         settings={settings}
         scoreboard={scoreboard}
+        onSaveSettings={handleSaveSettings}
         onConfirmGoLive={handleConfirmGoLive}
       />
 

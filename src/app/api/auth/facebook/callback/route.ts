@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
   const errorDescription = searchParams.get('error_description');
 
   const customAppId = req.cookies.get('fb_custom_app_id')?.value;
+  const returnTo = req.cookies.get('fb_return_to')?.value || '/studio';
   const appId =
     customAppId ||
     process.env.FACEBOOK_APP_ID ||
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     <div style="font-size:36px;margin-bottom:12px;">⚠️</div>
     <h3 style="margin:0 0 8px 0;color:#fca5a5;">Authentication Cancelled</h3>
     <p style="color:#a8a29e;font-size:13px;line-height:1.5;">${escapeHtml(errorMsg)}</p>
-    <button onclick="window.close()" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Close Window</button>
+    <button onclick="if(window.opener){window.close()}else{window.location.href=${JSON.stringify(returnTo)}}" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Return to EZLive</button>
   </div>
   <script>
     if (window.opener) {
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
     <div style="font-size:36px;margin-bottom:12px;">🔑</div>
     <h3 style="margin:0 0 8px 0;color:#fbbf24;">Server Setup Required</h3>
     <p style="color:#d6d3d1;font-size:13px;line-height:1.5;">${escapeHtml(msg)}</p>
-    <button onclick="window.close()" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Close</button>
+    <button onclick="if(window.opener){window.close()}else{window.location.href=${JSON.stringify(returnTo)}}" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Close</button>
   </div>
   <script>
     if (window.opener) {
@@ -121,6 +122,12 @@ export async function GET(req: NextRequest) {
       picture: profileData.picture?.data?.url || '',
     };
 
+    const payload = {
+      type: 'FB_AUTH_SUCCESS',
+      token: finalAccessToken,
+      user: userData,
+    };
+
     return new NextResponse(
       `<!DOCTYPE html>
 <html>
@@ -130,19 +137,37 @@ export async function GET(req: NextRequest) {
     <div style="width:48px;height:48px;background:#1877f2;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px auto;color:white;font-weight:900;font-size:24px;">f</div>
     <h3 style="margin:0 0 8px 0;color:#4ade80;">Successfully Connected!</h3>
     <p style="color:#d6d3d1;font-size:13px;line-height:1.5;">Linked Facebook account: <strong>${escapeHtml(userData.name)}</strong></p>
-    <p style="color:#78716c;font-size:11px;margin-top:8px;">Returning to EZLive Studio...</p>
+    <p style="color:#78716c;font-size:11px;margin-top:8px;">Syncing profile &amp; returning to EZLive Studio...</p>
   </div>
   <script>
-    if (window.opener) {
-      window.opener.postMessage({
-        type: 'FB_AUTH_SUCCESS',
-        token: ${JSON.stringify(finalAccessToken)},
-        user: ${JSON.stringify(userData)}
-      }, '*');
-      setTimeout(function() { window.close(); }, 800);
-    } else {
-      window.location.href = '/studio';
-    }
+    (function() {
+      var payload = ${JSON.stringify(payload)};
+      var targetUrl = ${JSON.stringify(returnTo)};
+      try {
+        localStorage.setItem('fb_user_access_token', payload.token);
+        if (payload.user && payload.user.name) localStorage.setItem('fb_user_name', payload.user.name);
+        if (payload.user && payload.user.picture) localStorage.setItem('fb_user_picture', payload.user.picture);
+        if (payload.user && payload.user.email) localStorage.setItem('hc_session_user', payload.user.email);
+        localStorage.setItem('fb_auth_callback_payload', JSON.stringify(payload));
+      } catch (e) {}
+
+      try {
+        var bc = new BroadcastChannel('ezlive_auth_channel');
+        bc.postMessage(payload);
+        setTimeout(function() { bc.close(); }, 600);
+      } catch (e) {}
+
+      if (window.opener) {
+        try {
+          window.opener.postMessage(payload, '*');
+        } catch (e) {}
+        setTimeout(function() { window.close(); }, 600);
+      } else {
+        setTimeout(function() {
+          window.location.href = targetUrl;
+        }, 500);
+      }
+    })();
   </script>
 </body>
 </html>`,
@@ -150,8 +175,8 @@ export async function GET(req: NextRequest) {
         headers: { 'Content-Type': 'text/html' },
       }
     );
-  } catch (err: any) {
-    const errorMsg = err?.message || 'Failed to authenticate with Facebook';
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Failed to authenticate with Facebook';
     return new NextResponse(
       `<!DOCTYPE html>
 <html>
@@ -161,7 +186,7 @@ export async function GET(req: NextRequest) {
     <div style="font-size:36px;margin-bottom:12px;">⚠️</div>
     <h3 style="margin:0 0 8px 0;color:#fca5a5;">OAuth Error</h3>
     <p style="color:#a8a29e;font-size:13px;line-height:1.5;">${escapeHtml(errorMsg)}</p>
-    <button onclick="window.close()" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Close</button>
+    <button onclick="if(window.opener){window.close()}else{window.location.href=${JSON.stringify(returnTo)}}" style="margin-top:20px;padding:8px 20px;background:#262626;color:#e5e5e5;border:1px solid #404040;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;">Return to EZLive</button>
   </div>
   <script>
     if (window.opener) {

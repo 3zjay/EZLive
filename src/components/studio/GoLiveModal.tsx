@@ -17,13 +17,15 @@ import {
   LogIn,
 } from 'lucide-react';
 import { ScoreboardState, StreamBandwidthPreset, StreamSettings } from '@/types/broadcast';
-import { connectYouTubeWithGoogle } from '@/services/firebase';
+import { connectYouTubeWithGoogle, autoLinkFacebookToProfile } from '@/services/firebase';
+import { useAuth } from '@/context/AuthContext';
 
 interface GoLiveModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: StreamSettings;
   scoreboard: ScoreboardState;
+  onSaveSettings?: (settings: StreamSettings) => void;
   onConfirmGoLive: (config: {
     title: string;
     description: string;
@@ -103,8 +105,13 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
   onClose,
   settings,
   scoreboard,
+  onSaveSettings,
   onConfirmGoLive,
 }) => {
+  const { user, profile, saveSessionState } = useAuth();
+  const [ytStatusMsg, setYtStatusMsg] = useState<string>('');
+  const [cloudSavedFlash, setCloudSavedFlash] = useState<boolean>(false);
+
   // Stream Details
   const defaultTitle =
     settings.broadcastTitle ||
@@ -135,6 +142,7 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
 
   const initialFbKey =
     cleanInitialKey(fb?.groupStreamKey) ||
+    cleanInitialKey(profile?.connectedAccounts?.facebook?.groupStreamKey) ||
     cleanInitialKey(settings.streamKey) ||
     (typeof window !== 'undefined' ? cleanInitialKey(localStorage.getItem('hc_fb_stream_key') || '') : '');
   const [fbKey, setFbKey] = useState(initialFbKey);
@@ -142,64 +150,137 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
 
   // Facebook Graph API OAuth Pages & Groups
   const [fbUserToken, setFbUserToken] = useState<string>(
-    fb?.userToken || (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') || '' : '')
+    fb?.userToken ||
+      profile?.connectedAccounts?.facebook?.userToken ||
+      (typeof window !== 'undefined' ? localStorage.getItem('fb_user_access_token') || '' : '')
   );
   const [fbUserName, setFbUserName] = useState<string>(
-    fb?.userName || (typeof window !== 'undefined' ? localStorage.getItem('fb_user_name') || '' : '')
+    fb?.userName ||
+      profile?.connectedAccounts?.facebook?.userName ||
+      (typeof window !== 'undefined' ? localStorage.getItem('fb_user_name') || '' : '')
   );
   const [pages, setPages] = useState<{ id: string; name: string; access_token: string; category?: string }[]>([]);
-  const [selectedPageId, setSelectedPageId] = useState<string>(fb?.selectedPageId || '');
+  const [selectedPageId, setSelectedPageId] = useState<string>(
+    fb?.selectedPageId || profile?.connectedAccounts?.facebook?.selectedPageId || ''
+  );
   const [groups, setGroups] = useState<{ id: string; name: string; administrator?: boolean }[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string>(fb?.selectedGroupId || '');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(
+    fb?.selectedGroupId || profile?.connectedAccounts?.facebook?.selectedGroupId || ''
+  );
   const [isLoadingFb, setIsLoadingFb] = useState(false);
 
   // YouTube Settings
   const initialYtKey =
     settings.ytSettings?.streamKey ||
+    profile?.connectedAccounts?.youtube?.streamKey ||
     (typeof window !== 'undefined' ? localStorage.getItem('hc_yt_stream_key') || '' : '');
   const [ytEnabled, setYtEnabled] = useState(Boolean(initialYtKey));
   const [ytKey, setYtKey] = useState(initialYtKey);
   const [showYtKey, setShowYtKey] = useState(false);
-  const [ytChannelName, setYtChannelName] = useState(settings.ytSettings?.channelTitle || '');
+  const [ytChannelName, setYtChannelName] = useState(
+    settings.ytSettings?.channelTitle ||
+      profile?.connectedAccounts?.youtube?.channelTitle ||
+      (typeof window !== 'undefined' ? localStorage.getItem('yt_channel_title') || '' : '')
+  );
   const [isConnectingYt, setIsConnectingYt] = useState(false);
 
   // Custom RTMP / RTMPS Settings (Twitch, Kick, Restream, Custom Server)
   const initialCustomUrl =
     settings.customRtmpSettings?.serverUrl ||
+    profile?.connectedAccounts?.customRtmp?.serverUrl ||
     (typeof window !== 'undefined' ? localStorage.getItem('hc_custom_rtmp_url') || '' : '');
   const initialCustomKey =
     settings.customRtmpSettings?.streamKey ||
+    profile?.connectedAccounts?.customRtmp?.streamKey ||
     (typeof window !== 'undefined' ? localStorage.getItem('hc_custom_rtmp_key') || '' : '');
-  const [customRtmpEnabled, setCustomRtmpEnabled] = useState(Boolean(settings.customRtmpSettings?.enabled));
+  const [customRtmpEnabled, setCustomRtmpEnabled] = useState(
+    Boolean(settings.customRtmpSettings?.enabled || profile?.connectedAccounts?.customRtmp?.enabled)
+  );
   const [customRtmpUrl, setCustomRtmpUrl] = useState(initialCustomUrl);
   const [customRtmpKey, setCustomRtmpKey] = useState(initialCustomKey);
   const [showCustomKey, setShowCustomKey] = useState(false);
 
+  // Re-sync local state whenever Cloud Profile or Settings load/update
+  useEffect(() => {
+    const cloudFb = profile?.connectedAccounts?.facebook || settings.fbSettings;
+    if (cloudFb) {
+      if (cloudFb.userToken && !fbUserToken) setFbUserToken(cloudFb.userToken);
+      if (cloudFb.userName && !fbUserName) setFbUserName(cloudFb.userName);
+      if (cloudFb.selectedPageId && !selectedPageId) setSelectedPageId(cloudFb.selectedPageId);
+      if (cloudFb.selectedGroupId && !selectedGroupId) setSelectedGroupId(cloudFb.selectedGroupId);
+      if (cloudFb.groupStreamKey && !fbKey) setFbKey(cleanInitialKey(cloudFb.groupStreamKey));
+    }
+    const cloudYt = profile?.connectedAccounts?.youtube || settings.ytSettings;
+    if (cloudYt) {
+      if (cloudYt.streamKey && !ytKey) {
+        setYtKey(cloudYt.streamKey);
+        setYtEnabled(true);
+      }
+      if (cloudYt.channelTitle && !ytChannelName) {
+        setYtChannelName(cloudYt.channelTitle);
+      }
+    }
+    const cloudCustom = profile?.connectedAccounts?.customRtmp || settings.customRtmpSettings;
+    if (cloudCustom) {
+      if (cloudCustom.serverUrl && !customRtmpUrl) setCustomRtmpUrl(cloudCustom.serverUrl);
+      if (cloudCustom.streamKey && !customRtmpKey) setCustomRtmpKey(cloudCustom.streamKey);
+      if (cloudCustom.enabled) setCustomRtmpEnabled(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, settings]);
+
   const handleAutoProvisionYouTube = async () => {
     setIsConnectingYt(true);
+    setYtStatusMsg('Connecting Google & YouTube Live...');
     try {
-      const { user, accessToken } = await connectYouTubeWithGoogle();
+      const { user: ytUser, accessToken } = await connectYouTubeWithGoogle();
       if (accessToken) {
+        // 1. Try connect_profile first to fetch existing reusable stream key or create one
         const res = await fetch('/api/youtube/live', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'create_live',
+            action: 'connect_profile',
             accessToken,
             title: title || 'Hoop Culture Live Championship',
             description: description || 'Live courtside broadcast from EZLiveStudio by HoopCulture',
-            privacyStatus: 'public',
-            latencyPreference: 'ultraLow',
           }),
         });
         const data = await res.json();
+        const chName = data.channel?.title || ytUser?.displayName || 'YouTube Live';
+        setYtChannelName(chName);
+
         if (data.streamKey) {
           setYtKey(data.streamKey);
           setYtEnabled(true);
-          setYtChannelName(user?.displayName || 'YouTube Live');
+          setYtStatusMsg(`✓ Linked ${chName} & synced persistent Stream Key to your Cloud Profile!`);
+          try {
+            localStorage.setItem('hc_yt_stream_key', data.streamKey);
+            localStorage.setItem('yt_channel_title', chName);
+          } catch {}
+          await saveSessionState({
+            connectedAccounts: {
+              youtube: {
+                connected: true,
+                channelId: data.channel?.id || '',
+                channelTitle: chName,
+                channelAvatar: data.channel?.avatar || ytUser?.photoURL || '',
+                streamKey: data.streamKey,
+                rtmpUrl: data.rtmpUrl || 'rtmp://a.rtmp.youtube.com/live2/',
+                accessToken,
+                updatedAt: Date.now(),
+              },
+            },
+          });
+        } else if (data.warning || data.error) {
+          setYtStatusMsg(
+            `Linked ${chName}, but ${data.warning || data.error} — You can also paste your Stream Key from studio.youtube.com below.`
+          );
         }
       }
-    } catch (e) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'YouTube OAuth connection failed';
+      setYtStatusMsg(msg);
       console.warn('YouTube OAuth provision warning:', e);
     } finally {
       setIsConnectingYt(false);
@@ -309,24 +390,39 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
 
     const handleAuthMsg = (event: MessageEvent) => {
       if (event.data?.type === 'FB_AUTH_SUCCESS') {
-        const { token, user } = event.data;
+        const { token, user: fbAuthUser } = event.data;
         if (token) {
           setFbUserToken(token);
-          if (user?.name) setFbUserName(user.name);
+          if (fbAuthUser?.name) setFbUserName(fbAuthUser.name);
           try {
             localStorage.setItem('fb_user_access_token', token);
-            if (user?.name) localStorage.setItem('fb_user_name', user.name);
+            if (fbAuthUser?.name) localStorage.setItem('fb_user_name', fbAuthUser.name);
+            if (fbAuthUser?.picture) localStorage.setItem('fb_user_picture', fbAuthUser.picture);
           } catch {}
           fetchFacebookDestinations(token);
+          if (user) {
+            autoLinkFacebookToProfile(user.uid, user.email || '', token, fbAuthUser || {}).catch(() => {});
+          }
         }
       }
     };
     window.addEventListener('message', handleAuthMsg);
 
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('ezlive_auth_channel');
+      bc.onmessage = handleAuthMsg;
+    } catch {}
+
     return () => {
       isMounted = false;
       clearInterval(interval);
       window.removeEventListener('message', handleAuthMsg);
+      if (bc) {
+        try {
+          bc.close();
+        } catch {}
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, settings.relayUrl]);
@@ -338,11 +434,14 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
     const h = 700;
     const left = window.screenX + (window.outerWidth - w) / 2;
     const top = window.screenY + (window.outerHeight - h) / 2;
-    window.open(
-      '/api/auth/facebook/login',
+    const popup = window.open(
+      '/api/auth/facebook/login?return_to=%2Fstudio',
       'FacebookLoginPopup',
       `width=${w},height=${h},top=${top},left=${left},toolbar=no,menubar=no`
     );
+    if (!popup) {
+      window.location.href = '/api/auth/facebook/login?return_to=%2Fstudio';
+    }
   };
 
 
@@ -366,6 +465,59 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
     setTitle(autoTitle);
   };
 
+  const buildMergedSettings = () => {
+    const cleanedKey = cleanInitialKey(fbKey.trim());
+    const nextSettings: StreamSettings = {
+      ...settings,
+      streamKey: cleanedKey || settings.streamKey,
+      broadcastTitle: title,
+      broadcastDescription: description,
+      bandwidthPreset: qualityPreset,
+      fbSettings: {
+        ...(settings.fbSettings || {
+          mode: 'auto',
+          userToken: '',
+          selectedPageId: '',
+          selectedPageName: '',
+          selectedPageToken: '',
+          broadcastTitle: '',
+          broadcastDescription: '',
+        }),
+        userToken: fbUserToken || settings.fbSettings?.userToken || '',
+        userName: fbUserName || settings.fbSettings?.userName || '',
+        destinationType: fbDestType,
+        selectedPageId: selectedPageId || settings.fbSettings?.selectedPageId || '',
+        selectedPageName: selectedPage?.name || settings.fbSettings?.selectedPageName || '',
+        selectedPageToken: selectedPage?.access_token || settings.fbSettings?.selectedPageToken || '',
+        selectedGroupId: selectedGroupId || settings.fbSettings?.selectedGroupId,
+        selectedGroupName: selectedGroup?.name || settings.fbSettings?.selectedGroupName,
+        groupStreamKey: cleanedKey || settings.fbSettings?.groupStreamKey,
+      },
+      ytSettings: {
+        ...(settings.ytSettings || { enabled: false, streamKey: '' }),
+        enabled: ytEnabled && ytKey.trim().length > 0,
+        streamKey: ytKey.trim(),
+        channelTitle: ytChannelName || settings.ytSettings?.channelTitle || '',
+      },
+      customRtmpSettings: {
+        enabled: isCustomReady,
+        serverUrl: customRtmpUrl.trim(),
+        streamKey: customRtmpKey.trim(),
+      },
+    };
+    return nextSettings;
+  };
+
+  const handleSaveToCloudProfile = async () => {
+    const nextSettings = buildMergedSettings();
+    if (onSaveSettings) {
+      onSaveSettings(nextSettings);
+    }
+    await saveSessionState({ settings: nextSettings });
+    setCloudSavedFlash(true);
+    setTimeout(() => setCloudSavedFlash(false), 2000);
+  };
+
   const handleConfirm = () => {
     if (!hasAtLeastOneDestination) return;
 
@@ -383,6 +535,12 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       localStorage.setItem('ezlive_stream_title', title);
       localStorage.setItem('ezlive_stream_desc', description);
     }
+
+    const nextSettings = buildMergedSettings();
+    if (onSaveSettings) {
+      onSaveSettings(nextSettings);
+    }
+    saveSessionState({ settings: nextSettings }).catch(() => {});
 
     onConfirmGoLive({
       title,
@@ -447,6 +605,34 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
 
         {/* Modal Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+          {/* Streamlabs Cloud Profile Sync Ribbon */}
+          <div className="bg-gradient-to-r from-emerald-950/50 via-slate-900 to-sky-950/50 border border-emerald-500/30 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow shadow-emerald-400" />
+              <div>
+                <div className="font-bold text-white text-[11px] flex items-center gap-1.5">
+                  <span>☁️ Streamlabs Cloud Profile Sync Active</span>
+                  {user?.email && (
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[10px]">
+                      {user.email}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Your Facebook Pages/Groups, YouTube Stream Key &amp; RTMP settings automatically sync to any phone, tablet, or laptop you sign into.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleSaveToCloudProfile}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 shadow transition shrink-0"
+            >
+              <Check size={11} />
+              <span>{cloudSavedFlash ? 'Synced to Cloud!' : 'Save to Cloud Profile'}</span>
+            </button>
+          </div>
+
           {/* Section 1: Stream Details (Title & Description) */}
           <div className="bg-slate-900/80 border border-slate-800/90 rounded-xl p-3.5 space-y-2.5">
             <div className="flex items-center justify-between">
@@ -793,6 +979,11 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                       <span>{isConnectingYt ? 'Connecting...' : 'Auto-Connect YouTube'}</span>
                     </button>
                   </div>
+                  {ytStatusMsg && (
+                    <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-700 text-[10px] text-amber-300 font-medium">
+                      {ytStatusMsg}
+                    </div>
+                  )}
                   <div className="relative">
                     <input
                       type={showYtKey ? 'text' : 'password'}

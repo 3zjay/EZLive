@@ -131,8 +131,10 @@ export type TransitionType = 'cut' | 'fade' | 'slide' | 'zoom';
 export interface FacebookLiveSettings {
   mode: 'auto' | 'manual';
   destinationType?: 'group' | 'page' | 'timeline' | 'stream_key';
+  userId?: string;
   userToken: string;
   userName?: string;
+  userEmail?: string;
   userPicture?: string;
   appId?: string;
   selectedPageId: string;
