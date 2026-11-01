@@ -21,6 +21,8 @@ import {
   ArrowRight,
   LogIn,
   LogOut,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 
 const ECOSYSTEM_LINKS = [
@@ -190,6 +192,17 @@ export default function LandingPage() {
               <span>Operator Sign In</span>
             </button>
           )}
+
+          <a
+            href="https://github.com/3zjay/EZLive/releases/download/latest-apk/EZLiveStudio.apk"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-[#140f0c] hover:bg-[#1a1410] border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 font-bold text-base transition shadow-lg"
+          >
+            <Smartphone size={18} />
+            <span>Download Android App (.APK)</span>
+            <Download size={16} />
+          </a>
 
           <a
             href="https://scoreboard.hoopculture.ca"

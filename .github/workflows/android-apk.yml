@@ -1,0 +1,63 @@
+name: Build EZLiveStudio Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout EZLive Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up JDK 21 for Android Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NPM Dependencies & Sync Capacitor Android
+        run: |
+          npm install
+          npx cap sync android
+
+      - name: Build Installable Android APK (Debug / Sideload Ready)
+        working-directory: ./android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK to EZLiveStudio.apk
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk EZLiveStudio.apk
+
+      - name: Upload EZLiveStudio.apk Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EZLiveStudio-Android-APK
+          path: EZLiveStudio.apk
+          retention-days: 90
+
+      - name: Publish Latest APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: latest-apk
+          name: "EZLiveStudio by HoopCulture — Official Android APK"
+          body: "Installable Android Broadcast Studio APK (`EZLiveStudio.apk`) for Android tablets and phones."
+          files: EZLiveStudio.apk
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
