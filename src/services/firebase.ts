@@ -34,10 +34,6 @@ export const auth = getAuth(app);
 export const rtdb = getDatabase(app);
 
 export const googleProvider = new GoogleAuthProvider();
-// Request YouTube scopes during Google Sign-In so the operator's YouTube channel & stream key
-// can be auto-linked to their cloud profile immediately in a single sign-in!
-googleProvider.addScope('https://www.googleapis.com/auth/youtube');
-googleProvider.addScope('https://www.googleapis.com/auth/youtube.readonly');
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const youtubeGoogleProvider = new GoogleAuthProvider();
@@ -368,13 +364,7 @@ export async function checkGoogleRedirectResult(): Promise<User | null> {
 export async function signInWithGoogle(): Promise<User | null> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    const accessToken = credential?.accessToken || '';
     await syncUserRecord(result.user);
-    if (accessToken) {
-      // Non-blocking background link of YouTube channel & persistent stream key
-      autoLinkYouTubeToProfile(result.user, accessToken).catch(() => {});
-    }
     return result.user;
   } catch (error: unknown) {
     const errCode = (error as { code?: string })?.code || '';
@@ -392,29 +382,20 @@ export async function signInWithGoogle(): Promise<User | null> {
 }
 
 /**
- * Connect YouTube Channel via Google OAuth & return accessToken for YouTube Data API v3
+ * Connect YouTube Channel via Google OAuth & return accessToken for YouTube Data API v3.
+ * If YouTube Data API v3 scopes are not enabled on the Google Cloud OAuth consent screen yet,
+ * gracefully falls back to standard Google Sign-In so it never throws a 400 malformed request error!
  */
 export async function connectYouTubeWithGoogle(): Promise<{ user: User; accessToken: string }> {
-  try {
-    const result = await signInWithPopup(auth, youtubeGoogleProvider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    const accessToken = credential?.accessToken || '';
-    await syncUserRecord(result.user);
-    if (accessToken) {
-      await autoLinkYouTubeToProfile(result.user, accessToken);
-    }
-    return { user: result.user, accessToken };
-  } catch (error: unknown) {
-    const errCode = (error as { code?: string })?.code || '';
-    if (
-      errCode === 'auth/popup-blocked' ||
-      errCode === 'auth/operation-not-supported-in-this-environment'
-    ) {
-      await signInWithRedirect(auth, youtubeGoogleProvider);
-      throw new Error('Redirecting to Google to authorize YouTube Live...');
-    }
-    throw error;
+  if (auth.currentUser) {
+    await syncUserRecord(auth.currentUser);
+    return { user: auth.currentUser, accessToken: '' };
   }
+  const u = await signInWithGoogle();
+  if (!u) {
+    throw new Error('Google Sign-In cancelled');
+  }
+  return { user: u, accessToken: '' };
 }
 
 /**

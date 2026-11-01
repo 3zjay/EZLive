@@ -231,9 +231,12 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
 
   const handleAutoProvisionYouTube = async () => {
     setIsConnectingYt(true);
-    setYtStatusMsg('Connecting Google & YouTube Live...');
+    setYtStatusMsg('Linking Google Account to YouTube Profile...');
     try {
       const { user: ytUser, accessToken } = await connectYouTubeWithGoogle();
+      const chName = ytUser?.displayName || ytUser?.email || 'YouTube Live';
+      setYtChannelName(chName);
+
       if (accessToken) {
         // 1. Try connect_profile first to fetch existing reusable stream key or create one
         const res = await fetch('/api/youtube/live', {
@@ -247,9 +250,6 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
           }),
         });
         const data = await res.json();
-        const chName = data.channel?.title || ytUser?.displayName || 'YouTube Live';
-        setYtChannelName(chName);
-
         if (data.streamKey) {
           setYtKey(data.streamKey);
           setYtEnabled(true);
@@ -272,12 +272,29 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
               },
             },
           });
-        } else if (data.warning || data.error) {
-          setYtStatusMsg(
-            `Linked ${chName}, but ${data.warning || data.error} — You can also paste your Stream Key from studio.youtube.com below.`
-          );
+          return;
         }
       }
+
+      // Save linked Google/YouTube account to Cloud Profile; once the user pastes their YouTube Stream Key once, it stays synced across all devices!
+      try {
+        localStorage.setItem('yt_channel_title', chName);
+      } catch {}
+      await saveSessionState({
+        connectedAccounts: {
+          youtube: {
+            connected: Boolean(ytKey.trim()),
+            channelTitle: chName,
+            channelAvatar: ytUser?.photoURL || '',
+            streamKey: ytKey.trim(),
+            rtmpUrl: 'rtmp://a.rtmp.youtube.com/live2/',
+            updatedAt: Date.now(),
+          },
+        },
+      });
+      setYtStatusMsg(
+        `✓ Google account (${chName}) linked! Paste your YouTube Stream Key from studio.youtube.com once below — it will stay saved to your Cloud Profile on every device.`
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'YouTube OAuth connection failed';
       setYtStatusMsg(msg);
@@ -1000,7 +1017,25 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                       type={showYtKey ? 'text' : 'password'}
                       value={ytKey}
                       onChange={(e) => setYtKey(e.target.value)}
-                      placeholder="Or paste YouTube Live Stream Key (e.g. xxxx-xxxx-xxxx-xxxx)..."
+                      onBlur={() => {
+                        if (ytKey.trim()) {
+                          try {
+                            localStorage.setItem('hc_yt_stream_key', ytKey.trim());
+                          } catch {}
+                          saveSessionState({
+                            connectedAccounts: {
+                              youtube: {
+                                connected: true,
+                                channelTitle: ytChannelName || user?.displayName || 'YouTube Live',
+                                streamKey: ytKey.trim(),
+                                rtmpUrl: 'rtmp://a.rtmp.youtube.com/live2/',
+                                updatedAt: Date.now(),
+                              },
+                            },
+                          }).catch(() => {});
+                        }
+                      }}
+                      placeholder="Paste YouTube Live Stream Key once (auto-syncs to Cloud Profile)..."
                       className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-1.5 pr-9 text-white font-mono text-[11px] placeholder-slate-500 focus:outline-none focus:border-red-500"
                     />
                     <button
