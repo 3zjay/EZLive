@@ -86,6 +86,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   const [showGrid, setShowGrid] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showProCamDrawer, setShowProCamDrawer] = useState(false);
+  const [isConnectingCam, setIsConnectingCam] = useState(false);
   const pinchStartDistRef = useRef<number | null>(null);
   const pinchStartZoomRef = useRef<number>(1);
 
@@ -333,14 +334,20 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
                 {onRetryCamera && (
                   <button
                     type="button"
-                    onClick={(e) => {
+                    disabled={isConnectingCam}
+                    onClick={async (e) => {
                       e.stopPropagation();
-                      onRetryCamera();
+                      setIsConnectingCam(true);
+                      try {
+                        await onRetryCamera();
+                      } finally {
+                        setTimeout(() => setIsConnectingCam(false), 900);
+                      }
                     }}
-                    className="px-3.5 py-2 rounded-xl bg-[#e8430a] hover:bg-[#ff6b1a] text-white font-black text-xs flex items-center gap-1.5 shadow transition active:scale-95 cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-[#e8430a] hover:bg-[#ff6b1a] disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 shadow transition active:scale-95 cursor-pointer"
                   >
-                    <RefreshCw size={13} />
-                    <span>Connect Camera</span>
+                    <RefreshCw size={13} className={isConnectingCam ? 'animate-spin' : ''} />
+                    <span>{isConnectingCam ? 'Connecting Camera...' : 'Connect Camera'}</span>
                   </button>
                 )}
                 {onToggleScreenShare && (
@@ -478,9 +485,9 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           onClick={(e) => e.stopPropagation()}
           className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 sm:gap-2 z-30"
         >
-          {/* Quick Optical / Digital Zoom Pills on Stage (1x, 2x, 3x, 5x) */}
+          {/* Quick Optical / Digital Zoom Pills on Stage (1x, 2x, 3x, 5x) — Available on All Devices */}
           {hasCamera && proCameraSettings && onUpdateProCamera && (
-            <div className="hidden sm:flex items-center bg-slate-950/90 border border-slate-700/80 rounded-lg p-0.5 backdrop-blur-md shadow">
+            <div className="flex items-center bg-slate-950/90 border border-slate-700/80 rounded-lg p-0.5 backdrop-blur-md shadow">
               {[1, 2, 3, 5].map((z) => {
                 const isActive = Math.abs((proCameraSettings.zoom || 1) - z) < 0.25;
                 return (

@@ -996,7 +996,7 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                           ✓ YouTube Key Synced to Cloud Profile {ytChannelName ? `(${ytChannelName})` : ''}
                         </span>
                       ) : (
-                        <span>Paste your YouTube Live Stream Key once (syncs to your Cloud Profile on all devices):</span>
+                        <span>Paste your YouTube Live Stream Key once (syncs across all devices):</span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -1012,19 +1012,30 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!ytKey.trim()) {
-                            handleAutoProvisionYouTube();
+                          let keyToSave = ytKey.trim();
+                          if (!keyToSave && typeof navigator !== 'undefined' && navigator.clipboard) {
+                            try {
+                              const clip = await navigator.clipboard.readText();
+                              if (clip && clip.trim()) {
+                                keyToSave = clip.trim();
+                                setYtKey(keyToSave);
+                              }
+                            } catch {}
+                          }
+                          if (!keyToSave) {
+                            setYtStatusMsg('Please copy your stream key from YouTube Studio, then tap Paste & Save Key.');
                             return;
                           }
                           try {
-                            localStorage.setItem('hc_yt_stream_key', ytKey.trim());
+                            localStorage.setItem('hc_yt_stream_key', keyToSave);
+                            localStorage.setItem('yt_channel_title', ytChannelName || user?.displayName || 'YouTube Live');
                           } catch {}
                           await saveSessionState({
                             connectedAccounts: {
                               youtube: {
                                 connected: true,
                                 channelTitle: ytChannelName || user?.displayName || 'YouTube Live',
-                                streamKey: ytKey.trim(),
+                                streamKey: keyToSave,
                                 rtmpUrl: 'rtmp://a.rtmp.youtube.com/live2/',
                                 updatedAt: Date.now(),
                               },
@@ -1033,10 +1044,10 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                           setYtStatusMsg('✓ YouTube Stream Key saved to your Cloud Profile across all devices!');
                         }}
                         disabled={isConnectingYt}
-                        className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] flex items-center gap-1 shadow transition shrink-0"
+                        className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] flex items-center gap-1 shadow transition shrink-0 cursor-pointer"
                       >
                         <Check size={11} />
-                        <span>{ytKey.trim() ? 'Save Key to Profile' : isConnectingYt ? 'Linking...' : 'Link Profile'}</span>
+                        <span>{ytKey.trim() ? 'Save Key to Profile' : '📋 Paste & Save Key'}</span>
                       </button>
                     </div>
                   </div>
@@ -1072,13 +1083,48 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                       placeholder="Paste YouTube Live Stream Key (e.g. xxxx-xxxx-xxxx-xxxx-xxxx)..."
                       className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-1.5 pr-9 text-white font-mono text-[11px] placeholder-slate-500 focus:outline-none focus:border-red-500"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowYtKey(!showYtKey)}
-                      className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
-                    >
-                      {showYtKey ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
+                    <div className="absolute right-2 top-1.5 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                            try {
+                              const text = await navigator.clipboard.readText();
+                              if (text && text.trim()) {
+                                const clean = text.trim();
+                                setYtKey(clean);
+                                try {
+                                  localStorage.setItem('hc_yt_stream_key', clean);
+                                } catch {}
+                                saveSessionState({
+                                  connectedAccounts: {
+                                    youtube: {
+                                      connected: true,
+                                      channelTitle: ytChannelName || user?.displayName || 'YouTube Live',
+                                      streamKey: clean,
+                                      rtmpUrl: 'rtmp://a.rtmp.youtube.com/live2/',
+                                      updatedAt: Date.now(),
+                                    },
+                                  },
+                                }).catch(() => {});
+                                setYtStatusMsg('✓ YouTube Stream Key pasted and synced to your Cloud Profile!');
+                              }
+                            } catch {}
+                          }
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold"
+                        title="Paste Stream Key from Clipboard"
+                      >
+                        📋 Paste
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowYtKey(!showYtKey)}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        {showYtKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
                     <span>Ingest: rtmp://a.rtmp.youtube.com/live2 • Persistent Cloud Sync</span>

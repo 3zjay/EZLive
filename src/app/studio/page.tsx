@@ -985,9 +985,13 @@ export default function StudioPage() {
       resOverride?: '720p30' | '1080p30' | '1080p60'
     ) => {
       if (cameraLockRef.current) {
+        console.warn('Camera lock active, awaiting current cycle...');
         return;
       }
       cameraLockRef.current = true;
+      const lockTimeout = setTimeout(() => {
+        cameraLockRef.current = false;
+      }, 4000);
 
       try {
         setCameraError(null);
@@ -1023,12 +1027,12 @@ export default function StudioPage() {
 
         let stream: MediaStream | null = null;
 
-        // Attempt 1: Hardware-appropriate resolution constraints + audio
+        // Attempt 1: Hardware-appropriate resolution constraints with ideal deviceId (never exact on Fold/Android)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               ...(videoDevId
-                ? { deviceId: { exact: videoDevId } }
+                ? { deviceId: { ideal: videoDevId } }
                 : isMobileOrTablet
                   ? { facingMode: { ideal: facing } }
                   : {}),
@@ -1037,7 +1041,7 @@ export default function StudioPage() {
               frameRate: { ideal: is60fps ? 60 : 30 },
             },
             audio: audioDevId
-              ? { deviceId: { exact: audioDevId } }
+              ? { deviceId: { ideal: audioDevId } }
               : {
                   echoCancellation: true,
                   noiseSuppression: true,
@@ -1045,9 +1049,9 @@ export default function StudioPage() {
                 },
           });
         } catch (initialErr) {
-          console.warn('Primary getUserMedia rejected, attempting universal laptop/mobile fallback:', initialErr);
+          console.warn('Primary getUserMedia rejected, attempting universal fallback without audio constraints:', initialErr);
           try {
-            // Attempt 2: Universal video + audio
+            // Attempt 2: Video with ideal deviceId + simple audio
             stream = await navigator.mediaDevices.getUserMedia({
               video: videoDevId
                 ? { deviceId: { ideal: videoDevId } }
@@ -1057,7 +1061,7 @@ export default function StudioPage() {
               audio: true,
             });
           } catch (audioErr) {
-            console.warn('Audio+video rejected, attempting video-only mode with facingMode:', audioErr);
+            console.warn('Audio+video rejected, attempting video-only mode:', audioErr);
             try {
               // Attempt 3: Video only with facingMode / deviceId
               stream = await navigator.mediaDevices.getUserMedia({
@@ -2139,6 +2143,7 @@ export default function StudioPage() {
                           preset.startsWith('1080') ? 1080 : 720
                         );
                       }
+                      cameraLockRef.current = false;
                       startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined, preset);
                     }}
                   />
@@ -2160,9 +2165,13 @@ export default function StudioPage() {
               selectedVideoDeviceId={selectedVideoDeviceId}
               onSelectVideoDevice={(id) => {
                 setSelectedVideoDeviceId(id);
+                cameraLockRef.current = false;
                 startCamera(facingMode, id, selectedAudioDeviceId);
               }}
-              onRetryCamera={() => startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined)}
+              onRetryCamera={() => {
+                cameraLockRef.current = false;
+                startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined);
+              }}
               onToggleScreenShare={handleToggleScreenShare}
               onFlipCamera={handleFlipCamera}
               onTriggerInstantReplay={handleTriggerInstantReplay}
