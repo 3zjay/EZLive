@@ -129,27 +129,30 @@ export interface Scene {
 export type TransitionType = 'cut' | 'fade' | 'slide' | 'zoom';
 
 export interface FacebookLiveSettings {
-  mode: 'auto' | 'manual';
+  connected?: boolean;
+  enabled?: boolean;
+  mode?: 'auto' | 'manual';
   destinationType?: 'group' | 'page' | 'timeline' | 'stream_key';
   userId?: string;
-  userToken: string;
+  userToken?: string;
   userName?: string;
   userEmail?: string;
   userPicture?: string;
   appId?: string;
-  selectedPageId: string;
-  selectedPageName: string;
-  selectedPageToken: string;
+  selectedPageId?: string;
+  selectedPageName?: string;
+  selectedPageToken?: string;
   selectedGroupId?: string;
   selectedGroupName?: string;
   groupStreamKey?: string;
-  broadcastTitle: string;
-  broadcastDescription: string;
+  broadcastTitle?: string;
+  broadcastDescription?: string;
   activeLiveVideoId?: string;
   permalinkUrl?: string;
 }
 
 export interface YouTubeLiveSettings {
+  connected?: boolean;
   enabled: boolean;
   mode?: 'auto' | 'manual';
   accessToken?: string;

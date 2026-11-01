@@ -16,6 +16,7 @@ import {
 import { StreamSettings } from '@/types/broadcast';
 import { useAuth } from '@/context/AuthContext';
 import { autoLinkFacebookToProfile } from '@/services/firebase';
+import { APP_FULL_VERSION } from '@/constants/version';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -455,8 +456,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
-          <span className="text-xs text-emerald-400 font-medium">☁️ Syncs automatically to your Cloud Profile across all devices</span>
+        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-emerald-400 font-medium">☁️ Syncs automatically to Cloud Profile</span>
+            <span className="text-[10px] text-slate-400 font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800">{APP_FULL_VERSION}</span>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={onClose}

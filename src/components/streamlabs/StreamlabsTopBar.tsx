@@ -20,6 +20,7 @@ import {
   Zap,
   Columns,
   LayoutPanelTop,
+  Cloud,
 } from 'lucide-react';
 import { RecordingState } from '@/services/recorder';
 import { StreamDestinations } from '@/types/streamlabs';
@@ -64,6 +65,7 @@ interface StreamlabsTopBarProps {
   bottomPanelMode?: 'obs' | 'streamlabs';
   onToggleBottomPanelMode?: () => void;
   onTriggerInstantReplay?: () => void;
+  onOpenPlatforms?: () => void;
 }
 
 export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
@@ -88,6 +90,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   scoreboardSyncUser,
   isScoreboardConnected,
   user,
+  profile,
   onOpenAuthModal,
   onSignOut,
   assignedCourt,
@@ -105,6 +108,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   bottomPanelMode = 'obs',
   onToggleBottomPanelMode,
   onTriggerInstantReplay,
+  onOpenPlatforms,
 }) => {
   const [isCourtDropdownOpen, setIsCourtDropdownOpen] = useState(false);
   const isNativeAndroid =
@@ -149,13 +153,14 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
               <span>EZLive</span>
               <span className="hidden md:inline">Studio</span>
               <span
+                title={`EZLiveStudio v1.2.0 (Build 12) • ${isNativeAndroid ? 'On-Device Android Native RTMP' : 'Web Video Engine'}`}
                 className={`text-[8px] sm:text-[9px] font-bold px-1 py-0.2 rounded border ${
                   isNativeAndroid
                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
                     : 'bg-[#e8430a]/20 text-[#ff6b1a] border-[#e8430a]/30'
                 }`}
               >
-                {isNativeAndroid ? 'ANDROID RTMP' : 'PRO'}
+                {isNativeAndroid ? 'v1.2.0 ANDROID' : 'v1.2.0 PRO'}
               </span>
             </div>
             <div className="text-[9px] sm:text-[10px] text-slate-400 font-mono mt-0.5 flex items-center gap-1">
@@ -230,6 +235,35 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
             {isScoreboardConnected ? (scoreboardSyncUser ? scoreboardSyncUser.split('@')[0] : 'Synced') : 'Pair Score'}
           </span>
         </button>
+
+        {/* Streamlabs Connected Platforms Sync Button */}
+        {onOpenPlatforms && (
+          <button
+            type="button"
+            onClick={onOpenPlatforms}
+            title="Streamlabs Connected Platforms & Cloud Sync (Click to manage Facebook, YouTube, RTMP)"
+            className="flex items-center gap-1.5 px-2 py-1 bg-[#140f0c] hover:bg-[#1f1712] border border-[#3a2818] rounded-lg text-[10px] sm:text-xs font-bold transition shadow-sm active:scale-95 whitespace-nowrap"
+          >
+            <Cloud size={12} className="text-sky-400 shrink-0" />
+            <div className="flex items-center gap-1 font-mono text-[10px]">
+              {destinations.facebook.pageName || destinations.facebook.enabled ? (
+                <span className="text-blue-400 font-bold flex items-center gap-0.5">
+                  <span className="w-3.5 h-3.5 rounded bg-[#1877F2] text-white flex items-center justify-center text-[8px] font-black">f</span>
+                  <span className="hidden md:inline max-w-[80px] truncate">{destinations.facebook.pageName || 'FB'}</span>
+                </span>
+              ) : null}
+              {destinations.youtube.streamKey || destinations.youtube.enabled ? (
+                <span className="text-red-400 font-bold flex items-center gap-0.5">
+                  <span className="w-3.5 h-3.5 rounded bg-[#ff0000] text-white flex items-center justify-center text-[8px] font-black">▶</span>
+                  <span className="hidden md:inline">YT</span>
+                </span>
+              ) : null}
+              {!destinations.facebook.pageName && !destinations.facebook.enabled && !destinations.youtube.streamKey ? (
+                <span className="text-amber-400">+ Platforms</span>
+              ) : null}
+            </div>
+          </button>
+        )}
 
         {/* Flip Camera (Prominent for Mobile / Tablet Court Operators) */}
         {hasCamera && (

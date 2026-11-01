@@ -45,6 +45,16 @@ public class NativeRtmpBridge {
     }
 
     @JavascriptInterface
+    public String getAppVersion() {
+        return "1.2.0 (Build 12)";
+    }
+
+    @JavascriptInterface
+    public int getVersionCode() {
+        return 12;
+    }
+
+    @JavascriptInterface
     public boolean requestCameraPermissions() {
         if (activity != null) {
             activity.runOnUiThread(() -> activity.requestBroadcastPermissions());

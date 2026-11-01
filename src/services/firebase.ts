@@ -206,6 +206,7 @@ export function hydrateLocalStorageFromCloudProfile(profile: UserSessionProfile)
     localStorage.setItem('ezlive_settings_v1', JSON.stringify(mergedSettings));
 
     if (profile.savedScenes && profile.savedScenes.length > 0) {
+      localStorage.setItem('ezlive_scenes_v5', JSON.stringify(profile.savedScenes));
       localStorage.setItem('ezlive_scenes_v4', JSON.stringify(profile.savedScenes));
     }
   } catch (e) {

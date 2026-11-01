@@ -56,7 +56,7 @@ public class MainActivity extends BridgeActivity {
                 .replace("; wv;", ";")
                 .replace("Version/4.0 ", "");
             if (!cleanUa.contains("EZLiveAndroidApp")) {
-                cleanUa = cleanUa + " EZLiveAndroidApp/1.0";
+                cleanUa = cleanUa + " EZLiveAndroidApp/1.2.0";
             }
             webSettings.setUserAgentString(cleanUa);
 

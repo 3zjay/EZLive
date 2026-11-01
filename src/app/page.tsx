@@ -24,6 +24,7 @@ import {
   Smartphone,
   Download,
 } from 'lucide-react';
+import { APP_VERSION, APP_FULL_VERSION, APP_RELEASE_NAME } from '@/constants/version';
 
 const ECOSYSTEM_LINKS = [
   { name: 'Hoop Culture Main', url: 'https://hoopculture.ca/', label: 'hoopculture.ca' },
@@ -134,7 +135,7 @@ export default function LandingPage() {
             <div className="text-xl font-black tracking-tight leading-none text-white flex items-center gap-2">
               <span>EZLiveStudio</span>
               <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-[#e8430a]/20 text-[#ff6b1a] border border-[#e8430a]/30">
-                PRO 1080p
+                PRO 1080p • v{APP_VERSION}
               </span>
             </div>
             <div className="text-[11px] font-bold tracking-widest text-[#a09080] uppercase mt-0.5">
@@ -193,16 +194,45 @@ export default function LandingPage() {
             </button>
           )}
 
-          <a
-            href="https://github.com/3zjay/EZLive/releases/download/latest-apk/EZLiveStudio.apk"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 px-6 py-4 rounded-2xl bg-[#140f0c] hover:bg-[#1a1410] border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 font-bold text-base transition shadow-lg"
-          >
-            <Smartphone size={18} />
-            <span>Download Android App (.APK)</span>
-            <Download size={16} />
-          </a>
+          <div className="flex flex-col items-center gap-2">
+            <a
+              href="/api/download/apk"
+              className="flex items-center gap-3 px-6 py-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-[#140f0c] to-[#140f0c] hover:border-emerald-400 border border-emerald-500/50 text-emerald-300 hover:text-emerald-200 font-bold text-base transition shadow-xl group active:scale-95"
+            >
+              <Smartphone size={20} className="text-emerald-400 group-hover:scale-110 transition" />
+              <div className="text-left">
+                <div className="flex items-center gap-2">
+                  <span>Download Android App</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    {APP_FULL_VERSION}
+                  </span>
+                </div>
+                <div className="text-[10px] text-emerald-400/70 font-normal">
+                  Samsung Fold 8 & Tablet Native RTMP Engine
+                </div>
+              </div>
+              <Download size={18} className="text-emerald-400 ml-1 group-hover:translate-y-0.5 transition" />
+            </a>
+            <div className="flex items-center gap-3 text-[11px] text-[#a09080]">
+              <a
+                href="https://github.com/3zjay/EZLive/releases/tag/latest-apk"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-emerald-400 underline transition"
+              >
+                GitHub Release Mirror ↗
+              </a>
+              <span>•</span>
+              <a
+                href="https://github.com/3zjay/EZLive/releases"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-emerald-400 underline transition"
+              >
+                All Releases
+              </a>
+            </div>
+          </div>
 
           <a
             href="https://scoreboard.hoopculture.ca"

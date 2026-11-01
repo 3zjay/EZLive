@@ -43,15 +43,18 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Rename APK to EZLiveStudio.apk
+      - name: Prepare Versioned and Latest APK Releases
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk EZLiveStudio.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk EZLiveStudio-v1.2.0.apk
 
       - name: Upload EZLiveStudio.apk Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: EZLiveStudio-Android-APK
-          path: EZLiveStudio.apk
+          path: |
+            EZLiveStudio.apk
+            EZLiveStudio-v1.2.0.apk
           retention-days: 90
 
       - name: Publish Latest APK to GitHub Releases
@@ -59,9 +62,19 @@ jobs:
         if: github.ref == 'refs/heads/main'
         with:
           tag_name: latest-apk
-          name: "EZLiveStudio by HoopCulture — Official Android APK"
-          body: "Installable Android Broadcast Studio APK (`EZLiveStudio.apk`) with Direct On-Device Native RTMP/RTMPS Engine for Android tablets and phones."
-          files: EZLiveStudio.apk
+          name: "EZLiveStudio by HoopCulture — Android APK v1.2.0 (Build 12)"
+          body: |
+            ### 🏀 EZLiveStudio Official Android APK Release
+            - **App Version**: `v1.2.0` (Build 12)
+            - **Engine**: Direct On-Device Native RTMP/RTMPS Engine (FFmpeg-Kit) with zero cloud relay required.
+            - **Cloud Sync**: Streamlabs-style cross-device profile sync for Facebook Live & YouTube Live destinations.
+
+            #### Download Links:
+            - **[EZLiveStudio.apk (Latest)](https://github.com/3zjay/EZLive/releases/download/latest-apk/EZLiveStudio.apk)**
+            - **[EZLiveStudio-v1.2.0.apk (v1.2.0 Build 12)](https://github.com/3zjay/EZLive/releases/download/latest-apk/EZLiveStudio-v1.2.0.apk)**
+          files: |
+            EZLiveStudio.apk
+            EZLiveStudio-v1.2.0.apk
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -22,6 +22,7 @@ import { PreviewStage, ProCameraCapabilities, ProCameraSettings } from '@/compon
 import { BackstageStrip } from '@/components/streamlabs/BackstageStrip';
 import { SidebarTabs } from '@/components/streamlabs/SidebarTabs';
 import { SettingsModal } from '@/components/studio/SettingsModal';
+import { ConnectedPlatformsModal } from '@/components/studio/ConnectedPlatformsModal';
 import { SourcePropertiesModal } from '@/components/studio/SourcePropertiesModal';
 import { GuestInviteModal } from '@/components/streamlabs/GuestInviteModal';
 import { GoLiveModal } from '@/components/studio/GoLiveModal';
@@ -596,6 +597,7 @@ export default function StudioPage() {
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPlatformsModalOpen, setIsPlatformsModalOpen] = useState(false);
   const [isGuestInviteOpen, setIsGuestInviteOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [isSourcePropsOpen, setIsSourcePropsOpen] = useState(false);
@@ -703,9 +705,52 @@ export default function StudioPage() {
       if (profile.scoreboardPreset) {
         setScoreboard((prev) => ({ ...prev, ...profile.scoreboardPreset }));
       }
-      if (profile.streamSettings) {
-        setSettings((prev) => ({ ...prev, ...profile.streamSettings }));
-      }
+      const cloudFb = profile.connectedAccounts?.facebook || profile.streamSettings?.fbSettings;
+      const cloudYt = profile.connectedAccounts?.youtube || profile.streamSettings?.ytSettings;
+      const cloudCustom = profile.connectedAccounts?.customRtmp || profile.streamSettings?.customRtmpSettings;
+
+      setSettings((prev) => {
+        const merged = { ...prev, ...(profile.streamSettings || {}) };
+        if (cloudFb) {
+          merged.fbSettings = {
+            ...merged.fbSettings,
+            userToken: cloudFb.userToken || merged.fbSettings?.userToken || '',
+            userName: cloudFb.userName || merged.fbSettings?.userName || '',
+            userPicture: cloudFb.userPicture || merged.fbSettings?.userPicture || '',
+            selectedPageId: cloudFb.selectedPageId || merged.fbSettings?.selectedPageId || '',
+            selectedPageName: cloudFb.selectedPageName || merged.fbSettings?.selectedPageName || '',
+            selectedPageToken: cloudFb.selectedPageToken || merged.fbSettings?.selectedPageToken || '',
+            selectedGroupId: cloudFb.selectedGroupId || merged.fbSettings?.selectedGroupId || '',
+            selectedGroupName: cloudFb.selectedGroupName || merged.fbSettings?.selectedGroupName || '',
+            groupStreamKey: cloudFb.groupStreamKey || merged.fbSettings?.groupStreamKey || '',
+            destinationType: (cloudFb.destinationType as 'page' | 'group' | 'timeline' | 'stream_key') || merged.fbSettings?.destinationType || 'page',
+            connected: Boolean(cloudFb.connected || cloudFb.userToken || cloudFb.selectedPageId),
+          };
+        }
+        if (cloudYt) {
+          merged.ytSettings = {
+            ...merged.ytSettings,
+            enabled: Boolean(cloudYt.streamKey || merged.ytSettings?.enabled),
+            streamKey: cloudYt.streamKey || merged.ytSettings?.streamKey || '',
+            channelTitle: cloudYt.channelTitle || merged.ytSettings?.channelTitle || '',
+            channelId: cloudYt.channelId || merged.ytSettings?.channelId || '',
+            channelAvatar: cloudYt.channelAvatar || merged.ytSettings?.channelAvatar || '',
+            rtmpUrl: cloudYt.rtmpUrl || merged.ytSettings?.rtmpUrl || 'rtmp://a.rtmp.youtube.com/live2/',
+            accessToken: cloudYt.accessToken || merged.ytSettings?.accessToken || '',
+            connected: Boolean(cloudYt.connected || cloudYt.streamKey),
+          };
+        }
+        if (cloudCustom) {
+          merged.customRtmpSettings = {
+            ...merged.customRtmpSettings,
+            enabled: Boolean(cloudCustom.enabled || merged.customRtmpSettings?.enabled),
+            serverUrl: cloudCustom.serverUrl || merged.customRtmpSettings?.serverUrl || '',
+            streamKey: cloudCustom.streamKey || merged.customRtmpSettings?.streamKey || '',
+          };
+        }
+        return merged;
+      });
+
       if (profile.brandKit) {
         setBrandKit((prev) => ({ ...prev, ...profile.brandKit }));
       }
@@ -1966,27 +2011,29 @@ export default function StudioPage() {
 
   const destinations: StreamDestinations = {
     facebook: {
-      enabled: isStreaming,
-      destinationType: settings.fbSettings?.destinationType || 'group',
+      enabled: Boolean(settings.fbSettings?.selectedPageId || settings.fbSettings?.userToken || settings.streamKey),
+      destinationType: settings.fbSettings?.destinationType || 'page',
       pageName: settings.fbSettings?.selectedPageName || 'Hoop Culture Live',
       pageId: settings.fbSettings?.selectedPageId || '',
-      groupName: settings.fbSettings?.selectedGroupName || 'Community Group',
+      groupName: settings.fbSettings?.selectedGroupName || '',
       groupId: settings.fbSettings?.selectedGroupId || '',
       streamKey: settings.fbSettings?.groupStreamKey || settings.streamKey,
       permalinkUrl: settings.fbSettings?.permalinkUrl,
+      connectedUserName: settings.fbSettings?.userName,
     },
     youtube: {
-      enabled: false,
-      title: 'YouTube Stream',
+      enabled: Boolean(settings.ytSettings?.streamKey),
+      title: settings.ytSettings?.channelTitle || 'YouTube Live',
+      streamKey: settings.ytSettings?.streamKey,
     },
     twitch: {
       enabled: false,
       channel: 'HoopCulture',
     },
     customRtmp: {
-      enabled: false,
-      url: settings.rtmpsUrl,
-      streamKey: settings.streamKey,
+      enabled: Boolean(settings.customRtmpSettings?.enabled && settings.customRtmpSettings?.serverUrl),
+      url: settings.customRtmpSettings?.serverUrl || settings.rtmpsUrl,
+      streamKey: settings.customRtmpSettings?.streamKey || settings.streamKey,
     },
   };
 
@@ -2027,6 +2074,7 @@ export default function StudioPage() {
         onToggleStreaming={handleToggleStreaming}
         onToggleScreenShare={handleToggleScreenShare}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenPlatforms={() => setIsPlatformsModalOpen(true)}
         onOpenGuestInvite={() => setIsGuestInviteOpen(true)}
         facingMode={facingMode}
         onFlipCamera={handleFlipCamera}
@@ -2372,6 +2420,14 @@ export default function StudioPage() {
         scoreboard={scoreboard}
         onSaveSettings={handleSaveSettings}
         onConfirmGoLive={handleConfirmGoLive}
+      />
+
+      {/* Streamlabs Connected Platforms Modal */}
+      <ConnectedPlatformsModal
+        isOpen={isPlatformsModalOpen}
+        onClose={() => setIsPlatformsModalOpen(false)}
+        settings={settings}
+        onSaveSettings={handleSaveSettings}
       />
 
       {/* Studio Settings Modal */}
