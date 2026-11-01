@@ -135,7 +135,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Radio size={14} /> Facebook Live
+            <Radio size={14} /> Facebook &amp; YouTube
           </button>
 
           <button
@@ -1102,6 +1102,58 @@ const FacebookDestinationManager: React.FC<{
               className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-indigo-500 resize-none"
             />
           </div>
+        </div>
+      </div>
+
+      {/* 3. YouTube Live Stream Key (Cloud Profile Synced) */}
+      <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-[#ff0000] flex items-center justify-center text-white font-black text-xs shadow">
+              ▶
+            </div>
+            <div>
+              <span className="font-bold text-white text-xs">YouTube Live Stream Key</span>
+              <span className="text-[10px] text-slate-400 ml-2">Synced to your Cloud Profile across all devices</span>
+            </div>
+          </div>
+          <a
+            href="https://studio.youtube.com/channel/UC/livestreaming"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10px] text-red-400 hover:underline font-bold"
+          >
+            Open YouTube Studio ↗
+          </a>
+        </div>
+        <div className="relative">
+          <input
+            type={showStreamKey ? 'text' : 'password'}
+            value={localSettings.ytSettings?.streamKey || ''}
+            onChange={(e) => {
+              const key = e.target.value;
+              try {
+                if (key.trim()) localStorage.setItem('hc_yt_stream_key', key.trim());
+              } catch {}
+              setLocalSettings((prev) => ({
+                ...prev,
+                ytSettings: {
+                  ...(prev.ytSettings || { enabled: true, streamKey: '' }),
+                  enabled: Boolean(key.trim()),
+                  streamKey: key,
+                },
+              }));
+            }}
+            placeholder="Paste YouTube Stream Key (e.g. xxxx-xxxx-xxxx-xxxx-xxxx)..."
+            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 font-mono text-xs focus:outline-none focus:border-red-500 pr-16"
+          />
+          <button
+            type="button"
+            onClick={() => setShowStreamKey(!showStreamKey)}
+            className="absolute right-2 top-2 text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300"
+          >
+            {showStreamKey ? 'Hide' : 'Show'}
+          </button>
         </div>
       </div>
     </div>

@@ -34,12 +34,8 @@ export const auth = getAuth(app);
 export const rtdb = getDatabase(app);
 
 export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const youtubeGoogleProvider = new GoogleAuthProvider();
-youtubeGoogleProvider.addScope('https://www.googleapis.com/auth/youtube');
-youtubeGoogleProvider.addScope('https://www.googleapis.com/auth/youtube.readonly');
-youtubeGoogleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const facebookProvider = new FacebookAuthProvider();
 facebookProvider.addScope('email');
@@ -359,9 +355,21 @@ export async function checkGoogleRedirectResult(): Promise<User | null> {
 }
 
 /**
- * Sign in with Google Account (with automatic YouTube channel linking & mobile redirect fallback)
+ * Sign in with Google Account (with mobile/Android WebView redirect support)
  */
 export async function signInWithGoogle(): Promise<User | null> {
+  const isAndroidWebView =
+    typeof window !== 'undefined' &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Boolean((window as any).EZLiveNativeRTMP) || navigator.userAgent.includes('EZLiveAndroidApp'));
+
+  // Inside Android WebView, signInWithPopup fails because WebView runs in single-window mode.
+  // Use signInWithRedirect directly on Android WebView!
+  if (isAndroidWebView) {
+    await signInWithRedirect(auth, googleProvider);
+    return null;
+  }
+
   try {
     const result = await signInWithPopup(auth, googleProvider);
     await syncUserRecord(result.user);
@@ -382,18 +390,27 @@ export async function signInWithGoogle(): Promise<User | null> {
 }
 
 /**
- * Connect YouTube Channel via Google OAuth & return accessToken for YouTube Data API v3.
- * If YouTube Data API v3 scopes are not enabled on the Google Cloud OAuth consent screen yet,
- * gracefully falls back to standard Google Sign-In so it never throws a 400 malformed request error!
+ * Connect YouTube Channel to operator's Cloud Profile.
+ * Uses any active session (Google, Facebook, or League Email) without forcing a broken second OAuth popup!
  */
 export async function connectYouTubeWithGoogle(): Promise<{ user: User; accessToken: string }> {
   if (auth.currentUser) {
     await syncUserRecord(auth.currentUser);
     return { user: auth.currentUser, accessToken: '' };
   }
+  if (typeof window !== 'undefined') {
+    try {
+      const rawCustom = localStorage.getItem('ezlive_custom_auth_user');
+      if (rawCustom) {
+        const customUser = JSON.parse(rawCustom) as User;
+        await syncUserRecord(customUser);
+        return { user: customUser, accessToken: '' };
+      }
+    } catch {}
+  }
   const u = await signInWithGoogle();
   if (!u) {
-    throw new Error('Google Sign-In cancelled');
+    throw new Error('Google Sign-In initiated');
   }
   return { user: u, accessToken: '' };
 }

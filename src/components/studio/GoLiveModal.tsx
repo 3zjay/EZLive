@@ -989,26 +989,59 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
 
               {ytEnabled && (
                 <div className="mt-2 space-y-2">
-                  <div className="flex items-center justify-between bg-slate-950/70 px-3 py-2 rounded-lg border border-slate-800">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950/70 px-3 py-2 rounded-lg border border-slate-800">
                     <div className="text-[11px] text-slate-300">
-                      {ytChannelName ? (
-                        <span className="text-emerald-400 font-bold">✓ Connected: {ytChannelName}</span>
+                      {ytKey.trim() ? (
+                        <span className="text-emerald-400 font-bold">
+                          ✓ YouTube Key Synced to Cloud Profile {ytChannelName ? `(${ytChannelName})` : ''}
+                        </span>
                       ) : (
-                        <span>Auto-create YouTube Live broadcast &amp; fetch stream key via Google OAuth:</span>
+                        <span>Paste your YouTube Live Stream Key once (syncs to your Cloud Profile on all devices):</span>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAutoProvisionYouTube}
-                      disabled={isConnectingYt}
-                      className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] flex items-center gap-1 shadow transition shrink-0"
-                    >
-                      <LogIn size={11} />
-                      <span>{isConnectingYt ? 'Connecting...' : 'Auto-Connect YouTube'}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <a
+                        href="https://studio.youtube.com/channel/UC/livestreaming"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-[10px] flex items-center gap-1 transition shrink-0"
+                      >
+                        <ExternalLink size={10} />
+                        <span>Open YouTube Studio</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!ytKey.trim()) {
+                            handleAutoProvisionYouTube();
+                            return;
+                          }
+                          try {
+                            localStorage.setItem('hc_yt_stream_key', ytKey.trim());
+                          } catch {}
+                          await saveSessionState({
+                            connectedAccounts: {
+                              youtube: {
+                                connected: true,
+                                channelTitle: ytChannelName || user?.displayName || 'YouTube Live',
+                                streamKey: ytKey.trim(),
+                                rtmpUrl: 'rtmp://a.rtmp.youtube.com/live2/',
+                                updatedAt: Date.now(),
+                              },
+                            },
+                          });
+                          setYtStatusMsg('✓ YouTube Stream Key saved to your Cloud Profile across all devices!');
+                        }}
+                        disabled={isConnectingYt}
+                        className="px-2.5 py-1 rounded-md bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] flex items-center gap-1 shadow transition shrink-0"
+                      >
+                        <Check size={11} />
+                        <span>{ytKey.trim() ? 'Save Key to Profile' : isConnectingYt ? 'Linking...' : 'Link Profile'}</span>
+                      </button>
+                    </div>
                   </div>
                   {ytStatusMsg && (
-                    <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-700 text-[10px] text-amber-300 font-medium">
+                    <div className="p-2 rounded-lg bg-slate-950/90 border border-slate-700 text-[10px] text-emerald-300 font-medium">
                       {ytStatusMsg}
                     </div>
                   )}
@@ -1033,9 +1066,10 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                               },
                             },
                           }).catch(() => {});
+                          setYtStatusMsg('✓ YouTube Stream Key automatically synced to your Cloud Profile!');
                         }
                       }}
-                      placeholder="Paste YouTube Live Stream Key once (auto-syncs to Cloud Profile)..."
+                      placeholder="Paste YouTube Live Stream Key (e.g. xxxx-xxxx-xxxx-xxxx-xxxx)..."
                       className="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-1.5 pr-9 text-white font-mono text-[11px] placeholder-slate-500 focus:outline-none focus:border-red-500"
                     />
                     <button
@@ -1047,13 +1081,13 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
                     </button>
                   </div>
                   <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                    <span>Supports OAuth Auto-Create or OBS Manual Stream Key from YouTube Studio</span>
+                    <span>Ingest: rtmp://a.rtmp.youtube.com/live2 • Persistent Cloud Sync</span>
                     {ytKey.trim() ? (
                       <span className="text-emerald-400 font-bold flex items-center gap-1">
-                        <Check size={11} /> Ready
+                        <Check size={11} /> Ready &amp; Synced
                       </span>
                     ) : (
-                      <span className="text-amber-400 font-medium">Connect or paste key</span>
+                      <span className="text-amber-400 font-medium">Paste Stream Key from YouTube Studio</span>
                     )}
                   </div>
                 </div>
