@@ -219,8 +219,14 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
     if (found) setBitrateCapKbps(found.bitrateKbps);
   };
 
-  // Cloud Relay Health Telemetry (render awake check)
-  const [relayStatus, setRelayStatus] = useState<'checking' | 'ready' | 'waking'>('checking');
+  // Cloud Relay Health Telemetry (or Native Android On-Device RTMP check)
+  const isNativeAndroidRtmp =
+    typeof window !== 'undefined' &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Boolean((window as any).EZLiveNativeRTMP) || navigator.userAgent.includes('EZLiveAndroidApp'));
+  const [relayStatus, setRelayStatus] = useState<'checking' | 'ready' | 'waking'>(
+    isNativeAndroidRtmp ? 'ready' : 'checking'
+  );
 
   const fetchFacebookDestinations = async (token?: string) => {
     const activeToken =
@@ -273,6 +279,10 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
       'https://ezlive-relay.onrender.com';
 
     const checkHealth = async () => {
+      if (isNativeAndroidRtmp) {
+        if (isMounted) setRelayStatus('ready');
+        return;
+      }
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -959,10 +969,10 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
             </div>
           </div>
 
-          {/* Cloud Relay & Free Tier Reality Check Banner */}
+          {/* RTMP Engine Status Banner (Native Android On-Device Engine vs Web Cloud Relay) */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-start gap-2.5">
             <div className="mt-0.5">
-              {relayStatus === 'ready' ? (
+              {isNativeAndroidRtmp || relayStatus === 'ready' ? (
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400" />
               ) : relayStatus === 'waking' ? (
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
@@ -971,29 +981,45 @@ export const GoLiveModal: React.FC<GoLiveModalProps> = ({
               )}
             </div>
             <div className="flex-1 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-300 text-[11px]">
-                  Render Cloud Relay:{' '}
-                  {relayStatus === 'ready' ? (
-                    <span className="text-emerald-400">Online &amp; Active (Zero-CPU Passthrough)</span>
-                  ) : relayStatus === 'waking' ? (
-                    <span className="text-amber-400">Waking from Sleep (Ready soon)</span>
-                  ) : (
-                    <span className="text-slate-400">Checking...</span>
-                  )}
-                </span>
-                <a
-                  href={`${settings.relayUrl || 'https://ezlive-relay.onrender.com'}/logs`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[10px] text-sky-400 hover:underline flex items-center gap-0.5"
-                >
-                  Relay Diagnostics <ExternalLink size={9} />
-                </a>
-              </div>
-              <p className="text-[10px] text-slate-400 leading-relaxed">
-                💡 <strong>Zero phone battery/bandwidth doubling</strong>: Your phone or tablet only uploads 1 video stream. The cloud relay duplicates it to both Facebook and YouTube in the cloud.
-              </p>
+              {isNativeAndroidRtmp ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-300 text-[11px]">
+                      Android Native RTMP Engine:{' '}
+                      <span className="text-emerald-400">Direct On-Device RTMP / RTMPS (No Cloud Relay Needed)</span>
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    ⚡ <strong>100% Standalone Native Android Broadcast</strong>: Your phone/tablet streams H.264 directly to Facebook, YouTube, and Custom RTMP from the device hardware with zero external relay server required.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-300 text-[11px]">
+                      Render Cloud Relay (Web Browser Mode):{' '}
+                      {relayStatus === 'ready' ? (
+                        <span className="text-emerald-400">Online &amp; Active (Zero-CPU Passthrough)</span>
+                      ) : relayStatus === 'waking' ? (
+                        <span className="text-amber-400">Waking from Sleep (Ready soon)</span>
+                      ) : (
+                        <span className="text-slate-400">Checking...</span>
+                      )}
+                    </span>
+                    <a
+                      href={`${settings.relayUrl || 'https://ezlive-relay.onrender.com'}/logs`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-sky-400 hover:underline flex items-center gap-0.5"
+                    >
+                      Relay Diagnostics <ExternalLink size={9} />
+                    </a>
+                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    💡 <strong>Browser Mode</strong>: Uses the cloud relay because desktop/iOS browsers block direct TCP RTMP sockets. (Install the Android APK for direct on-device RTMP!)
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>

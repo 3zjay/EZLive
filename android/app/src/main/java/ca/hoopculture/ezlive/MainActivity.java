@@ -15,6 +15,7 @@ import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private NativeRtmpBridge nativeRtmpBridge;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -31,20 +32,33 @@ public class MainActivity extends BridgeActivity {
 
         // Grant WebRTC getUserMedia camera/audio permissions inside the Capacitor WebView
         if (this.bridge != null && this.bridge.getWebView() != null) {
-            android.webkit.WebSettings webSettings = this.bridge.getWebView().getSettings();
+            android.webkit.WebView webView = this.bridge.getWebView();
+            android.webkit.WebSettings webSettings = webView.getSettings();
             webSettings.setMediaPlaybackRequiresUserGesture(false);
             String currentUa = webSettings.getUserAgentString();
             if (!currentUa.contains("EZLiveAndroidApp")) {
                 webSettings.setUserAgentString(currentUa + " EZLiveAndroidApp/1.0");
             }
 
-            this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+            // Register On-Device Native RTMP/RTMPS Engine Bridge (Zero Cloud Relay needed!)
+            nativeRtmpBridge = new NativeRtmpBridge(this, webView);
+            webView.addJavascriptInterface(nativeRtmpBridge, "EZLiveNativeRTMP");
+
+            webView.setWebChromeClient(new WebChromeClient() {
                 @Override
                 public void onPermissionRequest(final PermissionRequest request) {
                     runOnUiThread(() -> request.grant(request.getResources()));
                 }
             });
         }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (nativeRtmpBridge != null) {
+            nativeRtmpBridge.stopStream();
+        }
+        super.onDestroy();
     }
 
     @Override

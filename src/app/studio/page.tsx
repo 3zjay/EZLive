@@ -235,6 +235,76 @@ export default function StudioPage() {
 
       setRelayStats({ connected: false, mbSent: '0.00', status: 'connecting' });
 
+      // 1. NATIVE ANDROID DIRECT RTMP/RTMPS ENGINE (Zero Cloud Relay Required!)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nativeRtmp = typeof window !== 'undefined' ? (window as any).EZLiveNativeRTMP : null;
+      if (nativeRtmp && typeof nativeRtmp.startStream === 'function') {
+        const res = nativeRtmp.startStream(
+          fbKey || '',
+          targetRtmps || 'rtmps://live-api-s.facebook.com:443/rtmp/',
+          ytKey || '',
+          'rtmp://a.rtmp.youtube.com/live2/',
+          customRtmpUrl || '',
+          customRtmpKey || '',
+          bitrateKbps,
+          streamFps,
+          isH264
+        );
+
+        if (typeof res === 'string' && res.startsWith('ERROR:')) {
+          alert(`Native Android RTMP Error:\n${res.replace('ERROR:', '')}`);
+          setRelayStats({ connected: false, mbSent: '0.00', status: 'error' });
+          return;
+        }
+
+        console.log('🚀 Native Android On-Device RTMP Engine active! Streaming directly to RTMP without Cloud Relay.');
+        setRelayStats({ connected: true, mbSent: '0.00', status: 'streaming' });
+
+        const onNativeHeartbeat = (e: Event) => {
+          const detail = (e as CustomEvent).detail;
+          if (detail?.mbSent) {
+            setRelayStats({ connected: true, mbSent: detail.mbSent, status: 'streaming' });
+          }
+        };
+        window.addEventListener('NATIVE_RTMP_HEARTBEAT', onNativeHeartbeat);
+
+        try {
+          const targetVideoBps = Math.min(bitrateKbps, 5000) * 1000;
+          const rec = new MediaRecorder(compositeStream, {
+            ...(mime ? { mimeType: mime } : {}),
+            bitsPerSecond: targetVideoBps + 128000,
+            videoBitsPerSecond: targetVideoBps,
+            audioBitsPerSecond: 128000,
+          });
+
+          rec.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0 && isStreamingRef.current) {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                const dataUrl = reader.result as string;
+                const base64 = dataUrl ? dataUrl.split(',')[1] : '';
+                if (base64) {
+                  nativeRtmp.writeChunk(base64);
+                }
+              };
+              reader.readAsDataURL(e.data);
+            }
+          };
+
+          rec.onstop = () => {
+            window.removeEventListener('NATIVE_RTMP_HEARTBEAT', onNativeHeartbeat);
+          };
+
+          rec.start(500); // 500ms low-latency direct pipe chunks
+          streamingRecorderRef.current = rec;
+        } catch (recErr) {
+          console.error('Failed to start MediaRecorder for Native Android RTMP:', recErr);
+          setRelayStats({ connected: false, mbSent: '0.00', status: 'error' });
+        }
+        return;
+      }
+
+      // 2. WEB BROWSER / iPAD FALLBACK: Cloud WebSocket Relay
       const cleanRelay = relayUrl.replace(/^https?:\/\//, '').replace(/^wss?:\/\//, '').replace(/\/$/, '');
       const wsProtocol = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
@@ -349,6 +419,14 @@ export default function StudioPage() {
 
   const stopRelayPipeline = () => {
     isStreamingRef.current = false;
+    // Stop On-Device Native Android RTMP Engine if running
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nativeRtmp = typeof window !== 'undefined' ? (window as any).EZLiveNativeRTMP : null;
+    if (nativeRtmp && typeof nativeRtmp.stopStream === 'function') {
+      try {
+        nativeRtmp.stopStream();
+      } catch {}
+    }
     if (streamingRecorderRef.current) {
       try {
         if (streamingRecorderRef.current.state !== 'inactive') {
