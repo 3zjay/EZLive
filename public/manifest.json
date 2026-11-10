@@ -4,7 +4,7 @@
   "description": "Live Court Broadcast Studio by HoopCulture. Tablet-first OBS & Streamlabs broadcasting.",
   "start_url": "/studio",
   "display": "standalone",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#080605",
   "theme_color": "#080605",
   "icons": [
