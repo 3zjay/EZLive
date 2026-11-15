@@ -134,6 +134,31 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
                     const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
                     setLocalSource({
                       ...localSource,
+                      name: 'Stadium Pill Broadcast Overlay (/scripps)',
+                      url: `https://scoreboard.hoopculture.ca/scripps?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`col-span-2 p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.url?.includes('/scripps') || localSource.url?.includes('/overlay3') || localSource.url?.includes('/pill')
+                      ? 'border-[#ff6b1a] bg-[#e8430a]/20 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-[#ff8c42]">★ NEW · 1. Stadium Pill Broadcast Bug (/scripps)</span>
+                  <span className="text-[10px] text-slate-400">Scripps Sports style pill with chrome Hoop Culture medallion, Broadcast/Venue cap & AI optical scanner feed</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
                       name: 'NBA Scorebug 2 Overlay (/nbaoverlay2)',
                       url: `https://scoreboard.hoopculture.ca/nbaoverlay2?user=${encodeURIComponent(email)}`,
                       x: 0,
@@ -149,7 +174,7 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
                       : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <span className="font-extrabold text-xs text-emerald-400">★ 1. NBA Scorebug 2</span>
+                  <span className="font-extrabold text-xs text-emerald-400">2. NBA Scorebug 2</span>
                   <span className="text-[10px] text-slate-400">Main bottom pill (/nbaoverlay2) synced via login</span>
                 </button>
 
@@ -269,6 +294,19 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
+                  onClick={() => setLocalSource({ ...localSource, theme: 'scripps', width: 1520, height: 92, x: 200, y: 950 })}
+                  className={`col-span-2 p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.theme === 'scripps'
+                      ? 'border-[#ff6b1a] bg-[#e8430a]/20 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-[#ff8c42]">★ NEW · 1. Stadium Pill Broadcast Bug (/scripps)</span>
+                  <span className="text-[10px] text-slate-400">Canvas-composited Stadium Pill with Chrome Medallion, Broadcast/Venue cap & AI optical feed</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setLocalSource({ ...localSource, theme: 'nbaoverlay2', width: 604, height: 106, x: 658, y: 934 })}
                   className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
                     localSource.theme === 'nbaoverlay2' || localSource.theme === 'nba_neon'
@@ -276,7 +314,7 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
                       : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
                   }`}
                 >
-                  <span className="font-extrabold text-xs text-emerald-400">★ 1. NBA Scorebug 2 (/nbaoverlay2)</span>
+                  <span className="font-extrabold text-xs text-emerald-400">2. NBA Scorebug 2 (/nbaoverlay2)</span>
                   <span className="text-[10px] text-slate-400">Official Hoop Culture bottom pill with dual logos, Teko font & fouls</span>
                 </button>
 

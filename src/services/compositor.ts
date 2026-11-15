@@ -720,12 +720,15 @@ export class VideoCompositor {
     ctx.restore();
   }
 
-  // --- Scoreboard HUD Source (With 4 Hoop Culture Themes) ---
+  // --- Scoreboard HUD Source (With 5 Hoop Culture Themes) ---
   private drawScoreboardSource(source: Source) {
     if (source.type !== 'scoreboard') return;
 
     const sbSource = source as ScoreboardSource;
     switch (sbSource.theme) {
+      case 'scripps':
+        this.drawScrippsTheme(sbSource);
+        break;
       case 'nbaoverlay2':
       case 'nba_neon':
         this.drawNbaOverlay2Theme(sbSource);
@@ -741,6 +744,384 @@ export class VideoCompositor {
         this.drawNbcTheme(sbSource);
         break;
     }
+  }
+
+  private isLightColor(hex?: string | null): boolean {
+    if (!hex || hex[0] !== '#') return false;
+    let clean = hex.slice(1);
+    if (clean.length === 3) {
+      clean = clean[0] + clean[0] + clean[1] + clean[1] + clean[2] + clean[2];
+    }
+    if (clean.length < 6) return false;
+    const r = parseInt(clean.slice(0, 2), 16);
+    const g = parseInt(clean.slice(2, 4), 16);
+    const b = parseInt(clean.slice(4, 6), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return false;
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 175;
+  }
+
+  private formatOverlayPeriod(period: number | string): string {
+    if (typeof period === 'string') return period.toUpperCase();
+    if (period === 5) return 'OT';
+    if (period === 6) return '2OT';
+    if (period === 7) return '3OT';
+    const labels = ['1ST', '2ND', '3RD', '4TH', 'OT', '2OT', '3OT'];
+    return labels[(period || 1) - 1] || `Q${period}`;
+  }
+
+  private formatOverlayClock(sb: ScoreboardState): string {
+    if (typeof sb.gameSeconds === 'number') {
+      if (sb.gameSeconds < 60 && sb.gameSeconds > 0 && sb.isClockRunning) {
+        return `${sb.gameSeconds}.0`;
+      }
+      const m = Math.floor(sb.gameSeconds / 60);
+      const sec = Math.floor(sb.gameSeconds % 60);
+      return `${m}:${sec.toString().padStart(2, '0')}`;
+    }
+    return sb.gameClock || '10:00';
+  }
+
+  private drawOpticalStreamImg(
+    url: string | null | undefined,
+    cx: number,
+    cy: number,
+    maxW: number,
+    maxH: number,
+    invert?: boolean
+  ): boolean {
+    if (!this.scoreboard.aiSyncActive || !url) return false;
+    const img = this.getOrLoadImage(url);
+    if (!img) return false;
+    const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+    let drawW = maxW;
+    let drawH = drawW / aspect;
+    if (drawH > maxH) {
+      drawH = maxH;
+      drawW = drawH * aspect;
+    }
+    this.ctx.save();
+    this.ctx.globalCompositeOperation = invert ? 'screen' : 'multiply';
+    this.ctx.filter = invert ? 'contrast(2.4) brightness(1.25)' : 'contrast(2.4) brightness(1.1)';
+    this.ctx.drawImage(img, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+    this.ctx.restore();
+    return true;
+  }
+
+  // ?? THEME 0: Stadium Pill Broadcast Scorebug (/scripps) ???????????????????
+  private drawScrippsTheme(source: ScoreboardSource) {
+    const { ctx } = this;
+    const sb = this.scoreboard;
+    const scale = source.scale || 1;
+
+    const pillH = Math.round(92 * scale);
+    const radius = pillH / 2;
+
+    const rawBc = (sb.rp1Value ?? sb.broadcast ?? '').trim();
+    const rawVn = (sb.rp2Value ?? sb.venue ?? '').trim();
+    const hasVenueCap =
+      (rawBc.length > 0 && rawBc !== '—' && rawBc !== '-') ||
+      (rawVn.length > 0 && rawVn !== '—' && rawVn !== '-');
+
+    const venueW = hasVenueCap ? Math.round(240 * scale) : 0;
+    const teamW = Math.round(330 * scale);
+    const capsuleW = Math.round(336 * scale);
+    const clockW = Math.round(284 * scale);
+    const totalW = venueW + teamW + capsuleW + teamW + clockW;
+
+    const pillX = source.x && source.x > 0 ? source.x : Math.round((this.width - totalW) / 2);
+    const pillY = source.y && source.y > 0 && source.y < this.height - pillH ? source.y : Math.round(this.height - pillH - 38 * scale);
+
+    const awayColor = sb.awayColor || '#c8102e';
+    const homeColor = sb.homeColor || '#f5c842';
+    const awayTextColor = this.isLightColor(awayColor) ? '#111111' : '#ffffff';
+    const homeTextColor = this.isLightColor(homeColor) ? '#111111' : '#ffffff';
+
+    ctx.save();
+    if (!this.lowCpuMode) {
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 28 * scale;
+      ctx.shadowOffsetY = 8 * scale;
+    }
+
+    // Outer metallic dark shell
+    ctx.fillStyle = '#07080c';
+    this.roundRect(ctx, pillX, pillY, totalW, pillH, radius);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+
+    // Clip to outer pill
+    ctx.save();
+    this.roundRect(ctx, pillX, pillY, totalW, pillH, radius);
+    ctx.clip();
+
+    let curX = pillX;
+
+    // 1. Left End Cap: BROADCAST & VENUE
+    if (hasVenueCap) {
+      const capGrad = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
+      capGrad.addColorStop(0, '#101524');
+      capGrad.addColorStop(1, '#060910');
+      ctx.fillStyle = capGrad;
+      ctx.fillRect(curX, pillY, venueW + 24 * scale, pillH);
+
+      const textX = curX + 28 * scale;
+      if (rawBc && rawBc !== '—' && rawBc !== '-') {
+        ctx.fillStyle = '#ff3b30';
+        ctx.beginPath();
+        ctx.arc(textX + 5 * scale, pillY + pillH * 0.36, 4.5 * scale, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ff6b35';
+        ctx.font = `800 ${Math.round(10 * scale)}px sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText((sb.rp1Title || 'BROADCAST').toUpperCase(), textX + 16 * scale, pillY + pillH * 0.36);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `900 ${Math.round(19 * scale)}px 'Barlow Condensed', sans-serif`;
+        ctx.fillText(rawBc.toUpperCase().slice(0, 14), textX + 16 * scale, pillY + pillH * 0.52);
+      }
+
+      if (rawVn && rawVn !== '—' && rawVn !== '-') {
+        ctx.fillStyle = '#ffaa00';
+        ctx.font = `800 ${Math.round(10 * scale)}px sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${(sb.rp2Title || 'VENUE').toUpperCase()}:`, textX, pillY + pillH * 0.74);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `900 ${Math.round(18 * scale)}px 'Barlow Condensed', sans-serif`;
+        ctx.fillText(rawVn.toUpperCase().slice(0, 12), textX + 48 * scale, pillY + pillH * 0.74);
+      }
+      curX += venueW;
+    }
+
+    // 2. Left Team Pill (AWAY)
+    ctx.save();
+    this.roundRect(ctx, curX, pillY, teamW + capsuleW / 2, pillH, [radius, 0, 0, radius]);
+    ctx.clip();
+    const awayGrad = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
+    awayGrad.addColorStop(0, awayColor);
+    awayGrad.addColorStop(1, this.darkenColor(awayColor, 0.72));
+    ctx.fillStyle = awayGrad;
+    ctx.fillRect(curX, pillY, teamW + capsuleW / 2, pillH);
+    ctx.restore();
+
+    const awayLogoImg = this.getOrLoadImage(sb.awayLogo);
+    const logoSize = Math.round(66 * scale);
+    const awayLogoCx = curX + 46 * scale;
+    const logoCy = pillY + pillH / 2;
+    if (awayLogoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(awayLogoCx, logoCy, logoSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(awayLogoImg, awayLogoCx - logoSize / 2, logoCy - logoSize / 2, logoSize, logoSize);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.arc(awayLogoCx, logoCy, logoSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = awayTextColor;
+      ctx.font = `900 ${Math.round(18 * scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((sb.awayTeam || 'AWY').slice(0, 3).toUpperCase(), awayLogoCx, logoCy);
+    }
+
+    ctx.fillStyle = awayTextColor;
+    ctx.font = `900 ${Math.round(38 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const awayLabel = (sb.awayAbbr || sb.awayName || sb.awayTeam || 'AWAY').toUpperCase();
+    ctx.fillText(awayLabel.slice(0, 12), curX + 90 * scale, logoCy + 2 * scale, teamW - 118 * scale);
+
+    if (sb.possession === 'away') {
+      ctx.fillStyle = '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(curX + teamW - 16 * scale, logoCy, 6 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    curX += teamW;
+
+    // 3. Center Score Capsule + Home Color right backdrop
+    ctx.save();
+    this.roundRect(ctx, curX + capsuleW / 2, pillY, capsuleW / 2 + teamW, pillH, [0, radius, radius, 0]);
+    ctx.clip();
+    const homeGrad = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
+    homeGrad.addColorStop(0, homeColor);
+    homeGrad.addColorStop(1, this.darkenColor(homeColor, 0.72));
+    ctx.fillStyle = homeGrad;
+    ctx.fillRect(curX + capsuleW / 2, pillY, capsuleW / 2 + teamW, pillH);
+    ctx.restore();
+
+    // Dark recessed center score capsule
+    const capPadY = Math.round(10 * scale);
+    const capH = pillH - capPadY * 2;
+    const capGrad = ctx.createRadialGradient(
+      curX + capsuleW / 2,
+      logoCy,
+      10 * scale,
+      curX + capsuleW / 2,
+      logoCy,
+      capsuleW * 0.65
+    );
+    capGrad.addColorStop(0, '#1b202c');
+    capGrad.addColorStop(0.65, '#0d0f17');
+    capGrad.addColorStop(1, '#050608');
+    ctx.fillStyle = capGrad;
+    this.roundRect(ctx, curX, pillY + capPadY, capsuleW, capH, capH / 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth = 1.5 * scale;
+    ctx.stroke();
+
+    // Away Score inside capsule (optical crop or numeric)
+    const awayScoreCx = curX + Math.round(62 * scale);
+    if (!this.drawOpticalStreamImg(sb.awayScoreStream, awayScoreCx, logoCy, 84 * scale, capH - 12 * scale, sb.invertStates?.away)) {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 ${Math.round(56 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${sb.awayScore}`, awayScoreCx, logoCy + 4 * scale);
+    }
+
+    // Home Score inside capsule (optical crop or numeric)
+    const homeScoreCx = curX + capsuleW - Math.round(62 * scale);
+    if (!this.drawOpticalStreamImg(sb.homeScoreStream, homeScoreCx, logoCy, 84 * scale, capH - 12 * scale, sb.invertStates?.home)) {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 ${Math.round(56 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${sb.homeScore}`, homeScoreCx, logoCy + 4 * scale);
+    }
+
+    // Center Hoop Culture Chrome Medallion
+    const medCx = curX + capsuleW / 2;
+    const medR = Math.round(39 * scale);
+    const chromeGrad = ctx.createLinearGradient(medCx - medR, logoCy - medR, medCx + medR, logoCy + medR);
+    chromeGrad.addColorStop(0, '#ffffff');
+    chromeGrad.addColorStop(0.4, '#cbd5e1');
+    chromeGrad.addColorStop(0.75, '#94a3b8');
+    chromeGrad.addColorStop(1, '#475569');
+    ctx.fillStyle = chromeGrad;
+    ctx.beginPath();
+    ctx.arc(medCx, logoCy, medR, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.arc(medCx, logoCy, medR - 3 * scale, 0, Math.PI * 2);
+    ctx.fill();
+
+    const hcLogoImg = this.getOrLoadImage('/hoop-culture-logo2.png');
+    if (hcLogoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(medCx, logoCy, medR - 4 * scale, 0, Math.PI * 2);
+      ctx.clip();
+      const logoDim = (medR - 4 * scale) * 1.75;
+      ctx.drawImage(hcLogoImg, medCx - logoDim / 2, logoCy - logoDim / 2, logoDim, logoDim);
+      ctx.restore();
+    }
+
+    curX += capsuleW;
+
+    // 4. Right Team Pill (HOME)
+    if (sb.possession === 'home') {
+      ctx.fillStyle = '#ffaa00';
+      ctx.beginPath();
+      ctx.arc(curX + 16 * scale, logoCy, 6 * scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = homeTextColor;
+    ctx.font = `900 ${Math.round(38 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const homeLabel = (sb.homeAbbr || sb.homeName || sb.homeTeam || 'HOME').toUpperCase();
+    ctx.fillText(homeLabel.slice(0, 12), curX + teamW - 90 * scale, logoCy + 2 * scale, teamW - 118 * scale);
+
+    const homeLogoImg = this.getOrLoadImage(sb.homeLogo);
+    const homeLogoCx = curX + teamW - 46 * scale;
+    if (homeLogoImg) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(homeLogoCx, logoCy, logoSize / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(homeLogoImg, homeLogoCx - logoSize / 2, logoCy - logoSize / 2, logoSize, logoSize);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.arc(homeLogoCx, logoCy, logoSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = homeTextColor;
+      ctx.font = `900 ${Math.round(18 * scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText((sb.homeTeam || 'HOM').slice(0, 3).toUpperCase(), homeLogoCx, logoCy);
+    }
+    curX += teamW;
+
+    // 5. Right Clock & Shot Clock End Cap
+    const clkGrad = ctx.createLinearGradient(0, pillY, 0, pillY + pillH);
+    clkGrad.addColorStop(0, '#101524');
+    clkGrad.addColorStop(1, '#060910');
+    ctx.fillStyle = clkGrad;
+    ctx.fillRect(curX, pillY, clockW, pillH);
+
+    // Subtle divider
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(curX, pillY + 14 * scale, 1.5, pillH - 28 * scale);
+
+    // Period
+    if (!sb.periodDisabled) {
+      const perCx = curX + 46 * scale;
+      if (!this.drawOpticalStreamImg(sb.periodStream, perCx, logoCy, 56 * scale, 42 * scale, sb.invertStates?.period)) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `900 ${Math.round(28 * scale)}px 'Barlow Condensed', sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.formatOverlayPeriod(sb.quarter ?? sb.period), perCx, logoCy + 1 * scale);
+      }
+    }
+
+    // Game Clock
+    const clkCx = curX + (sb.shotClockDisabled ? 168 * scale : 138 * scale);
+    if (!this.drawOpticalStreamImg(sb.gameClockStream, clkCx, logoCy, 108 * scale, 48 * scale, sb.invertStates?.clock)) {
+      const clkWarn = sb.gameSeconds !== undefined && sb.gameSeconds <= 30;
+      ctx.fillStyle = clkWarn ? '#ff5f5f' : '#ffffff';
+      ctx.font = `700 ${Math.round(46 * scale)}px 'Teko', 'Barlow Condensed', monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.formatOverlayClock(sb), clkCx, logoCy + 3 * scale);
+    }
+
+    // Shot Clock
+    if (!sb.shotClockDisabled) {
+      const scCx = curX + clockW - 52 * scale;
+      if (!this.drawOpticalStreamImg(sb.shotClockStream, scCx, logoCy, 64 * scale, 48 * scale, sb.invertStates?.shot)) {
+        const scNum = sb.shotSeconds ?? sb.shotClock ?? 24;
+        ctx.fillStyle = scNum <= 5 ? '#ff3b30' : '#ffffff';
+        ctx.font = `700 ${Math.round(46 * scale)}px 'Teko', 'Barlow Condensed', monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${scNum}`, scCx, logoCy + 3 * scale);
+      }
+    }
+
+    ctx.restore(); // end outer clip
+
+    // Outer metallic pill rim
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 2 * scale;
+    this.roundRect(ctx, pillX, pillY, totalW, pillH, radius);
+    ctx.stroke();
+
+    ctx.restore();
   }
 
   private darkenColor(hex: string, pct = 0.5): string {
@@ -768,201 +1149,227 @@ export class VideoCompositor {
     const { ctx } = this;
     const sb = this.scoreboard;
     const scale = source.scale || 1;
-    let barWidth = 1040 * scale;
-    let barHeight = 116 * scale;
-    let barX = Math.round((this.width - barWidth) / 2);
-    let barY = Math.round(this.height - barHeight - 36 * scale);
-    const radius = 58 * scale;
+    const mainH = Math.round(92 * scale);
+    const stripH = Math.round(24 * scale);
+    const barWidth = Math.round(1040 * scale);
+    const barHeight = mainH + stripH;
+    const barX = Math.round((this.width - barWidth) / 2);
+    const barY = Math.round(this.height - barHeight - 36 * scale);
+    const radius = Math.round(28 * scale);
 
-    const homeColor = sb.homeColor || '#f5c842';
+    const homeColor = sb.homeColor || '#888888';
     const awayColor = sb.awayColor || '#c8102e';
+    const hTextColor = this.isLightColor(homeColor) ? '#111111' : '#ffffff';
+    const aTextColor = this.isLightColor(awayColor) ? '#111111' : '#ffffff';
 
     ctx.save();
     if (!this.lowCpuMode) {
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
       ctx.shadowBlur = 24 * scale;
       ctx.shadowOffsetY = 6 * scale;
     }
 
     // Outer container background
-    ctx.fillStyle = 'rgba(10, 14, 24, 0.95)';
+    ctx.fillStyle = '#05070d';
     this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
     ctx.fill();
-
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
 
-    // Metallic border
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+    ctx.save();
+    this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
+    ctx.clip();
+
+    const centerW = Math.round(210 * scale);
+    const logoZoneW = Math.round(180 * scale);
+    const scoreZoneW = Math.round(118 * scale);
+    const braceW = Math.round(36 * scale);
+    const sideW = (barWidth - centerW) / 2;
+
+    // 1. HOME LEFT SIDE (Dark logo wrapper + stacked abbr + brace/fouls + score seg)
+    ctx.fillStyle = this.darkenColor(homeColor, 0.58);
+    ctx.fillRect(barX, barY, logoZoneW, mainH);
+
+    ctx.fillStyle = homeColor;
+    ctx.fillRect(barX + logoZoneW, barY, sideW - logoZoneW, mainH);
+
+    // Home Logo Circle
+    const homeLogoImg = this.getOrLoadImage(sb.homeLogo);
+    const logoSize = Math.round(58 * scale);
+    const hLogoCx = barX + 54 * scale;
+    const rowCy = barY + mainH / 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.arc(hLogoCx, rowCy, logoSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    if (homeLogoImg) {
+      ctx.clip();
+      ctx.drawImage(homeLogoImg, hLogoCx - logoSize / 2, rowCy - logoSize / 2, logoSize, logoSize);
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `900 ${Math.round(14 * scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sb.homeTeam.slice(0, 3).toUpperCase(), hLogoCx, rowCy);
+    }
+    ctx.restore();
+
+    // Stacked vertical abbreviation (matching #hAbbr)
+    const homeLetters = (sb.homeAbbr || sb.homeTeam || 'HOME').toUpperCase().slice(0, 4).split('');
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(14 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    homeLetters.forEach((ch, idx) => {
+      const ly = barY + mainH / 2 + (idx - (homeLetters.length - 1) / 2) * (15 * scale);
+      ctx.fillText(ch, barX + 126 * scale, ly);
+    });
+
+    // Home fouls & divider inside brace column
+    ctx.strokeStyle = hTextColor;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1.5 * scale;
+    ctx.beginPath();
+    ctx.moveTo(barX + logoZoneW + braceW / 2, barY + 14 * scale);
+    ctx.lineTo(barX + logoZoneW + braceW / 2, barY + mainH - 14 * scale);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    if ((sb.homeFouls || 0) > 0) {
+      ctx.fillStyle = hTextColor;
+      ctx.font = `900 ${Math.round(15 * scale)}px 'Barlow Condensed', sans-serif`;
+      ctx.fillText(`${sb.homeFouls}`, barX + logoZoneW + braceW / 2, barY + 26 * scale);
+    }
+
+    // Home Score
+    const hScoreCx = barX + sideW - scoreZoneW / 2 - 20 * scale;
+    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreCx, rowCy, 96 * scale, 64 * scale, sb.invertStates?.home)) {
+      ctx.fillStyle = hTextColor;
+      ctx.font = `italic 900 ${Math.round(52 * scale)}px 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${sb.homeScore}`, hScoreCx, rowCy + 2 * scale);
+    }
+
+    // 2. CENTER BLACK PANEL (Hoop Culture logo + Red Game Clock + Period & Shot Clock)
+    const centerBlockX = barX + sideW;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(centerBlockX, barY, centerW, mainH);
+
+    const hcLogoImg = this.getOrLoadImage('/hoop-culture-logo2.png');
+    if (hcLogoImg) {
+      const imgH = Math.round(20 * scale);
+      const imgW = Math.round((hcLogoImg.naturalWidth / Math.max(1, hcLogoImg.naturalHeight)) * imgH);
+      ctx.drawImage(hcLogoImg, centerBlockX + (centerW - Math.min(130 * scale, imgW)) / 2, barY + 8 * scale, Math.min(130 * scale, imgW), imgH);
+    }
+
+    if (!this.drawOpticalStreamImg(sb.gameClockStream, centerBlockX + centerW / 2, barY + 46 * scale, 120 * scale, 28 * scale, sb.invertStates?.clock)) {
+      ctx.fillStyle = '#ff3344';
+      ctx.font = `900 ${Math.round(30 * scale)}px 'Barlow Condensed', monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.formatOverlayClock(sb), centerBlockX + centerW / 2, barY + 47 * scale);
+    }
+
+    // Period & Shot Clock Row
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(16 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.formatOverlayPeriod(sb.quarter ?? sb.period), centerBlockX + centerW / 2 - 8 * scale, barY + 75 * scale);
+
+    const scNum = sb.shotSeconds ?? sb.shotClock ?? 24;
+    ctx.fillStyle = scNum <= 5 ? '#ff3344' : '#ffe885';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${scNum}`, centerBlockX + centerW / 2 + 8 * scale, barY + 75 * scale);
+
+    // 3. AWAY RIGHT SIDE
+    const awayStartX = centerBlockX + centerW;
+    ctx.fillStyle = awayColor;
+    ctx.fillRect(awayStartX, barY, sideW - logoZoneW, mainH);
+
+    ctx.fillStyle = this.darkenColor(awayColor, 0.58);
+    ctx.fillRect(barX + barWidth - logoZoneW, barY, logoZoneW, mainH);
+
+    const aScoreCx = awayStartX + scoreZoneW / 2 + 20 * scale;
+    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreCx, rowCy, 96 * scale, 64 * scale, sb.invertStates?.away)) {
+      ctx.fillStyle = aTextColor;
+      ctx.font = `italic 900 ${Math.round(52 * scale)}px 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${sb.awayScore}`, aScoreCx, rowCy + 2 * scale);
+    }
+
+    if ((sb.awayFouls || 0) > 0) {
+      ctx.fillStyle = aTextColor;
+      ctx.font = `900 ${Math.round(15 * scale)}px 'Barlow Condensed', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(`${sb.awayFouls}`, barX + barWidth - logoZoneW - braceW / 2, barY + 26 * scale);
+    }
+
+    const awayLetters = (sb.awayAbbr || sb.awayTeam || 'AWAY').toUpperCase().slice(0, 4).split('');
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(14 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    awayLetters.forEach((ch, idx) => {
+      const ly = barY + mainH / 2 + (idx - (awayLetters.length - 1) / 2) * (15 * scale);
+      ctx.fillText(ch, barX + barWidth - 126 * scale, ly);
+    });
+
+    const awayLogoImg = this.getOrLoadImage(sb.awayLogo);
+    const aLogoCx = barX + barWidth - 54 * scale;
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.arc(aLogoCx, rowCy, logoSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    if (awayLogoImg) {
+      ctx.clip();
+      ctx.drawImage(awayLogoImg, aLogoCx - logoSize / 2, rowCy - logoSize / 2, logoSize, logoSize);
+    } else {
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `900 ${Math.round(14 * scale)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(sb.awayTeam.slice(0, 3).toUpperCase(), aLogoCx, rowCy);
+    }
+    ctx.restore();
+
+    // 4. BOTTOM INFORMATION STRIP (matching #strip)
+    const stripY = barY + mainH;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(barX, stripY, barWidth, stripH);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(barX, stripY, barWidth, 1);
+
+    const rawBc = (sb.rp1Value ?? sb.broadcast ?? '').trim();
+    const rawVn = (sb.rp2Value ?? sb.venue ?? '').trim();
+    const cleanBc = rawBc === '—' || rawBc === '-' ? '' : rawBc;
+    const cleanVn = rawVn === '—' || rawVn === '-' ? '' : rawVn;
+    let stripLabel = 'HOOP CULTURE NETWORK';
+    if (cleanBc && cleanVn) {
+      stripLabel = `LIVE: ${cleanBc}   •   VENUE: ${cleanVn}`;
+    } else if (cleanBc) {
+      stripLabel = `LIVE: ${cleanBc}`;
+    } else if (cleanVn) {
+      stripLabel = `VENUE: ${cleanVn}`;
+    } else if (sb.bannerText) {
+      stripLabel = sb.bannerText;
+    }
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `900 ${Math.round(13 * scale)}px 'Barlow Condensed', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(stripLabel.toUpperCase(), barX + barWidth / 2, stripY + stripH / 2 + 1);
+
+    ctx.restore(); // end clip
+
+    // Metallic pill border
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
     ctx.lineWidth = 2 * scale;
     this.roundRect(ctx, barX, barY, barWidth, barHeight, radius);
     ctx.stroke();
-
-    const segW = (barWidth - 260 * scale) / 2;
-
-    // ? TOP STRIP: Segmented Team Accent Lines
-    const stripH = 5 * scale;
-    ctx.fillStyle = homeColor;
-    this.roundRect(ctx, barX, barY, segW, stripH, [radius, 0, 0, 0]);
-    ctx.fill();
-
-    ctx.fillStyle = '#0a0d14';
-    ctx.fillRect(barX + segW, barY, 260 * scale, stripH);
-
-    ctx.fillStyle = awayColor;
-    this.roundRect(ctx, barX + segW + 260 * scale, barY, segW, stripH, [0, radius, 0, 0]);
-    ctx.fill();
-
-    // ? HOME TEAM BLOCK (Left)
-    const homeLogoImg = this.getOrLoadImage(sb.homeLogo);
-    const logoSize = 52 * scale;
-    const logoY = barY + (barHeight - logoSize) / 2 + 2 * scale;
-
-    // Home Logo Circle
-    ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.beginPath();
-    ctx.arc(barX + 40 * scale, barY + barHeight / 2 + 2 * scale, logoSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.stroke();
-
-    if (homeLogoImg) {
-      ctx.clip();
-      ctx.drawImage(homeLogoImg, barX + 40 * scale - logoSize / 2, logoY, logoSize, logoSize);
-    } else {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(sb.homeTeam.slice(0, 3).toUpperCase(), barX + 40 * scale, barY + barHeight / 2 + 7 * scale);
-    }
-    ctx.restore();
-
-    // Home Text Details
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(26 * scale)}px sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.fillText(sb.homeTeam.toUpperCase(), barX + 76 * scale, barY + barHeight * 0.46);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `700 ${Math.round(13 * scale)}px sans-serif`;
-    ctx.fillText(`FOULS: ${sb.homeFouls}  ?  TO: ${sb.homeTimeouts}`, barX + 76 * scale, barY + barHeight * 0.74);
-
-    // Possession Arrow Home
-    if (sb.possession === 'home') {
-      ctx.fillStyle = '#f59e0b';
-      ctx.beginPath();
-      ctx.moveTo(barX + segW - 100 * scale, barY + barHeight / 2 - 7 * scale);
-      ctx.lineTo(barX + segW - 112 * scale, barY + barHeight / 2);
-      ctx.lineTo(barX + segW - 100 * scale, barY + barHeight / 2 + 7 * scale);
-      ctx.fill();
-    }
-
-    // Home Score Box
-    ctx.fillStyle = '#070a12';
-    this.roundRect(ctx, barX + segW - 88 * scale, barY + 14 * scale, 80 * scale, barHeight - 28 * scale, 8 * scale);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(40 * scale)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${sb.homeScore}`, barX + segW - 48 * scale, barY + barHeight * 0.67);
-
-    // ? CENTER BLOCK: Clock, Period & Shot Clock
-    const centerBlockX = barX + segW;
-    const centerW = 260 * scale;
-
-    ctx.fillStyle = '#05070d';
-    ctx.fillRect(centerBlockX, barY + stripH, centerW, barHeight - stripH);
-
-    // Period Indicator (Q1 / Q2 / Q3 / Q4 / OT)
-    ctx.fillStyle = '#f59e0b';
-    ctx.font = `bold ${Math.round(17 * scale)}px sans-serif`;
-    ctx.textAlign = 'center';
-    const periodStr = sb.period <= 4 ? `PERIOD ${sb.period}` : `OT ${sb.period - 4}`;
-    ctx.fillText(periodStr, centerBlockX + centerW / 2, barY + barHeight * 0.36);
-
-    // Game Clock
-    ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
-    ctx.font = `900 ${Math.round(36 * scale)}px monospace`;
-    ctx.fillText(sb.gameClock, centerBlockX + centerW / 2 - 28 * scale, barY + barHeight * 0.80);
-
-    // Shot Clock Pill
-    const scW = 46 * scale;
-    const scH = 34 * scale;
-    const scX = centerBlockX + centerW - scW - 16 * scale;
-    const scY = barY + barHeight * 0.50;
-    const scNum = sb.shotClock;
-    const scColor = scNum <= 5 ? '#ef4444' : '#f97316';
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-    this.roundRect(ctx, scX, scY, scW, scH, 6 * scale);
-    ctx.fill();
-    ctx.strokeStyle = scColor;
-    ctx.lineWidth = 1.5 * scale;
-    ctx.stroke();
-
-    ctx.fillStyle = scColor;
-    ctx.font = `900 ${Math.round(22 * scale)}px monospace`;
-    ctx.fillText(`${scNum}`, scX + scW / 2, scY + scH * 0.72);
-
-    // ? AWAY TEAM BLOCK (Right)
-    const awayX = centerBlockX + centerW;
-
-    // Away Score Box
-    ctx.fillStyle = '#070a12';
-    this.roundRect(ctx, awayX + 8 * scale, barY + 14 * scale, 80 * scale, barHeight - 28 * scale, 8 * scale);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(40 * scale)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${sb.awayScore}`, awayX + 48 * scale, barY + barHeight * 0.67);
-
-    // Possession Arrow Away
-    if (sb.possession === 'away') {
-      ctx.fillStyle = '#f59e0b';
-      ctx.beginPath();
-      ctx.moveTo(awayX + 100 * scale, barY + barHeight / 2 - 7 * scale);
-      ctx.lineTo(awayX + 112 * scale, barY + barHeight / 2);
-      ctx.lineTo(awayX + 100 * scale, barY + barHeight / 2 + 7 * scale);
-      ctx.fill();
-    }
-
-    // Away Text Details
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `900 ${Math.round(26 * scale)}px sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.fillText(sb.awayTeam.toUpperCase(), awayX + segW - 76 * scale, barY + barHeight * 0.46);
-
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = `700 ${Math.round(13 * scale)}px sans-serif`;
-    ctx.fillText(`FOULS: ${sb.awayFouls}  ?  TO: ${sb.awayTimeouts}`, awayX + segW - 76 * scale, barY + barHeight * 0.74);
-
-    // Away Logo Circle
-    const awayLogoImg = this.getOrLoadImage(sb.awayLogo);
-    ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.beginPath();
-    ctx.arc(awayX + segW - 40 * scale, barY + barHeight / 2 + 2 * scale, logoSize / 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.stroke();
-
-    if (awayLogoImg) {
-      ctx.clip();
-      ctx.drawImage(awayLogoImg, awayX + segW - 40 * scale - logoSize / 2, logoY, logoSize, logoSize);
-    } else {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(sb.awayTeam.slice(0, 3).toUpperCase(), awayX + segW - 40 * scale, barY + barHeight / 2 + 7 * scale);
-    }
-    ctx.restore();
 
     ctx.restore();
   }
@@ -990,20 +1397,22 @@ export class VideoCompositor {
     ctx.fill();
     ctx.shadowColor = 'transparent';
 
-    // Top Header Ticker
+    // Top Header Ticker (LIVE: broadcast • VENUE: venue)
     const topH = 26 * scale;
     ctx.fillStyle = '#0f172a';
     this.roundRect(ctx, barX, barY, barWidth, topH, [radius, radius, 0, 0]);
     ctx.fill();
 
+    const rawBc = (sb.rp1Value ?? sb.broadcast ?? '').trim();
+    const rawVn = (sb.rp2Value ?? sb.venue ?? '').trim();
+    const topLabel = rawBc || rawVn
+      ? `${rawBc ? `LIVE: ${rawBc}` : ''}${rawBc && rawVn ? '   •   ' : ''}${rawVn ? `VENUE: ${rawVn}` : ''}`
+      : (sb.bannerText || 'HOOP CULTURE NETWORK • LIVE BROADCAST');
+
     ctx.fillStyle = '#94a3b8';
     ctx.font = `bold ${Math.round(11 * scale)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(
-      (sb.bannerText || 'HOOP CULTURE NETWORK ? LIVE BROADCAST').toUpperCase(),
-      barX + barWidth / 2,
-      barY + topH * 0.70
-    );
+    ctx.fillText(topLabel.toUpperCase(), barX + barWidth / 2, barY + topH * 0.70);
 
     const mainY = barY + topH;
     const mainH = barHeight - topH;
@@ -1033,11 +1442,11 @@ export class VideoCompositor {
     ctx.fillStyle = '#f59e0b';
     ctx.font = `bold ${Math.round(14 * scale)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`Q${sb.period}  ?  :${sb.shotClock}`, cX + cW / 2, mainY + mainH * 0.38);
+    ctx.fillText(`${this.formatOverlayPeriod(sb.quarter ?? sb.period)}  •  :${sb.shotClock}`, cX + cW / 2, mainY + mainH * 0.38);
 
     ctx.fillStyle = sb.isClockRunning ? '#22c55e' : '#ffffff';
     ctx.font = `900 ${Math.round(30 * scale)}px monospace`;
-    ctx.fillText(sb.gameClock, cX + cW / 2, mainY + mainH * 0.82);
+    ctx.fillText(this.formatOverlayClock(sb), cX + cW / 2, mainY + mainH * 0.82);
 
     // Away Block
     const aX = cX + cW;
@@ -1467,9 +1876,11 @@ export class VideoCompositor {
   private drawBrowserSourcePlaceholder(source: Source) {
     if (source.type !== 'browser_url') return;
     if (source.syncDataBridge) {
-      let theme: any = 'nbaoverlay2';
+      let theme: ScoreboardSource['theme'] = 'scripps';
       const u = (source.url || '').toLowerCase();
-      if (u.includes('nbaoverlay2')) {
+      if (u.includes('scripps') || u.includes('overlay3') || u.includes('pill')) {
+        theme = 'scripps';
+      } else if (u.includes('nbaoverlay2')) {
         theme = 'nbaoverlay2';
       } else if (u.includes('fullscreen')) {
         theme = 'fullscreen_bar';
@@ -1479,12 +1890,17 @@ export class VideoCompositor {
         theme = 'nbc';
       }
 
-      let width = 604;
-      let height = 106;
+      let width = 1520;
+      let height = 92;
       let x = Math.round((this.width - width) / 2);
       let y = Math.round(this.height - height - 38);
 
-      if (theme === 'fullscreen_bar') {
+      if (theme === 'nbaoverlay2') {
+        width = 604;
+        height = 106;
+        x = Math.round((this.width - width) / 2);
+        y = Math.round(this.height - height - 38);
+      } else if (theme === 'fullscreen_bar') {
         width = 1920;
         height = 124;
         x = 0;
@@ -1493,12 +1909,12 @@ export class VideoCompositor {
         width = 1040;
         height = 116;
         x = Math.round((this.width - width) / 2);
-        y = 40;
+        y = Math.round(this.height - height - 36);
       } else if (theme === 'nba_classic') {
         width = 880;
         height = 100;
         x = Math.round((this.width - width) / 2);
-        y = 40;
+        y = Math.round(this.height - height - 30);
       }
 
       const mockScoreboardSource: Source = {

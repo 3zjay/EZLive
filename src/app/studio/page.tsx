@@ -699,8 +699,9 @@ export default function StudioPage() {
   useEffect(() => {
     if (profile) {
       if (profile.savedScenes && profile.savedScenes.length > 0) {
-        setScenes(profile.savedScenes);
-        setActiveSceneId(profile.savedScenes[0].id);
+        const upgraded = SceneStorage.ensureLatestDefaultScenes(profile.savedScenes);
+        setScenes(upgraded);
+        setActiveSceneId(upgraded[0].id);
       }
       if (profile.scoreboardPreset) {
         setScoreboard((prev) => ({ ...prev, ...profile.scoreboardPreset }));
@@ -2302,7 +2303,8 @@ export default function StudioPage() {
             {scenes.map((sc) => {
               const isActive = sc.id === activeSceneId;
               let shortName = sc.name;
-              if (sc.name.includes('Scorebug 2') || sc.id.includes('nba2')) shortName = '🏀 Scorebug 2';
+              if (sc.name.includes('Stadium') || sc.name.includes('Scripps') || sc.id.includes('scripps')) shortName = '🏟️ Stadium Pill';
+              else if (sc.name.includes('Scorebug 2') || sc.id.includes('nba2')) shortName = '🏀 Scorebug 2';
               else if (sc.name.includes('Lower Third')) shortName = 'Lower Third';
               else if (sc.name.includes('Classic')) shortName = 'Classic NBA';
               else if (sc.name.includes('NBC')) shortName = 'NBC Pro';

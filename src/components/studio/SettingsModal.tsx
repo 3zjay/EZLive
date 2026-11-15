@@ -342,12 +342,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* The 4 Official Overlay URLs */}
+              {/* The 5 Official Overlay URLs */}
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2.5">
                 <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  The 4 Official Hoop Culture Overlays
+                  The 5 Official Hoop Culture Overlays
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/scripps?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="col-span-2 p-2.5 bg-slate-900 hover:bg-slate-850 rounded-xl border border-[#e8430a]/40 text-left"
+                  >
+                    <div className="font-bold text-[#ff8c42]">★ NEW · Stadium Pill Broadcast Bug</div>
+                    <div className="text-[10px] font-mono text-slate-400">/scripps (also /overlay3, /pill)</div>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {

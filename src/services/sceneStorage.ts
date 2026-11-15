@@ -4,6 +4,42 @@ const STORAGE_KEY = 'ezlive_scenes_v5';
 
 export const DEFAULT_OBS_SCENES: Scene[] = [
   {
+    id: 'scene-game-scripps',
+    name: '🏟️ Stadium Pill',
+    sources: [
+      {
+        id: 'src-cam-scripps',
+        name: 'Court Camera',
+        type: 'camera',
+        visible: true,
+        locked: true,
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        opacity: 1,
+        zIndex: 1,
+        fit: 'cover',
+        facingMode: 'environment',
+      },
+      {
+        id: 'src-overlay-scripps',
+        name: 'Stadium Pill Broadcast Overlay (/scripps)',
+        type: 'browser_url',
+        visible: true,
+        locked: true,
+        url: 'https://scoreboard.hoopculture.ca/scripps?user=isidro.pascua%40gmail.com',
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+        opacity: 1,
+        zIndex: 10,
+        syncDataBridge: true,
+      },
+    ],
+  },
+  {
     id: 'scene-game-nba2',
     name: '🏀 Scorebug 2',
     sources: [
@@ -171,6 +207,27 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
 ];
 
 export class SceneStorage {
+  public static ensureLatestDefaultScenes(scenes: Scene[]): Scene[] {
+    if (!Array.isArray(scenes) || scenes.length === 0) return DEFAULT_OBS_SCENES;
+    const hasScripps = scenes.some(
+      (s) =>
+        s.id === 'scene-game-scripps' ||
+        s.id === 'scene_scripps' ||
+        s.sources?.some(
+          (src) =>
+            (src.type === 'browser_url' && src.url?.toLowerCase().includes('/scripps')) ||
+            (src.type === 'scoreboard' && src.theme === 'scripps')
+        )
+    );
+    if (!hasScripps) {
+      const scrippsDefault = DEFAULT_OBS_SCENES.find((s) => s.id === 'scene-game-scripps');
+      if (scrippsDefault) {
+        return [scrippsDefault, ...scenes];
+      }
+    }
+    return scenes;
+  }
+
   public static loadScenes(): Scene[] {
     if (typeof window === 'undefined') return DEFAULT_OBS_SCENES;
     try {
@@ -178,7 +235,11 @@ export class SceneStorage {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0].sources)) {
-          return parsed;
+          const upgraded = this.ensureLatestDefaultScenes(parsed);
+          if (upgraded !== parsed) {
+            this.saveScenes(upgraded);
+          }
+          return upgraded;
         }
       }
     } catch (e) {

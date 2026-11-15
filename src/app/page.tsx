@@ -31,7 +31,7 @@ const ECOSYSTEM_LINKS = [
   { name: 'Stats Engine', url: 'https://engine.hoopculture.ca/', label: 'engine.hoopculture.ca' },
   { name: 'Media Lab', url: 'https://media.hoopculture.ca/', label: 'media.hoopculture.ca' },
   { name: 'Live Scoreboard', url: 'https://scoreboard.hoopculture.ca/', label: 'scoreboard.hoopculture.ca' },
-  { name: 'EZLive Studio', url: 'https://live.hoopculture.ca/', label: 'live.hoopculture.ca', active: true },
+  { name: 'EZLive Studio', url: 'https://ezlive.vercel.app/', label: 'ezlive.vercel.app', active: true },
 ];
 
 const COURTS = [
@@ -163,7 +163,7 @@ export default function LandingPage() {
 
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1a1410] border border-[#3a2818] text-[#ff6b1a] text-xs font-bold uppercase tracking-widest mb-6">
           <Sparkles size={13} />
-          <span>The Courtside Broadcast Engine • live.hoopculture.ca</span>
+          <span>The Courtside Broadcast Engine • ezlive.vercel.app</span>
         </div>
 
         <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight uppercase leading-[0.95] max-w-4xl mx-auto text-white">
@@ -423,7 +423,7 @@ export default function LandingPage() {
             </div>
             <div>
               <div className="font-black text-white text-sm">EZLiveStudio by HoopCulture™</div>
-              <div className="text-[11px] text-[#a09080]">Powering basketball broadcasting worldwide • live.hoopculture.ca</div>
+              <div className="text-[11px] text-[#a09080]">Powering basketball broadcasting worldwide • ezlive.vercel.app</div>
             </div>
           </div>
 

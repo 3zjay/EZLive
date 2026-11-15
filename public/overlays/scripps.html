@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    // Global Storage Shield — prevents WebKit SecurityError exceptions on blocked localStorage/sessionStorage
+    (function() {
+      try {
+        localStorage.setItem('__test_ls__', '1');
+        localStorage.removeItem('__test_ls__');
+      } catch (e) {
+        var store = {};
+        Object.defineProperty(window, 'localStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+      try {
+        sessionStorage.setItem('__test_ss__', '1');
+        sessionStorage.removeItem('__test_ss__');
+      } catch (e) {
+        var store = {};
+        Object.defineProperty(window, 'sessionStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Hoop Culture — Stadium Pill Broadcast Scorebug</title>
+  <link href="https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Barlow:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script src="/overlays/firebase-config.js"></script>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-dark: #080605;
+      --orange-fire: #e8430a;
+      --gold-accent: #ffaa00;
+      --away-color: #c8102e;
+      --home-color: #f5c842;
+      --pill-height: 4.8vw;
+      --capsule-bg: radial-gradient(ellipse at center, #1e2029 0%, #0c0d12 60%, #040507 100%);
+    }
+
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      font-family: 'Barlow Condensed', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* ════ MAIN CONTAINER: STADIUM PILL SCOREBUG ════ */
+    #scorebug-wrapper {
+      position: fixed;
+      bottom: 2vw;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      transition: transform 0.3s ease, bottom 0.3s ease, top 0.3s ease;
+    }
+
+    #scorebug {
+      display: inline-flex;
+      align-items: stretch;
+      height: var(--pill-height);
+      border-radius: 9999px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #101524 0%, #060910 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.28);
+      box-shadow: 0 0.8vw 2.5vw rgba(0, 0, 0, 0.85), 0 0.2vw 0.5vw rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 0 rgba(0, 0, 0, 0.4);
+      position: relative;
+    }
+
+    /* ════ 1. BROADCAST & VENUE SEGMENT (FAR LEFT END — Matches Scripps Sports width and layout) ════ */
+    .seg-venue {
+      width: 14.8vw;
+      min-width: 14.8vw;
+      max-width: 14.8vw;
+      flex: 0 0 14.8vw;
+      background: linear-gradient(180deg, #101524 0%, #060910 100%);
+      border-radius: 9999px 0 0 9999px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 0 2.2vw 0 1.8vw;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 5;
+    }
+
+    .broadcast-line {
+      display: flex;
+      align-items: center;
+      gap: 0.4vw;
+      line-height: 1;
+      margin-bottom: 0.28vw;
+      white-space: nowrap;
+      overflow: hidden;
+      max-width: 100%;
+    }
+
+    .venue-pulse-dot {
+      width: 0.38vw;
+      height: 0.38vw;
+      border-radius: 50%;
+      background: #ff3b30;
+      box-shadow: 0 0 0.35vw #ff3b30;
+      animation: venuePulse 1.2s infinite alternate;
+      flex-shrink: 0;
+    }
+    @keyframes venuePulse {
+      0% { opacity: 0.4; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 0.5vw #ff3b30; }
+    }
+
+    .broadcast-brand-val {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.15vw;
+      font-weight: 900;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.05vw;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 10vw;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+    }
+
+    .venue-line {
+      display: flex;
+      align-items: center;
+      gap: 0.4vw;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      max-width: 100%;
+    }
+
+    .venue-tag-label {
+      font-size: 0.55vw;
+      font-weight: 800;
+      letter-spacing: 0.14vw;
+      text-transform: uppercase;
+      color: #ffaa00;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .venue-name-val {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.15vw;
+      font-weight: 900;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.05vw;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 8vw;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+    }
+
+    /* ════ 2 & 4. TEAM BANNERS (AWAY ON LEFT, HOME ON RIGHT) ════ */
+    .seg-team {
+      flex: 1.15 1 0;
+      min-width: 15.5vw;
+      max-width: 22vw;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      position: relative;
+      transition: background 0.4s ease;
+      overflow: hidden;
+    }
+
+    .seg-team.away {
+      margin-left: -1.4vw;
+      border-radius: 9999px 0 0 9999px;
+      padding: 0 0.6vw 0 1.4vw;
+      gap: 0.5vw;
+      z-index: 10;
+      box-shadow: -0.25vw 0 0.8vw rgba(0, 0, 0, 0.55);
+      border-left: 1.5px solid rgba(255, 255, 255, 0.38);
+      background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), var(--away-color);
+      justify-content: flex-start;
+      flex-direction: row;
+    }
+
+    .seg-team.home {
+      margin-right: -1.4vw;
+      border-radius: 0 9999px 9999px 0;
+      padding: 0 1.4vw 0 0.6vw;
+      gap: 0.5vw;
+      z-index: 10;
+      box-shadow: 0.25vw 0 0.8vw rgba(0, 0, 0, 0.55);
+      border-right: 1.5px solid rgba(255, 255, 255, 0.38);
+      background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), var(--home-color);
+      justify-content: flex-end;
+      flex-direction: row;
+    }
+
+    /* Team Circular Logo Badges */
+    .team-logo-circle {
+      width: 3.6vw;
+      height: 3.6vw;
+      border-radius: 50%;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 2;
+      filter: drop-shadow(0 0.15vw 0.4vw rgba(0, 0, 0, 0.55));
+    }
+
+    .team-logo-circle img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: auto;
+    }
+
+    .team-logo-fallback {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.1vw;
+      font-weight: 900;
+      color: #ffffff;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1.5px solid rgba(255, 255, 255, 0.35);
+      border-radius: 50%;
+      width: 3.4vw;
+      height: 3.4vw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-transform: uppercase;
+      letter-spacing: 0.05vw;
+      text-align: center;
+    }
+
+    /* Team Names (Large, bold athletic display matching Scripps Sports LAL/DET) */
+    .team-name-wrap {
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+      overflow: visible;
+    }
+
+    .seg-team.away .team-name-wrap {
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .seg-team.home .team-name-wrap {
+      align-items: flex-end;
+      text-align: right;
+    }
+
+    .team-name-text {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.01vw;
+      line-height: 0.92;
+      color: #ffffff;
+      text-shadow: 0 0.15vw 0.5vw rgba(0, 0, 0, 0.95), 0 0.05vw 0.1vw rgba(0, 0, 0, 0.95);
+      white-space: nowrap;
+      word-break: keep-all;
+      overflow-wrap: normal;
+      overflow: visible;
+      max-width: 100%;
+      display: block;
+      transition: color 0.2s ease;
+    }
+
+    /* Multi-word team names allowed to break cleanly between words (e.g., LOS / ANGELES) */
+    .team-name-text.two-lines {
+      white-space: normal;
+      word-break: keep-all;
+      overflow-wrap: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 0.88;
+    }
+
+    /* Possession Indicators */
+    .poss-arrow {
+      width: 0.8vw;
+      height: 0.8vw;
+      opacity: 0;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      filter: drop-shadow(0 0 0.3vw #ffaa00);
+      flex-shrink: 0;
+    }
+    .poss-arrow.active {
+      opacity: 1;
+      animation: possBounce 0.8s infinite alternate ease-in-out;
+    }
+    @keyframes possBounce {
+      0% { transform: scale(0.9); }
+      100% { transform: scale(1.15); filter: drop-shadow(0 0 0.6vw #ffea00); }
+    }
+
+    /* ════ 3. CENTER SCORE CAPSULE WITH HOOP CULTURE MEDALLION ════ */
+    .seg-score-capsule-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 0.62vw 0;
+      margin: 0 -2px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 15;
+      background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%),
+                  linear-gradient(to right, var(--away-color) 0%, var(--away-color) 50%, var(--home-color) 50%, var(--home-color) 100%);
+      transition: background 0.4s ease;
+    }
+
+    .seg-score-capsule {
+      width: 17.5vw;
+      height: 100%;
+      background: radial-gradient(ellipse at center, #1b202c 0%, #0d0f17 65%, #050608 100%);
+      background-image: repeating-linear-gradient(180deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 3px),
+                        radial-gradient(ellipse at center, #1b202c 0%, #0d0f17 65%, #050608 100%);
+      border-radius: 9999px;
+      border: 1.5px solid rgba(255, 255, 255, 0.28);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.95), 0 3px 10px rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0.9vw;
+      position: relative;
+      z-index: 10;
+      flex-shrink: 0;
+    }
+
+    .score-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 4.6vw;
+      position: relative;
+    }
+
+    .score-num {
+      font-family: 'Teko', sans-serif;
+      font-size: 3.1vw;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 0.85;
+      letter-spacing: 0.05vw;
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 0.1vw 0.4vw rgba(0, 0, 0, 0.85);
+      transition: transform 0.15s ease-out, color 0.15s ease-out;
+      margin-top: 0.32vw;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @keyframes scoreBump {
+      0% { transform: scale(1); color: #ffffff; }
+      40% { transform: scale(1.22); color: #ffaa00; text-shadow: 0 0 0.8vw #ffaa00; }
+      100% { transform: scale(1); color: #ffffff; }
+    }
+    .score-num.bump {
+      animation: scoreBump 0.4s ease-out;
+    }
+
+    /* Official Hoop Culture Center Medallion (Elevated Chrome Bezel on Bright Brushed Silver Face) */
+    .hc-medallion-anchor {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      z-index: 25;
+      margin: 0 -0.1vw;
+    }
+
+    .hc-medallion-ring {
+      width: 4.3vw;
+      height: 4.3vw;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 35%, #94a3b8 70%, #475569 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.95);
+      box-shadow: 0 0.4vw 1.2vw rgba(0, 0, 0, 0.85), inset 0 2px 3px rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 0.2vw;
+    }
+
+    .hc-medallion-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 48% 36%, #ffffff 0%, #f8fafc 45%, #e2e8f0 85%, #cbd5e1 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      box-shadow: inset 0 0.1vw 0.3vw rgba(0, 0, 0, 0.25), 0 0.05vw 0.1vw rgba(0, 0, 0, 0.15);
+      position: relative;
+    }
+
+    .hc-medallion-logo {
+      width: 84%;
+      height: 84%;
+      object-fit: contain;
+      filter: drop-shadow(0 0.12vw 0.25vw rgba(0, 0, 0, 0.3));
+    }
+
+    /* ════ 5. CLOCK & SHOT CLOCK SEGMENT (FAR RIGHT END — Symmetrical Dark End Cap matching Venue) ════ */
+    .seg-clock {
+      width: 14.8vw;
+      min-width: 14.8vw;
+      max-width: 14.8vw;
+      flex: 0 0 14.8vw;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+      background: linear-gradient(180deg, #101524 0%, #060910 100%);
+      border-radius: 0 9999px 9999px 0;
+      padding: 0 1.6vw 0 1.8vw;
+      gap: 0.6vw;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 5;
+      transition: background 0.4s ease;
+    }
+
+    /* Period Segment (Pure White Athletic Font directly on Dark Capsule - No Box) */
+    .clock-period-card {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: auto;
+      flex-shrink: 0;
+    }
+
+    .period-val {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.45vw;
+      font-weight: 900;
+      color: #ffffff;
+      text-transform: uppercase;
+      line-height: 1;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-shadow: 0 0.15vw 0.5vw rgba(0, 0, 0, 0.95), 0 0.05vw 0.1vw rgba(0, 0, 0, 0.95);
+    }
+    .period-val sup {
+      font-size: 0.68em;
+      color: #ffffff;
+      margin-left: 0.05vw;
+    }
+
+    /* Game Clock Value (Bold Tabular Digits in White Direct on Home Color) */
+    .game-clock-val {
+      font-family: 'Teko', sans-serif;
+      font-size: 2.35vw;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 0.85;
+      letter-spacing: 0.04vw;
+      font-variant-numeric: tabular-nums;
+      min-width: 4.4vw;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-shadow: 0 0.15vw 0.5vw rgba(0, 0, 0, 0.85), 0 0.05vw 0.1vw rgba(0, 0, 0, 0.95);
+      transition: color 0.3s ease;
+    }
+    .game-clock-val.warn {
+      color: #ffffff;
+      text-shadow: 0 0 0.8vw #ff2200, 0 0 1.2vw #ff0000, 0 0.15vw 0.5vw rgba(0, 0, 0, 0.95);
+      animation: clkWarnPulse 0.5s infinite alternate;
+    }
+    @keyframes clkWarnPulse {
+      0% { opacity: 0.8; }
+      100% { opacity: 1; }
+    }
+
+    /* Shot Clock (Bold Tabular Digits blending directly into Dark Capsule - No Box) */
+    .shot-clock-pill {
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      min-width: 2.2vw;
+      height: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: none;
+    }
+
+    .shot-clock-val {
+      font-family: 'Teko', sans-serif;
+      font-size: 2.35vw;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 0.85;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-shadow: 0 0.15vw 0.5vw rgba(0, 0, 0, 0.95), 0 0.05vw 0.1vw rgba(0, 0, 0, 0.95);
+    }
+    .shot-clock-val.urgent {
+      color: #ff3b30;
+      text-shadow: 0 0 0.6vw #ff0000;
+      animation: scPulse 0.45s ease infinite alternate;
+    }
+    .shot-clock-val.zero {
+      color: #ff0000;
+      text-shadow: 0 0 0.8vw #ff0000;
+      font-weight: 800;
+    }
+    @keyframes scPulse {
+      0% { opacity: 1; }
+      100% { opacity: 0.35; }
+    }
+
+    /* Dark Clock Theme Overrides */
+    .seg-clock.dark-clock .clock-period-card,
+    .seg-clock.dark-clock .shot-clock-pill {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+    }
+    .seg-clock.dark-clock .clock-period-card .period-val {
+      color: #ffffff;
+    }
+
+    /* ════ OPTICAL SCANNER LIVE FEED STREAM CROPS (Seamless Stadium Blending) ════ */
+    img.stream-bin-img {
+      max-height: 100%;
+      max-width: 100%;
+      object-fit: contain;
+      border: none !important;
+      outline: none !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border-radius: 0 !important;
+      display: inline-block;
+      vertical-align: middle;
+      pointer-events: none;
+    }
+    .game-clock-val img.stream-bin-img {
+      height: 2.1vw;
+      max-width: 5.4vw;
+    }
+    .shot-clock-val img.stream-bin-img {
+      height: 2.1vw;
+      max-width: 2.4vw;
+    }
+    .period-val img.stream-bin-img {
+      height: 1.5vw;
+      max-width: 2.4vw;
+    }
+    .score-block img.stream-bin-img {
+      height: 2.35vw;
+      max-width: 4.4vw;
+      margin-top: 0;
+    }
+
+
+    /* ════ FLOATING TOAST NOTIFICATION ════ */
+    #toast-alert {
+      position: fixed;
+      top: 1.5vw;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(13, 17, 23, 0.95);
+      border: 1.5px solid #ffaa00;
+      color: #ffffff;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.1vw;
+      font-weight: 800;
+      letter-spacing: 0.05vw;
+      text-transform: uppercase;
+      padding: 0.4vw 1.2vw;
+      border-radius: 9999px;
+      box-shadow: 0 0.5vw 2vw rgba(0,0,0,0.85);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      z-index: 99999;
+    }
+    #toast-alert.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* ════ FLOATING BROADCAST CONTROLS HUD (Press 'H' to toggle) ════ */
+    #hud-panel {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: rgba(13, 17, 23, 0.95);
+      border: 1.5px solid #2a3040;
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 13px;
+      z-index: 9999;
+      display: none;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.8);
+      font-family: sans-serif;
+      max-width: 320px;
+    }
+    #hud-panel.show { display: block; }
+    #hud-panel h4 { margin-bottom: 8px; color: #ffaa00; font-size: 14px; text-transform: uppercase; }
+    #hud-panel label { display: block; margin-top: 6px; font-size: 11px; color: #a0a5b5; }
+    #hud-panel input, #hud-panel select { width: 100%; background: #161b26; border: 1px solid #3b4252; color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 12px; margin-top: 2px; }
+    #hud-panel .btn-row { display: flex; gap: 6px; margin-top: 10px; }
+    #hud-panel button { flex: 1; padding: 6px; border-radius: 6px; border: none; background: #3b82f6; color: #fff; cursor: pointer; font-weight: 700; font-size: 12px; }
+    #hud-panel button:hover { background: #2563eb; }
+  </style>
+</head>
+<body>
+
+<div id="scorebug-wrapper">
+  <div id="scorebug">
+
+    <!-- ① BROADCAST & VENUE BLOCK (Far Left - Matches Scripps Sports placement) -->
+    <div class="seg-venue" id="segVenue">
+      <div class="broadcast-line">
+        <span class="venue-pulse-dot"></span>
+        <span class="venue-tag-label" id="broadcastTag">BROADCAST</span>
+        <span class="broadcast-brand-val" id="broadcastName">FACEBOOK</span>
+      </div>
+      <div class="venue-line">
+        <span class="venue-tag-label" id="venueTag">VENUE</span>
+        <span class="venue-name-val" id="venueName">AUDLEY</span>
+      </div>
+    </div>
+
+    <!-- ② AWAY TEAM (Left Team - Vibrant Team Color Banner) -->
+    <div class="seg-team away" id="awayTeamSeg">
+      <div class="team-logo-circle" id="awayLogoCircle">
+        <div class="team-logo-fallback" id="awayLogoFallback">PIN</div>
+      </div>
+      <div class="team-name-wrap">
+        <div class="team-name-text" id="awayTeamName">PINTURA</div>
+      </div>
+      <div class="poss-arrow" id="awayPossArrow">
+        <svg viewBox="0 0 24 24"><polygon points="6,4 18,12 6,20" fill="#ffffff"/></svg>
+      </div>
+    </div>
+
+    <!-- ③ CENTER SCORE CAPSULE WITH HOOP CULTURE MEDALLION -->
+    <div class="seg-score-capsule-wrap" id="scoreCapsuleWrap">
+      <div class="seg-score-capsule">
+        <!-- Away Score -->
+        <div class="score-block">
+          <div class="score-num" id="awayScore">68</div>
+        </div>
+
+        <!-- Center Hoop Culture Official Medallion -->
+        <div class="hc-medallion-anchor" title="Hoop Culture Basketball Network">
+          <div class="hc-medallion-ring">
+            <div class="hc-medallion-inner">
+              <img src="/hoop-culture-logo2.png" alt="Hoop Culture Logo" class="hc-medallion-logo" onerror="this.onerror=null;this.src='/hoop-culture-logo.jpg';">
+            </div>
+          </div>
+        </div>
+
+        <!-- Home Score -->
+        <div class="score-block">
+          <div class="score-num" id="homeScore">57</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ HOME TEAM (Right Team - Symmetrical Vibrant Team Color Banner) -->
+    <div class="seg-team home" id="homeTeamSeg">
+      <div class="poss-arrow" id="homePossArrow">
+        <svg viewBox="0 0 24 24"><polygon points="18,4 6,12 18,20" fill="#ffffff"/></svg>
+      </div>
+      <div class="team-name-wrap">
+        <div class="team-name-text" id="homeTeamName">FREEDOM</div>
+      </div>
+      <div class="team-logo-circle" id="homeLogoCircle">
+        <div class="team-logo-fallback" id="homeLogoFallback">FRE</div>
+      </div>
+    </div>
+
+    <!-- ⑤ CLOCK & SHOT CLOCK SEGMENT (Far Right — Authentic Scripps Sports Layout) -->
+    <div class="seg-clock" id="segClock">
+      <!-- Authentic Scripps White Pod for Period -->
+      <div class="clock-period-card" id="clockPeriodCard">
+        <div class="period-val" id="periodVal">1<sup>ST</sup></div>
+      </div>
+
+      <!-- Game Clock Direct on Team Color -->
+      <div class="game-clock-val" id="gameClockVal">10:00</div>
+
+      <!-- Adjacent Shot Clock Stadium Box (Frosted Glass Card) -->
+      <div class="shot-clock-pill" id="shotClockPill">
+        <div class="shot-clock-val" id="shotClockVal">24</div>
+      </div>
+    </div>
+
+  </div><!-- /#scorebug -->
+</div><!-- /#scorebug-wrapper -->
+
+<!-- Floating Toast Message -->
+<div id="toast-alert"></div>
+
+<!-- Operator Test HUD Panel (Toggle with 'H' key) -->
+<div id="hud-panel">
+  <h4>⚙ Scorebug Controls</h4>
+  <p style="font-size:11px;color:#8a95a8;margin-bottom:8px;">Press <strong>H</strong> to toggle this panel</p>
+
+  <label>Clock Pod Style:</label>
+  <select id="hudClockTheme" onchange="setClockTheme(this.value)">
+    <option value="white">Scripps White Pod (Authentic)</option>
+    <option value="dark">Dark Blended Pod</option>
+  </select>
+
+  <label>Scanner Digits Polarity (or press 'I'):</label>
+  <select id="hudFeedInvert" onchange="setFeedInvertMode(this.value)">
+    <option value="auto">⚡ Auto (Per-Crop Polarity from Scanner)</option>
+    <option value="white">⚪ White Digits (Force Screen)</option>
+    <option value="black">⚫ Black Digits (Force Multiply)</option>
+  </select>
+
+  <label>Broadcast Brand:</label>
+  <input type="text" id="hudBroadcast" value="HOOP CULTURE" oninput="overrideBroadcast(this.value)">
+  <label>Venue Name:</label>
+  <input type="text" id="hudVenue" value="AUDLEY" oninput="overrideVenue(this.value)">
+  <label>Scorebug Position:</label>
+  <select id="hudPos" onchange="overridePos(this.value)">
+    <option value="bottom">Bottom Center</option>
+    <option value="top">Top Center</option>
+  </select>
+  <label>Scale Factor:</label>
+  <input type="range" min="0.6" max="1.5" step="0.05" value="1.0" oninput="overrideScale(this.value)">
+  <div class="btn-row">
+    <button onclick="toggleSwap()">⇄ Swap Home/Away</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ══ CONFIGURATION & SERVER DISCOVERY ══ */
+const isLocalServer = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.startsWith('10.');
+
+const useFirebase = (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+
+const SERVER_URL = useFirebase
+  ? 'https://scoreboard.hoopculture.ca'
+  : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '');
+
+let db = null;
+if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  } catch (e) {
+    console.error("Firebase init failed:", e);
+  }
+}
+
+function gP(n) { return new URLSearchParams(window.location.search).get(n); }
+
+// Robust user detection (URL param -> localStorage -> Cookie)
+let userParam = gP('user');
+let sessionUser = localStorage.getItem('hc_session_user');
+if (!sessionUser) {
+  try {
+    const match = document.cookie.match(new RegExp('(^| )hc_session_user=([^;]+)'));
+    if (match && match[2]) sessionUser = decodeURIComponent(match[2]);
+  } catch(e) {}
+}
+
+let currentUser = userParam || sessionUser || '';
+// If user param was literally 'default', treat as blank so auto-detection finds the active game
+if (currentUser === 'default') currentUser = '';
+let fbUser = currentUser ? currentUser.replace(/[\.\#\$\[\]]/g, '_') : '';
+
+// URL Customization flags
+let isSwapped = gP('swap') === '1' || gP('homeleft') === '1';
+const customVenueParam = gP('venue');
+const posParam = gP('pos') || 'bottom';
+const scaleParam = parseFloat(gP('scale') || '1.0');
+
+
+
+// Clock Pod Styling Option ('white' = authentic Scripps Sports white pod; 'dark' = dark blended pod)
+let clockTheme = gP('clock') || 'white';
+
+// Scanner Digits Invert Polarity Option ('auto' = per-crop detection from scanner; 'black' = force multiply; 'white' = force screen)
+const explicitInvert = gP('invert') || gP('feedInvert');
+let feedInvertMode = (explicitInvert === 'black' || explicitInvert === '1' || gP('black') === '1')
+  ? 'black'
+  : (explicitInvert === 'white' || explicitInvert === '0' || gP('white') === '1' ? 'white' : 'auto');
+
+let cropInvertStates = { home: false, away: false, clock: false, shot: false, period: false };
+let _lastDedicatedShotCamTime = 0;
+
+function applyStreamImgStyles(img, cropKey) {
+  if (!img) return;
+  img.style.border = 'none';
+  img.style.outline = 'none';
+  img.style.background = 'transparent';
+  img.style.boxShadow = 'none';
+
+  if (!cropKey && img.dataset && img.dataset.cropKey) {
+    cropKey = img.dataset.cropKey;
+  }
+
+  let isChecked = false;
+  if (cropKey && cropInvertStates[cropKey] !== undefined) {
+    isChecked = !!cropInvertStates[cropKey];
+  } else if (feedInvertMode === 'black') {
+    isChecked = false;
+  } else if (feedInvertMode === 'white') {
+    isChecked = true;
+  }
+
+  if (isChecked) {
+    // Invert CHECKED: Pure white digits on dark background -> Screen blend mode makes dark transparent, bright white digits shine through
+    img.style.mixBlendMode = 'screen';
+    img.style.filter = 'contrast(2.5) brightness(1.3)';
+  } else {
+    // Invert UNCHECKED: Dark/black digits on light background -> Multiply blend mode makes white 100% transparent, dark digits show through
+    img.style.mixBlendMode = 'multiply';
+    img.style.filter = 'contrast(2.5) brightness(1.1)';
+  }
+}
+
+function updateAllStreamImagesStyle() {
+  document.querySelectorAll('img.stream-bin-img').forEach(img => {
+    applyStreamImgStyles(img, img.dataset ? img.dataset.cropKey : null);
+  });
+}
+
+function setFeedInvertMode(mode) {
+  feedInvertMode = (mode === 'black' || mode === 'white') ? mode : 'auto';
+  try {
+    if (feedInvertMode === 'auto') localStorage.removeItem('hc_feed_invert_mode');
+    else localStorage.setItem('hc_feed_invert_mode', feedInvertMode);
+  } catch(e) {}
+  const sel = $('hudFeedInvert');
+  if (sel) sel.value = feedInvertMode;
+  updateAllStreamImagesStyle();
+  showToast(feedInvertMode === 'black' ? '⚫ Feed Invert: Force Black (Multiply)' : (feedInvertMode === 'white' ? '⚪ Feed Invert: Force White (Screen)' : '⚡ Feed Invert: Auto Per-Crop'));
+}
+
+function toggleFeedInvert() {
+  if (feedInvertMode === 'auto') setFeedInvertMode('black');
+  else if (feedInvertMode === 'black') setFeedInvertMode('white');
+  else setFeedInvertMode('auto');
+}
+
+/* ══ STATE DEFINITION ══ */
+const DEFAULT_STATE = {
+  homeScore: 57,
+  awayScore: 68,
+  homeAbbr: 'FREEDOM',
+  awayAbbr: 'PINTURA',
+  homeName: '',
+  awayName: '',
+  homeColor: '#f5c842',
+  awayColor: '#c8102e',
+  homeLogo: 'home-thumb.png',
+  awayLogo: 'away-thumb.png',
+  homeLogoThumb: 'home-thumb.png',
+  awayLogoThumb: 'away-thumb.png',
+  gameClockStream: null,
+  shotClockStream: null,
+  homeScoreStream: null,
+  awayScoreStream: null,
+  periodStream: null,
+  homeFouls: 0,
+  awayFouls: 0,
+  homeBonus: false,
+  awayBonus: false,
+  gameSeconds: 600,
+  gameRunning: false,
+  shotSeconds: 24,
+  shotRunning: false,
+  quarter: 1,
+  possession: null,
+  venue: 'AUDLEY',
+  rp1Title: 'BROADCAST',
+  rp1Value: 'Facebook',
+  rp2Title: 'VENUE',
+  rp2Value: 'Audley',
+  aiSyncEnabled: true
+};
+
+let S = { ...DEFAULT_STATE };
+let aiSyncActive = false;
+let lastHomeScore = -1;
+let lastAwayScore = -1;
+
+// Immediate Local Storage Hydration (Same Browser Zero Latency)
+try {
+  const localRaw = localStorage.getItem('bball_v3');
+  if (localRaw) {
+    const local = JSON.parse(localRaw);
+    if (local && typeof local === 'object') {
+      if (local.awayAbbr || local.homeAbbr || local.rp1Value || local.rp2Value || (local.awayScore !== undefined && local.awayScore > 0)) {
+        if (local.homeAbbr) local.homeName = local.homeAbbr;
+        if (local.awayAbbr) local.awayName = local.awayAbbr;
+        S = { ...DEFAULT_STATE, ...local };
+      }
+    }
+  }
+} catch(e) {}
+
+// Listen for local scoreboard updates across tabs on the same machine
+window.addEventListener('storage', (e) => {
+  if (e.key === 'bball_v3' && e.newValue) {
+    try {
+      const data = JSON.parse(e.newValue);
+      if (data && typeof data === 'object') {
+        applyStateMessage(data);
+      }
+    } catch(err) {}
+  }
+});
+
+// Fast initial REST fetch: immediately fetch active game data & OCR stream with zero SSL delay
+const targetInitRoom = fbUser || 'isidro_pascua@gmail_com';
+fetch(`https://hoop-culture-scoreboard-default-rtdb.firebaseio.com/states/${targetInitRoom}.json`)
+  .then(r => r.json())
+  .then(data => {
+    if (data && typeof data === 'object') {
+      applyStateMessage(data);
+    }
+  }).catch(() => {});
+
+fetch(`https://hoop-culture-scoreboard-default-rtdb.firebaseio.com/ocr/${targetInitRoom}.json`)
+  .then(r => r.json())
+  .then(data => {
+    if (data && typeof data === 'object') {
+      applyStreamData(data);
+    }
+  }).catch(() => {});
+
+/* ══ DOM HELPER ══ */
+function $(id) { return document.getElementById(id); }
+
+/* Apply Positioning & Scale */
+function applyLayoutOptions() {
+  const wrap = $('scorebug-wrapper');
+  if (!wrap) return;
+  if (posParam === 'top') {
+    wrap.style.bottom = 'auto';
+    wrap.style.top = '2vw';
+  } else {
+    wrap.style.top = 'auto';
+    wrap.style.bottom = '2vw';
+  }
+  if (!isNaN(scaleParam) && scaleParam !== 1.0) {
+    wrap.style.transform = `translateX(-50%) scale(${scaleParam})`;
+  }
+}
+applyLayoutOptions();
+
+/* ══ RENDER SCOREBUG ══ */
+function renderAll() {
+  renderVenue();
+  renderTeams();
+  renderScores();
+  renderClock();
+  renderShotClock();
+  applyClockTheme();
+}
+
+/* 1. Broadcast & Venue (Live Bar Settings) */
+function renderVenue() {
+  const vEl = $('venueName');
+  const vTag = $('venueTag');
+  const bEl = $('broadcastName');
+  const bTag = $('broadcastTag');
+
+  // Venue Name
+  let venueText = 'AUDLEY';
+  if (customVenueParam) {
+    venueText = customVenueParam.toUpperCase();
+  } else if (S.rp2Value && S.rp2Value.trim() && S.rp2Value.trim() !== '—' && S.rp2Value.trim() !== '-') {
+    venueText = S.rp2Value.trim().toUpperCase();
+  } else if (S.venue && S.venue.trim() && S.venue.trim().toUpperCase() !== 'HOOP CULTURE ARENA') {
+    venueText = S.venue.trim().toUpperCase();
+  } else if (S.venue && S.venue.trim()) {
+    venueText = S.venue.trim().toUpperCase();
+  }
+  if (vEl && vEl.textContent !== venueText) vEl.textContent = venueText;
+
+  // Venue Tag
+  let venueTagText = (S.rp2Title && S.rp2Title.trim() && S.rp2Title.trim() !== '—') ? S.rp2Title.trim().toUpperCase() : 'VENUE';
+  if (vTag && vTag.textContent !== venueTagText) vTag.textContent = venueTagText;
+
+  // Broadcast Name
+  let broadcastText = 'FACEBOOK';
+  const customBroadcastParam = gP('broadcast') || gP('network');
+  if (customBroadcastParam) {
+    broadcastText = customBroadcastParam.toUpperCase();
+  } else if (S.rp1Value && S.rp1Value.trim() && S.rp1Value.trim() !== '—' && S.rp1Value.trim() !== '-') {
+    broadcastText = S.rp1Value.trim().toUpperCase();
+  } else if (S.broadcast && S.broadcast.trim()) {
+    broadcastText = S.broadcast.trim().toUpperCase();
+  } else {
+    broadcastText = 'HOOP CULTURE';
+  }
+  if (bEl && bEl.textContent !== broadcastText) bEl.textContent = broadcastText;
+
+  // Broadcast Tag
+  let broadcastTagText = (S.rp1Title && S.rp1Title.trim() && S.rp1Title.trim() !== '—') ? S.rp1Title.trim().toUpperCase() : 'BROADCAST';
+  if (bTag && bTag.textContent !== broadcastTagText) bTag.textContent = broadcastTagText;
+}
+
+/* Perceived Luminance Contrast (ITU-R BT.709) */
+function getContrastColor(hexColor) {
+  if (!hexColor || hexColor[0] !== '#') return '#ffffff';
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16) || 0;
+  const g = parseInt(hex.substr(2, 2), 16) || 0;
+  const b = parseInt(hex.substr(4, 2), 16) || 0;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 140 ? '#0a0d14' : '#ffffff';
+}
+
+/* 2. Teams (Names, Colors, Logos, Possession) */
+function renderTeams() {
+  // Determine Left Team (Away by default) and Right Team (Home by default)
+  const leftTeamKey  = isSwapped ? 'home' : 'away';
+  const rightTeamKey = isSwapped ? 'away' : 'home';
+
+  const leftColor  = S[leftTeamKey + 'Color'] || (isSwapped ? '#f5c842' : '#c8102e');
+  const rightColor = S[rightTeamKey + 'Color'] || (isSwapped ? '#c8102e' : '#f5c842');
+
+  function getTeamDisplayName(key) {
+    // Prefer explicit Abbr from scoreboard, then Name, then Team
+    const abbr = S[key + 'Abbr'];
+    if (abbr && typeof abbr === 'string' && abbr.trim() && abbr.trim() !== 'AWAY' && abbr.trim() !== 'HOME') {
+      return abbr.trim();
+    }
+    const name = S[key + 'Name'];
+    if (name && typeof name === 'string' && name.trim()) {
+      return name.trim();
+    }
+    const team = S[key + 'Team'];
+    if (team && typeof team === 'string' && team.trim()) {
+      return team.trim();
+    }
+    return key === 'home' ? 'FREEDOM' : 'PINTURA';
+  }
+
+  const leftName  = getTeamDisplayName(leftTeamKey).toUpperCase();
+  const rightName = getTeamDisplayName(rightTeamKey).toUpperCase();
+
+  const leftLogo  = S[leftTeamKey + 'Logo'] || S[leftTeamKey + 'LogoThumb'] || '';
+  const rightLogo = S[rightTeamKey + 'Logo'] || S[rightTeamKey + 'LogoThumb'] || '';
+
+  // Apply Colors to CSS Variables
+  document.documentElement.style.setProperty('--away-color', leftColor);
+  document.documentElement.style.setProperty('--home-color', rightColor);
+
+  // Direct element background sync for guaranteed zero-latency seamless matching across all rendering engines
+  const bug = $('scorebug');
+  if (bug) bug.style.background = `linear-gradient(180deg, #101524 0%, #060910 100%)`;
+  const awaySeg = $('awayTeamSeg');
+  if (awaySeg) awaySeg.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), ${leftColor}`;
+  const homeSeg = $('homeTeamSeg');
+  if (homeSeg) homeSeg.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), ${rightColor}`;
+  const clockSeg = $('segClock');
+  if (clockSeg) clockSeg.style.background = `linear-gradient(180deg, #101524 0%, #060910 100%)`;
+  const scoreCapsuleWrap = $('scoreCapsuleWrap');
+  if (scoreCapsuleWrap) {
+    scoreCapsuleWrap.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), linear-gradient(to right, ${leftColor} 0%, ${leftColor} 50%, ${rightColor} 50%, ${rightColor} 100%)`;
+  }
+
+  // Team Names: Set both to crisp athletic White matching Freedom on any color background
+  const leftNameEl = $('awayTeamName');
+  if (leftNameEl) {
+    if (leftNameEl.textContent !== leftName) leftNameEl.textContent = leftName;
+    leftNameEl.style.color = '#ffffff';
+    leftNameEl.style.textShadow = '0 0.15vw 0.5vw rgba(0, 0, 0, 0.95), 0 0.05vw 0.1vw rgba(0,0,0,0.95)';
+  }
+
+  const rightNameEl = $('homeTeamName');
+  if (rightNameEl) {
+    if (rightNameEl.textContent !== rightName) rightNameEl.textContent = rightName;
+    rightNameEl.style.color = '#ffffff';
+    rightNameEl.style.textShadow = '0 0.15vw 0.5vw rgba(0, 0, 0, 0.95), 0 0.05vw 0.1vw rgba(0,0,0,0.95)';
+  }
+
+  // Calculate and apply uniform font size so BOTH sides match identically
+  setUniformTeamFontSize(leftNameEl, leftName, rightNameEl, rightName);
+
+  // Logos
+  setLogoBadge('awayLogoCircle', 'awayLogoFallback', leftLogo, leftName.slice(0, 3));
+  setLogoBadge('homeLogoCircle', 'homeLogoFallback', rightLogo, rightName.slice(0, 3));
+
+  // Possession
+  const leftPossArrow = $('awayPossArrow');
+  const rightPossArrow = $('homePossArrow');
+  if (leftPossArrow && rightPossArrow) {
+    const isLeftPoss = S.possession === leftTeamKey;
+    const isRightPoss = S.possession === rightTeamKey;
+    leftPossArrow.classList.toggle('active', isLeftPoss);
+    rightPossArrow.classList.toggle('active', isRightPoss);
+  }
+}
+
+let _lastTeam1 = '', _lastTeam2 = '', _lastUniformSize = null;
+
+function setUniformTeamFontSize(el1, text1, el2, text2) {
+  if (!el1 || !el2) return;
+  const raw1 = (text1 || '').trim();
+  const raw2 = (text2 || '').trim();
+  const maxLen = Math.max(raw1.length, raw2.length);
+
+  // If team names haven't changed and size was previously calculated, preserve without reflow
+  if (raw1 === _lastTeam1 && raw2 === _lastTeam2 && _lastUniformSize !== null) {
+    el1.style.fontSize = _lastUniformSize + 'vw';
+    el2.style.fontSize = _lastUniformSize + 'vw';
+    return;
+  }
+  _lastTeam1 = raw1;
+  _lastTeam2 = raw2;
+
+  // Check if either name contains spaces and is long (> 7 chars) for clean 2-line display
+  const canSplit1 = raw1.includes(' ') && raw1.length > 7;
+  const canSplit2 = raw2.includes(' ') && raw2.length > 7;
+
+  // Calculate target font size based on character count so both fit evenly
+  let targetSize = 1.45;
+  if (maxLen <= 4) {
+    targetSize = 1.85; // e.g. LAL, DET, PIN, FRE
+  } else if (maxLen <= 7) {
+    targetSize = 1.45; // e.g. HARINA, FREEDOM, PINTURA
+  } else if (maxLen <= 9) {
+    targetSize = 1.25; // e.g. WARRIORS
+  } else if (maxLen <= 11) {
+    targetSize = 1.02; // e.g. BARBERCUTZ (10 letters fits completely without clipping)
+  } else {
+    targetSize = 0.88; // e.g. TIMBERWOLVES
+  }
+
+  // Handle multi-line wrapping for names with spaces
+  [ { el: el1, raw: raw1, split: canSplit1 }, { el: el2, raw: raw2, split: canSplit2 } ].forEach(({ el, raw, split }) => {
+    if (split) {
+      el.classList.add('two-lines');
+      el.style.whiteSpace = 'normal';
+      el.style.wordBreak = 'break-word';
+      el.style.lineHeight = '0.88';
+      el.innerHTML = raw.replace(/\s+/, '<br>');
+    } else {
+      el.classList.remove('two-lines');
+      el.style.whiteSpace = 'nowrap';
+      el.style.wordBreak = 'keep-all';
+      el.style.lineHeight = '0.92';
+      if (el.textContent !== raw) el.textContent = raw;
+    }
+  });
+
+  el1.style.fontSize = targetSize + 'vw';
+  el2.style.fontSize = targetSize + 'vw';
+
+  // Safety auto-fit loop: if either overflows its container, shrink BOTH equally so they stay identical!
+  const parent1 = el1.parentElement;
+  const parent2 = el2.parentElement;
+  let currentVw = targetSize;
+  let guard = 0;
+  while (guard < 20 && currentVw > 0.65) {
+    const ov1 = parent1 && parent1.clientWidth > 0 && el1.scrollWidth > (parent1.clientWidth + 2);
+    const ov2 = parent2 && parent2.clientWidth > 0 && el2.scrollWidth > (parent2.clientWidth + 2);
+    if (!ov1 && !ov2) break;
+    currentVw -= 0.03;
+    el1.style.fontSize = currentVw.toFixed(2) + 'vw';
+    el2.style.fontSize = currentVw.toFixed(2) + 'vw';
+    guard++;
+  }
+  _lastUniformSize = currentVw.toFixed(2);
+}
+
+function setLogoBadge(circleId, fallbackId, logoUrl, fallbackAbbr) {
+  const circle = $(circleId);
+  if (!circle) return;
+  const abbr = (fallbackAbbr || 'HC').toUpperCase();
+  if (logoUrl) {
+    let img = circle.querySelector('img');
+    if (!img) {
+      circle.innerHTML = `
+        <img src="${logoUrl}" alt="${abbr}" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+        <div class="team-logo-fallback" style="display:none;">${abbr}</div>
+      `;
+    } else if (img.getAttribute('src') !== logoUrl) {
+      img.src = logoUrl;
+      img.style.display = 'block';
+      const fb = circle.querySelector('.team-logo-fallback');
+      if (fb) fb.style.display = 'none';
+    }
+  } else {
+    circle.innerHTML = `<div class="team-logo-fallback" style="display:flex;">${abbr}</div>`;
+  }
+}
+
+/* Helper to render optical stream images or digital text automatically when AI sync is enabled */
+function renderStreamOrText(el, streamImgUrl, fallbackText, maxHeightCss, cropKey) {
+  if (typeof el === 'string') el = $(el);
+  if (!el) return;
+  if (aiSyncActive && streamImgUrl) {
+    let img = el.querySelector('img.stream-bin-img');
+    if (!img) {
+      el.innerHTML = '';
+      img = document.createElement('img');
+      img.className = 'stream-bin-img';
+      if (cropKey) img.dataset.cropKey = cropKey;
+      if (maxHeightCss) img.style.maxHeight = maxHeightCss;
+      img.style.maxWidth = '100%';
+      img.style.objectFit = 'contain';
+      img.style.flexShrink = '0';
+      img.style.verticalAlign = 'middle';
+      applyStreamImgStyles(img, cropKey);
+      el.appendChild(img);
+    } else {
+      if (cropKey) img.dataset.cropKey = cropKey;
+      if (maxHeightCss) img.style.maxHeight = maxHeightCss;
+    }
+    if (img.getAttribute('src') !== streamImgUrl) {
+      img.src = streamImgUrl;
+    }
+    applyStreamImgStyles(img, cropKey);
+  } else {
+    const img = el.querySelector('img.stream-bin-img');
+    if (img) el.innerHTML = '';
+    const txt = (fallbackText !== null && fallbackText !== undefined) ? String(fallbackText) : '';
+    if (el.children.length === 0 && el.textContent !== txt) {
+      el.textContent = txt;
+    }
+  }
+}
+
+/* 3. Scores */
+function renderScores() {
+  const leftTeamKey  = isSwapped ? 'home' : 'away';
+  const rightTeamKey = isSwapped ? 'away' : 'home';
+
+  const leftScore  = (S[leftTeamKey + 'Score'] !== undefined && S[leftTeamKey + 'Score'] !== null) ? S[leftTeamKey + 'Score'] : 0;
+  const rightScore = (S[rightTeamKey + 'Score'] !== undefined && S[rightTeamKey + 'Score'] !== null) ? S[rightTeamKey + 'Score'] : 0;
+
+  const leftStream  = isSwapped ? S.homeScoreStream : S.awayScoreStream;
+  const rightStream = isSwapped ? S.awayScoreStream : S.homeScoreStream;
+
+  const leftScoreEl = $('awayScore');
+  if (leftScoreEl) {
+    if (aiSyncActive && leftStream) {
+      renderStreamOrText(leftScoreEl, leftStream, String(leftScore), '2.35vw', leftTeamKey);
+    } else {
+      const img = leftScoreEl.querySelector('img.stream-bin-img');
+      if (img) leftScoreEl.innerHTML = '';
+      const sStr = String(leftScore);
+      if (leftScoreEl.textContent !== sStr) {
+        leftScoreEl.textContent = sStr;
+        if (lastAwayScore !== -1) triggerBump(leftScoreEl);
+      }
+    }
+  }
+
+  const rightScoreEl = $('homeScore');
+  if (rightScoreEl) {
+    if (aiSyncActive && rightStream) {
+      renderStreamOrText(rightScoreEl, rightStream, String(rightScore), '2.35vw', rightTeamKey);
+    } else {
+      const img = rightScoreEl.querySelector('img.stream-bin-img');
+      if (img) rightScoreEl.innerHTML = '';
+      const sStr = String(rightScore);
+      if (rightScoreEl.textContent !== sStr) {
+        rightScoreEl.textContent = sStr;
+        if (lastHomeScore !== -1) triggerBump(rightScoreEl);
+      }
+    }
+  }
+
+  lastAwayScore = leftScore;
+  lastHomeScore = rightScore;
+}
+
+function triggerBump(el) {
+  if (!el) return;
+  el.classList.remove('bump');
+  void el.offsetWidth; // Trigger reflow
+  el.classList.add('bump');
+}
+
+/* 4. Game Clock & Period */
+function renderClock() {
+  const clkEl = $('gameClockVal');
+  const perEl = $('periodVal');
+  if (!clkEl || !perEl) return;
+
+  // Period: strictly authoritative from scoreboard S.quarter
+  const q = S.quarter || 1;
+  let pText = '1<sup>ST</sup>';
+  if (q === 1) pText = '1<sup>ST</sup>';
+  else if (q === 2) pText = '2<sup>ND</sup>';
+  else if (q === 3) pText = '3<sup>RD</sup>';
+  else if (q === 4) pText = '4<sup>TH</sup>';
+  else if (q === 5) pText = 'OT';
+  else if (q > 5) pText = `${q - 4}OT`;
+
+  if (aiSyncActive && S.periodStream) {
+    renderStreamOrText(perEl, S.periodStream, pText, '1.5vw', 'period');
+  } else {
+    const perImg = perEl.querySelector('img');
+    if (perImg) perEl.innerHTML = '';
+    if (perEl.innerHTML !== pText) perEl.innerHTML = pText;
+  }
+
+  // Clock Text Calculation: strictly authoritative from scoreboard S.gameSeconds
+  let cStr = '10:00';
+  let secs = S.gameSeconds;
+  if (secs !== undefined && secs !== null) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    if (secs < 60) {
+      cStr = `${secs}.0`;
+    } else {
+      cStr = `${m}:${s.toString().padStart(2, '0')}`;
+    }
+  }
+
+  if (aiSyncActive && S.gameClockStream) {
+    renderStreamOrText(clkEl, S.gameClockStream, cStr, '2.1vw', 'clock');
+    clkEl.classList.remove('warn');
+  } else {
+    const strayImg = clkEl.querySelector('img');
+    if (strayImg) clkEl.innerHTML = '';
+    if (clkEl.textContent !== cStr) clkEl.textContent = cStr;
+    const isWarn = secs !== undefined && secs !== null && secs < 60;
+    clkEl.classList.toggle('warn', isWarn);
+  }
+}
+
+/* 5. Shot Clock */
+function renderShotClock() {
+  const scEl = $('shotClockVal');
+  if (!scEl) return;
+  const s = (S.shotSeconds !== undefined && S.shotSeconds !== null) ? S.shotSeconds : 24;
+  const sStr = String(s);
+
+  if (aiSyncActive && S.shotClockStream) {
+    renderStreamOrText(scEl, S.shotClockStream, sStr, '2.1vw', 'shot');
+    scEl.classList.remove('urgent');
+    scEl.classList.remove('zero');
+  } else {
+    const strayImg = scEl.querySelector('img');
+    if (strayImg) scEl.innerHTML = '';
+    if (scEl.textContent !== sStr) scEl.textContent = sStr;
+    scEl.classList.toggle('urgent', s <= 5 && s > 0);
+    scEl.classList.toggle('zero', s === 0);
+  }
+}
+
+/* 6. Clock Capsule Theme */
+function applyClockTheme() {
+  const seg = $('segClock');
+  if (seg) seg.classList.toggle('dark-clock', clockTheme === 'dark');
+}
+
+/* ══ REALTIME DATA SYNCHRONIZATION ══ */
+let _lastStateMsgTime = 0;
+
+function hasStateNonClockChanged(oldS, newD) {
+  if (!oldS || !newD) return true;
+  const nonClockKeys = [
+    'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeName', 'awayName', 'homeTeam', 'awayTeam',
+    'homeColor', 'awayColor', 'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
+    'quarter', 'period', 'possession', 'homeFouls', 'awayFouls', 'homeBonus', 'awayBonus',
+    'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value', 'venue', 'broadcast', 'aiSyncActive', 'aiSyncEnabled',
+    'homeScoreStream', 'awayScoreStream', 'periodStream', 'feedInvert'
+  ];
+  for (let i = 0; i < nonClockKeys.length; i++) {
+    const k = nonClockKeys[i];
+    if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
+  }
+  return false;
+}
+
+function applyStateMessage(msgData) {
+  if (!msgData) return;
+  _lastStateMsgTime = Date.now();
+  if (msgData.invertStates) {
+    cropInvertStates = Object.assign(cropInvertStates, msgData.invertStates);
+    updateAllStreamImagesStyle();
+  }
+  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
+  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
+  if (msgData.enabledCrops) {
+    if (msgData.enabledCrops.clock === false) S.gameClockStream = null;
+    if (msgData.enabledCrops.shot === false) S.shotClockStream = null;
+    if (msgData.enabledCrops.home === false) S.homeScoreStream = null;
+    if (msgData.enabledCrops.away === false) S.awayScoreStream = null;
+    if (msgData.enabledCrops.period === false) S.periodStream = null;
+  }
+  // Ensure team names update if scoreboard transmits homeAbbr / awayAbbr / homeTeam / awayTeam
+  if (msgData.homeAbbr) {
+    msgData.homeName = msgData.homeAbbr;
+  }
+  if (msgData.awayAbbr) {
+    msgData.awayName = msgData.awayAbbr;
+  }
+  if (msgData.homeTeam) {
+    msgData.homeAbbr = msgData.homeTeam;
+    msgData.homeName = msgData.homeTeam;
+  }
+  if (msgData.awayTeam) {
+    msgData.awayAbbr = msgData.awayTeam;
+    msgData.awayName = msgData.awayTeam;
+  }
+
+  const nonClockChanged = hasStateNonClockChanged(S, msgData);
+  S = { ...S, ...msgData };
+
+  if (nonClockChanged) {
+    renderAll();
+  } else {
+    renderClock();
+    renderShotClock();
+  }
+  syncLocalTick();
+}
+
+function applyStreamData(streamData) {
+  if (!streamData) return;
+  _lastStateMsgTime = Date.now();
+  const role = streamData.role || 'all';
+
+  if (streamData.streamActive === false) {
+    if (role === 'shot') {
+      S.shotClockStream = null;
+    } else if (role === 'main') {
+      S.gameClockStream = null;
+      S.homeScoreStream = null;
+      S.awayScoreStream = null;
+      S.periodStream = null;
+    } else {
+      aiSyncActive = false;
+      S.gameClockStream = null;
+      S.shotClockStream = null;
+      S.homeScoreStream = null;
+      S.awayScoreStream = null;
+      S.periodStream = null;
+    }
+    renderAll();
+    syncLocalTick();
+    return;
+  }
+  aiSyncActive = true;
+
+  let streamImagesChanged = false;
+
+  const isLocalShotOnly = (role === 'shot' && streamData.homeScoreStream === undefined && streamData.awayScoreStream === undefined && streamData.gameClockStream === undefined && streamData.periodStream === undefined);
+
+  if (!isLocalShotOnly) {
+    if (streamData.gameClockStream !== undefined && S.gameClockStream !== streamData.gameClockStream) {
+      S.gameClockStream = streamData.gameClockStream;
+    }
+    if (streamData.homeScoreStream !== undefined && S.homeScoreStream !== streamData.homeScoreStream) {
+      S.homeScoreStream = streamData.homeScoreStream;
+      streamImagesChanged = true;
+    }
+    if (streamData.awayScoreStream !== undefined && S.awayScoreStream !== streamData.awayScoreStream) {
+      S.awayScoreStream = streamData.awayScoreStream;
+      streamImagesChanged = true;
+    }
+    if (streamData.periodStream !== undefined && S.periodStream !== streamData.periodStream) {
+      S.periodStream = streamData.periodStream;
+      streamImagesChanged = true;
+    }
+  }
+
+  if (role === 'shot') {
+    _lastDedicatedShotCamTime = Date.now();
+  }
+  if (streamData.shotClockStream !== undefined && S.shotClockStream !== streamData.shotClockStream) {
+    if (role === 'shot' || !isLocalShotOnly || Date.now() - _lastDedicatedShotCamTime > 45000) {
+      S.shotClockStream = streamData.shotClockStream;
+    }
+  }
+
+  if (streamData.enabledCrops) {
+    if (!isLocalShotOnly) {
+      if (streamData.enabledCrops.clock === false && S.gameClockStream !== null) { S.gameClockStream = null; streamImagesChanged = true; }
+      if (streamData.enabledCrops.home === false && S.homeScoreStream !== null) { S.homeScoreStream = null; streamImagesChanged = true; }
+      if (streamData.enabledCrops.away === false && S.awayScoreStream !== null) { S.awayScoreStream = null; streamImagesChanged = true; }
+      if (streamData.enabledCrops.period === false && S.periodStream !== null) { S.periodStream = null; streamImagesChanged = true; }
+    }
+    if (streamData.enabledCrops.shot === false && S.shotClockStream !== null) {
+      if (role === 'shot' || !isLocalShotOnly || Date.now() - _lastDedicatedShotCamTime > 45000) {
+        S.shotClockStream = null;
+        streamImagesChanged = true;
+      }
+    }
+  }
+  if (streamData.invertStates) {
+    cropInvertStates = Object.assign(cropInvertStates, streamData.invertStates);
+    updateAllStreamImagesStyle();
+  }
+
+  // NO OCR DIGIT GUESSING: We NEVER read or guess streamData.clock, streamData.homeScore, etc.
+  // The scanner live feed is purely optical crops that blend directly into the scorebug.
+
+  if (streamImagesChanged) {
+    renderScores();
+    renderClock();
+    renderShotClock();
+  } else {
+    renderClock();
+    renderShotClock();
+  }
+  syncLocalTick();
+}
+
+/* Local clock tickers for smooth continuous decrement between network pulses */
+let localTick = null;
+function startLocalTick() {
+  if (localTick) return;
+  localTick = setInterval(() => {
+    // Only tick locally as fallback if network state updates have ceased for > 3000ms
+    if (Date.now() - _lastStateMsgTime < 3000) return;
+    if (S.gameRunning && S.gameSeconds > 0) {
+      S.gameSeconds--;
+      renderClock();
+    }
+    if (S.shotRunning && S.shotSeconds > 0) {
+      S.shotSeconds--;
+      renderShotClock();
+    }
+  }, 1000);
+}
+function stopLocalTick() {
+  if (localTick) {
+    clearInterval(localTick);
+    localTick = null;
+  }
+}
+function syncLocalTick() {
+  if (S.gameRunning || S.shotRunning) {
+    startLocalTick();
+  } else {
+    stopLocalTick();
+  }
+}
+
+// 1. BroadcastChannels
+function setupBroadcastChannels() {
+  if (typeof BroadcastChannel === 'undefined') return;
+  ['hc_scoreboard_sync', 'basketball_scoreboard', 'ezlive_scoreboard_channel', 'ocr_stream'].forEach(chName => {
+    try {
+      const bc = new BroadcastChannel(chName);
+      bc.onmessage = (e) => {
+        if (!e || !e.data) return;
+        if (e.data.type === 'state') applyStateMessage(e.data.data);
+        else if (e.data.type === 'stream' || e.data.type === 'ocr') applyStreamData(e.data.data || e.data);
+        else if (e.data.gameClockStream || e.data.shotClockStream) applyStreamData(e.data);
+        else if (e.data.data && typeof e.data.data === 'object' && (e.data.data.homeScore !== undefined || e.data.data.homeAbbr !== undefined || e.data.data.awayAbbr !== undefined || e.data.data.rp1Value !== undefined || e.data.data.rp2Value !== undefined)) applyStateMessage(e.data.data);
+        else if (e.data.homeScore !== undefined || e.data.gameSeconds !== undefined || e.data.homeAbbr !== undefined || e.data.awayAbbr !== undefined || e.data.awayName !== undefined || e.data.homeName !== undefined || e.data.rp1Value !== undefined || e.data.rp2Value !== undefined) applyStateMessage(e.data);
+      };
+    } catch(err) {}
+  });
+}
+setupBroadcastChannels();
+
+// 2. Window PostMessage (for OBS Browser Source / iframe embedding)
+window.addEventListener('message', (e) => {
+  if (!e || !e.data) return;
+  if (e.data.type === 'state') applyStateMessage(e.data.data);
+  else if (e.data.type === 'stream' || e.data.type === 'ocr') applyStreamData(e.data.data || e.data);
+  else if (e.data.gameClockStream || e.data.shotClockStream) applyStreamData(e.data);
+  else if (e.data.data && typeof e.data.data === 'object' && (e.data.data.homeScore !== undefined || e.data.data.homeAbbr !== undefined || e.data.data.awayAbbr !== undefined || e.data.data.rp1Value !== undefined || e.data.data.rp2Value !== undefined)) applyStateMessage(e.data.data);
+  else if (e.data.homeScore !== undefined || e.data.gameSeconds !== undefined || e.data.homeAbbr !== undefined || e.data.awayAbbr !== undefined || e.data.awayName !== undefined || e.data.homeName !== undefined || e.data.rp1Value !== undefined || e.data.rp2Value !== undefined) applyStateMessage(e.data);
+});
+
+// 3. Firebase Realtime Sync
+if (useFirebase && db) {
+  function listenToRoom(roomKey) {
+    if (!roomKey) return;
+    fbUser = roomKey;
+    console.log('[Scripps Overlay] Listening to room:', roomKey);
+
+    // Initial state fetch from authoritative scoreboard path
+    db.ref(`states/${roomKey}`).once('value').then(snap => {
+      const val = snap.val();
+      if (val) {
+        applyStateMessage(val);
+      }
+    }).catch(e => console.error("Firebase fetch error:", e));
+
+    // Live state listener
+    db.ref(`states/${roomKey}`).on('value', snap => {
+      const val = snap.val();
+      if (val) applyStateMessage(val);
+    });
+
+    // Live optical scanner stream (listen strictly to user's active room)
+    db.ref(`ocr/${roomKey}`).once('value').then(snap => {
+      const d = snap.val();
+      if (d) applyStreamData(d);
+    }).catch(() => {});
+
+    db.ref(`ocr/${roomKey}`).on('value', snap => {
+      const d = snap.val();
+      if (d) applyStreamData(d);
+    });
+
+    // Live buzzer / horn listener
+    db.ref(`buzz/${roomKey}`).on('value', snap => {
+      const b = snap.val();
+      if (b && b.active) {
+        // Horn triggered
+      }
+    });
+  }
+
+  if (fbUser && fbUser !== 'default') {
+    listenToRoom(fbUser);
+  } else {
+    // Auto-discover the active scoreboard room in Firebase RTDB
+    db.ref('states').once('value').then(snap => {
+      const all = snap.val();
+      if (!all) {
+        listenToRoom('isidro_pascua@gmail_com');
+        return;
+      }
+      const keys = Object.keys(all).filter(k => k !== 'default' && k !== 'ezlive_profiles');
+      if (keys.length === 0) {
+        listenToRoom('isidro_pascua@gmail_com');
+        return;
+      }
+
+      let bestKey = null;
+      let highestScore = -1;
+
+      keys.forEach(k => {
+        const room = all[k];
+        if (!room || typeof room !== 'object') return;
+        let score = 0;
+        if ((room.awayScore || 0) > 0 || (room.homeScore || 0) > 0) score += 1000;
+        if (room.awayAbbr && room.awayAbbr !== 'AWAY') score += 500;
+        if (room.homeAbbr && room.homeAbbr !== 'HOME') score += 500;
+        if (room.gameRunning || room.shotRunning) score += 200;
+        if (k === 'isidro_pascua@gmail_com') score += 2000;
+        const ts = room.shotLeaderTime || room.lastUpdate || 0;
+        if (ts > 0) score += Math.min(500, Math.floor(ts / 10000000000));
+
+        if (score > highestScore) {
+          highestScore = score;
+          bestKey = k;
+        }
+      });
+
+      const selectedRoom = bestKey || 'isidro_pascua@gmail_com';
+      listenToRoom(selectedRoom);
+    }).catch(err => {
+      console.warn("Auto-discovery fallback to isidro_pascua@gmail_com:", err);
+      listenToRoom('isidro_pascua@gmail_com');
+    });
+  }
+}
+
+// 4. SSE Server Fallback
+function connectSSE() {
+  if (!SERVER_URL) return;
+  fetch(`${SERVER_URL}/state?user=${encodeURIComponent(currentUser)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d && Object.keys(d).length) {
+        S = { ...DEFAULT_STATE, ...d };
+        renderAll();
+        syncLocalTick();
+      }
+    }).catch(() => {});
+
+  try {
+    const es = new EventSource(`${SERVER_URL}/events?user=${encodeURIComponent(currentUser)}`);
+    es.onmessage = (e) => {
+      try {
+        const m = JSON.parse(e.data);
+        if (m.type === 'state') applyStateMessage(m.data);
+        else if (m.type === 'stream') applyStreamData(m.data);
+      } catch(err) {}
+    };
+  } catch(err) {}
+}
+if (!useFirebase) connectSSE();
+
+/* ══ OPERATOR HUD & SHORTCUTS ══ */
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    const hud = $('hud-panel');
+    if (hud) hud.classList.toggle('show');
+  } else if (e.key === 'i' || e.key === 'I') {
+    toggleFeedInvert();
+  }
+});
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = $('toast-alert');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    t.classList.remove('show');
+  }, 2200);
+}
+
+function setClockTheme(theme) {
+  clockTheme = theme;
+  const segClock = $('segClock');
+  if (segClock) {
+    segClock.classList.toggle('dark-clock', clockTheme === 'dark');
+  }
+  const sel = $('hudClockTheme');
+  if (sel) sel.value = clockTheme;
+  renderClock();
+  showToast(clockTheme === 'dark' ? '⏱ Dark Clock Pod Active' : '⏱ Scripps White Clock Pod Active');
+}
+
+function overrideBroadcast(val) {
+  S.broadcast = val;
+  renderVenue();
+}
+
+function overrideVenue(val) {
+  S.venue = val;
+  renderVenue();
+}
+
+function overridePos(val) {
+  const wrap = $('scorebug-wrapper');
+  if (!wrap) return;
+  if (val === 'top') {
+    wrap.style.bottom = 'auto';
+    wrap.style.top = '2vw';
+  } else {
+    wrap.style.top = 'auto';
+    wrap.style.bottom = '2vw';
+  }
+}
+
+function overrideScale(val) {
+  const wrap = $('scorebug-wrapper');
+  if (!wrap) return;
+  wrap.style.transform = `translateX(-50%) scale(${val})`;
+}
+
+function toggleSwap() {
+  isSwapped = !isSwapped;
+  renderAll();
+  showToast('⇄ Teams Swapped');
+}
+
+// Initial draw & setup
+applyClockTheme();
+const selInv = $('hudFeedInvert');
+if (selInv) selInv.value = feedInvertMode;
+renderAll();
+</script>
+</body>
+</html>

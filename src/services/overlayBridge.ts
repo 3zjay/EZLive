@@ -9,6 +9,7 @@ export class OverlayBridge {
   private hcBroadcastChannel: BroadcastChannel | null = null;
   private messageHandler: ((event: MessageEvent) => void) | null = null;
   private unsubscribeSync: (() => void) | null = null;
+  private unsubscribeStreamSync: (() => void) | null = null;
   private lastKnownState: Partial<ScoreboardState> = {};
 
   constructor() {
@@ -27,7 +28,9 @@ export class OverlayBridge {
     this.lastKnownState = merged;
 
     let gameSeconds = 600;
-    if (typeof merged.gameClock === 'string' && merged.gameClock.includes(':')) {
+    if (typeof merged.gameSeconds === 'number') {
+      gameSeconds = merged.gameSeconds;
+    } else if (typeof merged.gameClock === 'string' && merged.gameClock.includes(':')) {
       const [m, s] = merged.gameClock.split(':');
       gameSeconds = (parseInt(m, 10) || 0) * 60 + (parseInt(s, 10) || 0);
     }
@@ -35,6 +38,8 @@ export class OverlayBridge {
     const hcData: Record<string, unknown> = {};
     if (merged.homeTeam !== undefined) hcData.homeAbbr = merged.homeTeam;
     if (merged.awayTeam !== undefined) hcData.awayAbbr = merged.awayTeam;
+    if (merged.homeName !== undefined) hcData.homeName = merged.homeName;
+    if (merged.awayName !== undefined) hcData.awayName = merged.awayName;
     if (merged.homeScore !== undefined) hcData.homeScore = merged.homeScore;
     if (merged.awayScore !== undefined) hcData.awayScore = merged.awayScore;
     if (merged.homeFouls !== undefined) hcData.homeFouls = merged.homeFouls;
@@ -46,23 +51,57 @@ export class OverlayBridge {
     if (merged.homeRecord !== undefined) hcData.homeRecord = merged.homeRecord;
     if (merged.awayRecord !== undefined) hcData.awayRecord = merged.awayRecord;
     if (merged.period !== undefined) hcData.quarter = merged.period;
-    if (merged.gameClock !== undefined) hcData.gameSeconds = gameSeconds;
+    if (merged.gameClock !== undefined || merged.gameSeconds !== undefined) hcData.gameSeconds = gameSeconds;
     if (merged.isClockRunning !== undefined) {
       hcData.gameRunning = merged.isClockRunning;
       hcData.clockRunning = merged.isClockRunning;
     }
+    if (merged.shotRunning !== undefined) hcData.shotRunning = merged.shotRunning;
     if (merged.shotClock !== undefined) hcData.shotSeconds = merged.shotClock;
     if (merged.possession !== undefined) {
       hcData.possession = merged.possession === 'none' ? null : merged.possession;
     }
-    const rawMerged = merged as Record<string, unknown>;
-    if (rawMerged.rp1Title !== undefined) hcData.rp1Title = rawMerged.rp1Title;
-    if (rawMerged.rp1Value !== undefined) hcData.rp1Value = rawMerged.rp1Value;
-    if (rawMerged.rp2Title !== undefined) hcData.rp2Title = rawMerged.rp2Title;
-    if (rawMerged.rp2Value !== undefined) hcData.rp2Value = rawMerged.rp2Value;
-    if (rawMerged.barColor !== undefined) hcData.barColor = rawMerged.barColor;
+    if (merged.rp1Title !== undefined) hcData.rp1Title = merged.rp1Title;
+    if (merged.rp1Value !== undefined) hcData.rp1Value = merged.rp1Value;
+    if (merged.rp2Title !== undefined) hcData.rp2Title = merged.rp2Title;
+    if (merged.rp2Value !== undefined) hcData.rp2Value = merged.rp2Value;
+    if (merged.venue !== undefined) hcData.venue = merged.venue;
+    if (merged.broadcast !== undefined) hcData.broadcast = merged.broadcast;
+    if (merged.barColor !== undefined) hcData.barColor = merged.barColor;
+    if (merged.periodDisabled !== undefined) hcData.periodDisabled = merged.periodDisabled;
+    if (merged.shotClockDisabled !== undefined) hcData.shotClockDisabled = merged.shotClockDisabled;
+    if (merged.aiSyncEnabled !== undefined) hcData.aiSyncEnabled = merged.aiSyncEnabled;
+    if (merged.aiSyncActive !== undefined) hcData.aiSyncActive = merged.aiSyncActive;
+    if (merged.enabledCrops !== undefined) hcData.enabledCrops = merged.enabledCrops;
+    if (merged.invertStates !== undefined) hcData.invertStates = merged.invertStates;
 
     return hcData;
+  }
+
+  public broadcastStreamPayload(streamData: Record<string, unknown>) {
+    if (this.hcBroadcastChannel) {
+      try {
+        this.hcBroadcastChannel.postMessage({
+          type: 'stream',
+          data: streamData,
+        });
+      } catch {}
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const iframes = document.querySelectorAll('iframe');
+        iframes.forEach((iframe) => {
+          iframe.contentWindow?.postMessage(
+            {
+              type: 'stream',
+              data: streamData,
+            },
+            '*'
+          );
+        });
+      } catch {}
+    }
   }
 
   public broadcast(state: Partial<ScoreboardState>) {
@@ -145,6 +184,11 @@ export class OverlayBridge {
       } catch {}
     });
 
+    // Forward live optical scanner stream crops directly to embedded overlay iframes
+    this.unsubscribeStreamSync = scoreboardSync.subscribeStream((streamData) => {
+      this.broadcastStreamPayload(streamData);
+    });
+
     // Cross-tab BroadcastChannel
     try {
       this.broadcastChannel = new BroadcastChannel('ezlive_scoreboard_channel');
@@ -222,6 +266,10 @@ export class OverlayBridge {
     if (this.unsubscribeSync) {
       this.unsubscribeSync();
       this.unsubscribeSync = null;
+    }
+    if (this.unsubscribeStreamSync) {
+      this.unsubscribeStreamSync();
+      this.unsubscribeStreamSync = null;
     }
     if (this.broadcastChannel) {
       this.broadcastChannel.close();

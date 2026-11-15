@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Maximize2, Minimize2, Grid, Lock, Camera, Monitor, RefreshCw, RotateCcw, Zap, Sliders, SunMedium, Flashlight, FlipHorizontal, Focus, Sparkles, X } from 'lucide-react';
 import { Scene, Source } from '@/types/broadcast';
+import { scoreboardSync } from '@/services/scoreboardSync';
 
 export interface ProCameraCapabilities {
   zoomSupported: boolean;
@@ -250,24 +251,88 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
     try {
       const lower = rawUrl.toLowerCase();
       if (lower.includes('scoreboard.hoopculture.ca') || lower.startsWith('/overlays/')) {
-        const parsed = new URL(rawUrl, typeof window !== 'undefined' ? window.location.origin : 'https://live.hoopculture.ca');
-        const userParam = parsed.searchParams.get('user') || 'isidro.pascua@gmail.com';
-        const path = parsed.pathname.toLowerCase();
-        if (path.includes('nbaoverlay2')) {
-          return `/overlays/nbaoverlay2.html?user=${encodeURIComponent(userParam)}`;
+        const parsed = new URL(rawUrl, typeof window !== 'undefined' ? window.location.origin : 'https://ezlive.vercel.app');
+        if (!parsed.searchParams.get('user')) {
+          const fallbackUser =
+            (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) ||
+            scoreboardSync.getSessionInfo().sessionUser ||
+            'isidro.pascua@gmail.com';
+          parsed.searchParams.set('user', fallbackUser);
         }
-        if (path.includes('fullscreen')) {
-          return `/overlays/fullscreen.html?user=${encodeURIComponent(userParam)}`;
+        const query = parsed.searchParams.toString();
+        const path = parsed.pathname.toLowerCase();
+        if (path.includes('scripps') || path.includes('overlay3') || path === '/pill') {
+          return `/overlays/scripps.html?${query}`;
+        }
+        if (path.includes('nbaoverlay2')) {
+          return `/overlays/nbaoverlay2.html?${query}`;
+        }
+        if (path.includes('fullscreen') || path === '/overlay') {
+          return `/overlays/fullscreen.html?${query}`;
         }
         if (path.includes('nbc')) {
-          return `/overlays/nbc.html?user=${encodeURIComponent(userParam)}`;
+          return `/overlays/nbc.html?${query}`;
         }
         if (path.includes('nbaoverlay')) {
-          return `/overlays/nbaoverlay.html?user=${encodeURIComponent(userParam)}`;
+          return `/overlays/nbaoverlay.html?${query}`;
         }
       }
     } catch {}
     return rawUrl;
+  };
+
+  const syncIframeInitialState = (iframeEl: HTMLIFrameElement) => {
+    try {
+      const win = iframeEl.contentWindow;
+      if (!win) return;
+      const st = scoreboardSync.getState();
+      if (st) {
+        win.postMessage(
+          {
+            type: 'state',
+            data: {
+              homeAbbr: st.homeTeam,
+              awayAbbr: st.awayTeam,
+              homeName: st.homeName || st.homeTeam,
+              awayName: st.awayName || st.awayTeam,
+              homeScore: st.homeScore,
+              awayScore: st.awayScore,
+              homeFouls: st.homeFouls,
+              awayFouls: st.awayFouls,
+              homeColor: st.homeColor,
+              awayColor: st.awayColor,
+              homeLogo: st.homeLogo,
+              awayLogo: st.awayLogo,
+              homeRecord: st.homeRecord,
+              awayRecord: st.awayRecord,
+              quarter: st.quarter ?? st.period,
+              gameSeconds: st.gameSeconds,
+              gameRunning: st.isClockRunning,
+              clockRunning: st.isClockRunning,
+              shotRunning: st.shotRunning ?? st.isClockRunning,
+              shotSeconds: st.shotSeconds ?? st.shotClock,
+              possession: st.possession === 'none' ? null : st.possession,
+              rp1Title: st.rp1Title ?? 'BROADCAST',
+              rp1Value: st.rp1Value ?? st.broadcast,
+              rp2Title: st.rp2Title ?? 'VENUE',
+              rp2Value: st.rp2Value ?? st.venue,
+              venue: st.venue ?? st.rp2Value,
+              broadcast: st.broadcast ?? st.rp1Value,
+              barColor: st.barColor,
+              periodDisabled: st.periodDisabled,
+              shotClockDisabled: st.shotClockDisabled,
+              enabledCrops: st.enabledCrops,
+              invertStates: st.invertStates,
+            },
+          },
+          '*'
+        );
+      }
+      const ocr = scoreboardSync.getLatestOcrStream();
+      if (ocr && ocr.aiSyncActive) {
+        win.postMessage({ type: 'stream', data: { ...ocr, streamActive: true } }, '*');
+      }
+    } catch {}
   };
 
   return (
@@ -389,6 +454,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
               >
                 <iframe
                   src={resolvedSrc}
+                  onLoad={(e) => syncIframeInitialState(e.currentTarget)}
                   className="w-full h-full border-0 bg-transparent pointer-events-none"
                   title={source.name}
                   allow="camera; microphone; autoplay"

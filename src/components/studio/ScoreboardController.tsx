@@ -99,6 +99,24 @@ export const ScoreboardController: React.FC<ScoreboardControllerProps> = ({
                 -1
               </button>
             </div>
+            <div className="flex items-center justify-between w-full mt-2 pt-1.5 border-t border-slate-800/80 text-[10px]">
+              <span className="text-slate-400 font-bold">FOULS</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onChange({ awayFouls: Math.max(0, (scoreboard.awayFouls || 0) - 1) })}
+                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold"
+                >
+                  -
+                </button>
+                <span className="font-mono font-black text-sky-300 w-4 text-center">{scoreboard.awayFouls || 0}</span>
+                <button
+                  onClick={() => onChange({ awayFouls: (scoreboard.awayFouls || 0) + 1 })}
+                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-sky-300 font-bold"
+                >
+                  +
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Home Team Box */}
@@ -137,6 +155,24 @@ export const ScoreboardController: React.FC<ScoreboardControllerProps> = ({
               >
                 -1
               </button>
+            </div>
+            <div className="flex items-center justify-between w-full mt-2 pt-1.5 border-t border-slate-800/80 text-[10px]">
+              <span className="text-slate-400 font-bold">FOULS</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onChange({ homeFouls: Math.max(0, (scoreboard.homeFouls || 0) - 1) })}
+                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold"
+                >
+                  -
+                </button>
+                <span className="font-mono font-black text-rose-300 w-4 text-center">{scoreboard.homeFouls || 0}</span>
+                <button
+                  onClick={() => onChange({ homeFouls: (scoreboard.homeFouls || 0) + 1 })}
+                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-rose-300 font-bold"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -201,6 +237,42 @@ export const ScoreboardController: React.FC<ScoreboardControllerProps> = ({
               {scoreboard.possession === 'none' ? 'Poss' : scoreboard.possession}
             </span>
           </button>
+        </div>
+
+        {/* Broadcast & Venue Info */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-slate-400 mb-0.5">Broadcast</label>
+            <input
+              type="text"
+              value={scoreboard.rp1Value ?? scoreboard.broadcast ?? ''}
+              placeholder="Facebook"
+              onChange={(e) =>
+                onChange({
+                  rp1Title: scoreboard.rp1Title || 'BROADCAST',
+                  rp1Value: e.target.value,
+                  broadcast: e.target.value,
+                })
+              }
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-sky-500"
+            />
+          </div>
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-slate-400 mb-0.5">Venue</label>
+            <input
+              type="text"
+              value={scoreboard.rp2Value ?? scoreboard.venue ?? ''}
+              placeholder="Audley"
+              onChange={(e) =>
+                onChange({
+                  rp2Title: scoreboard.rp2Title || 'VENUE',
+                  rp2Value: e.target.value,
+                  venue: e.target.value,
+                })
+              }
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-sky-500"
+            />
+          </div>
         </div>
 
         {/* Quick Reset & Sponsor Info */}

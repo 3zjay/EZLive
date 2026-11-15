@@ -29,6 +29,27 @@ export interface ScoreboardState {
   syncKey?: string;
   syncSource?: 'firebase_rtdb' | 'broadcast_channel' | 'local_sse' | 'manual';
   lastSyncTimestamp?: number;
+  homeName?: string;
+  awayName?: string;
+  rp1Title?: string;
+  rp1Value?: string;
+  rp2Title?: string;
+  rp2Value?: string;
+  venue?: string;
+  broadcast?: string;
+  barColor?: string;
+  shotRunning?: boolean;
+  periodDisabled?: boolean;
+  shotClockDisabled?: boolean;
+  aiSyncEnabled?: boolean;
+  aiSyncActive?: boolean;
+  gameClockStream?: string | null;
+  shotClockStream?: string | null;
+  homeScoreStream?: string | null;
+  awayScoreStream?: string | null;
+  periodStream?: string | null;
+  enabledCrops?: { clock?: boolean; shot?: boolean; home?: boolean; away?: boolean; period?: boolean };
+  invertStates?: { home?: boolean; away?: boolean; clock?: boolean; shot?: boolean; period?: boolean };
 }
 
 export type SourceType = 'camera' | 'browser_url' | 'image' | 'text' | 'scoreboard' | 'color_solid' | 'video_media';
@@ -89,6 +110,7 @@ export interface TextSource extends BaseSource {
 }
 
 export type ScoreboardTheme =
+  | 'scripps'        // Stadium Pill Broadcast Scorebug (/scripps)
   | 'nbaoverlay2'    // Primary Theme: Main NBA Scorebug 2 (/nbaoverlay2)
   | 'nbc'            // NBC / NBA Pro Broadcast Bug (/nbc)
   | 'nba_classic'    // Classic NBA Scorebug (/nbaoverlay)

@@ -696,6 +696,24 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                     -1
                   </button>
                 </div>
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/80 text-[10px]">
+                  <span className="text-slate-400 font-bold">FOULS</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onChangeScoreboard({ awayFouls: Math.max(0, (scoreboard.awayFouls || 0) - 1) })}
+                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold"
+                    >
+                      -
+                    </button>
+                    <span className="font-mono font-black text-sky-300 w-4 text-center">{scoreboard.awayFouls || 0}</span>
+                    <button
+                      onClick={() => onChangeScoreboard({ awayFouls: (scoreboard.awayFouls || 0) + 1 })}
+                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-sky-300 font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Home */}
@@ -732,6 +750,24 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                   >
                     -1
                   </button>
+                </div>
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/80 text-[10px]">
+                  <span className="text-slate-400 font-bold">FOULS</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => onChangeScoreboard({ homeFouls: Math.max(0, (scoreboard.homeFouls || 0) - 1) })}
+                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold"
+                    >
+                      -
+                    </button>
+                    <span className="font-mono font-black text-orange-300 w-4 text-center">{scoreboard.homeFouls || 0}</span>
+                    <button
+                      onClick={() => onChangeScoreboard({ homeFouls: (scoreboard.homeFouls || 0) + 1 })}
+                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-orange-300 font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -838,6 +874,42 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                       {pos === 'away' ? `◀ ${scoreboard.awayTeam.slice(0, 3)}` : pos === 'home' ? `${scoreboard.homeTeam.slice(0, 3)} ▶` : 'Neutral'}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Broadcast & Venue Labels (for Stadium Pill, NBC, Fullscreen Overlays) */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+                <div>
+                  <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Broadcast</label>
+                  <input
+                    type="text"
+                    value={scoreboard.rp1Value ?? scoreboard.broadcast ?? ''}
+                    placeholder="Facebook"
+                    onChange={(e) =>
+                      onChangeScoreboard({
+                        rp1Title: scoreboard.rp1Title || 'BROADCAST',
+                        rp1Value: e.target.value,
+                        broadcast: e.target.value,
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-[#ff6b1a]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Venue</label>
+                  <input
+                    type="text"
+                    value={scoreboard.rp2Value ?? scoreboard.venue ?? ''}
+                    placeholder="Audley"
+                    onChange={(e) =>
+                      onChangeScoreboard({
+                        rp2Title: scoreboard.rp2Title || 'VENUE',
+                        rp2Value: e.target.value,
+                        venue: e.target.value,
+                      })
+                    }
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-[#ff6b1a]"
+                  />
                 </div>
               </div>
             </div>
