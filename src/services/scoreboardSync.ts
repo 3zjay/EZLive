@@ -267,6 +267,7 @@ class ScoreboardSyncManager {
 
   private handleIncomingHcMessage(msg: any, defaultUser?: string) {
     if (!msg || typeof msg !== 'object') return;
+    if (typeof msg._ezSender === 'string' && msg._ezSender.startsWith('ezlive_sync')) return;
     if (msg.type === 'state' && msg.data) {
       const msgUser = sanitizeSessionKey(msg.user || defaultUser || '');
       if (!this.currentSafeKey || this.currentSafeKey === 'default' || !msg.user || msgUser === this.currentSafeKey) {
@@ -344,7 +345,24 @@ class ScoreboardSyncManager {
       }
     }
 
-    // Notify stream listeners (e.g. OverlayBridge for iframe forwarding)
+    // Update optical crop fields in-place for compositor consumers without re-triggering React state updates at 10 FPS
+    const targetState: ScoreboardState = this.currentState || { ...DEFAULT_SCOREBOARD_STATE };
+    targetState.aiSyncActive = this.latestOcrState.aiSyncActive;
+    targetState.gameClockStream = this.latestOcrState.gameClockStream;
+    targetState.shotClockStream = this.latestOcrState.shotClockStream;
+    targetState.homeScoreStream = this.latestOcrState.homeScoreStream;
+    targetState.awayScoreStream = this.latestOcrState.awayScoreStream;
+    targetState.periodStream = this.latestOcrState.periodStream;
+    if (this.latestOcrState.enabledCrops !== undefined) {
+      targetState.enabledCrops = this.latestOcrState.enabledCrops;
+    }
+    if (this.latestOcrState.invertStates !== undefined) {
+      targetState.invertStates = this.latestOcrState.invertStates;
+    }
+    targetState.lastSyncTimestamp = Date.now();
+    this.currentState = targetState;
+
+    // Notify stream listeners (e.g. VideoCompositor)
     this.streamListeners.forEach((listener) => {
       try {
         listener(streamData);
@@ -352,30 +370,6 @@ class ScoreboardSyncManager {
         console.error('[ScoreboardSync] Stream listener callback error:', err);
       }
     });
-
-    // Also update state consumers (e.g. VideoCompositor) with active optical crops
-    if (this.currentState) {
-      const mergedState: ScoreboardState = {
-        ...this.currentState,
-        aiSyncActive: this.latestOcrState.aiSyncActive,
-        gameClockStream: this.latestOcrState.gameClockStream,
-        shotClockStream: this.latestOcrState.shotClockStream,
-        homeScoreStream: this.latestOcrState.homeScoreStream,
-        awayScoreStream: this.latestOcrState.awayScoreStream,
-        periodStream: this.latestOcrState.periodStream,
-        enabledCrops: this.latestOcrState.enabledCrops ?? this.currentState.enabledCrops,
-        invertStates: this.latestOcrState.invertStates ?? this.currentState.invertStates,
-        lastSyncTimestamp: Date.now(),
-      };
-      this.currentState = mergedState;
-      this.listeners.forEach((listener) => {
-        try {
-          listener(mergedState);
-        } catch (err) {
-          console.error('[ScoreboardSync] Listener callback error:', err);
-        }
-      });
-    }
   }
 
   private initBroadcastChannels() {
@@ -398,7 +392,8 @@ class ScoreboardSyncManager {
     try {
       this.ocrBroadcastChannel = new BroadcastChannel('ocr_stream');
       this.ocrBroadcastChannel.onmessage = (event) => {
-        if (event.data) this.handleOcrStreamUpdate(event.data.data || event.data);
+        if (!event.data || (typeof event.data._ezSender === 'string' && event.data._ezSender.startsWith('ezlive_sync'))) return;
+        this.handleOcrStreamUpdate(event.data.data || event.data);
       };
     } catch {}
 
@@ -406,7 +401,8 @@ class ScoreboardSyncManager {
     try {
       this.ezBroadcastChannel = new BroadcastChannel('ezlive_scoreboard_channel');
       this.ezBroadcastChannel.onmessage = (event) => {
-        if (event.data && event.data.type === 'EZ_SCOREBOARD_UPDATE' && event.data.payload) {
+        if (!event.data || (typeof event.data._ezSender === 'string' && event.data._ezSender.startsWith('ezlive_sync'))) return;
+        if (event.data.type === 'EZ_SCOREBOARD_UPDATE' && event.data.payload) {
           const normalized = normalizeScoreboardState(event.data.payload, 'broadcast_channel');
           this.handleStateUpdate(normalized, 'broadcast_channel');
         }
@@ -429,6 +425,7 @@ class ScoreboardSyncManager {
     // 4. Listen to window postMessage for embedded overlays / iframes
     window.addEventListener('message', (event) => {
       if (!event.data) return;
+      if (typeof event.data._ezSender === 'string' && event.data._ezSender.startsWith('ezlive_sync')) return;
       if (event.data.type === 'EZ_SCOREBOARD_UPDATE' && event.data.payload) {
         const normalized = normalizeScoreboardState(event.data.payload, 'broadcast_channel');
         this.handleStateUpdate(normalized, 'broadcast_channel');

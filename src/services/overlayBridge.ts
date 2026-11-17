@@ -6,11 +6,10 @@ export type ScoreboardUpdateListener = (state: Partial<ScoreboardState>) => void
 export class OverlayBridge {
   private listeners: Set<ScoreboardUpdateListener> = new Set();
   private broadcastChannel: BroadcastChannel | null = null;
-  private hcBroadcastChannel: BroadcastChannel | null = null;
   private messageHandler: ((event: MessageEvent) => void) | null = null;
   private unsubscribeSync: (() => void) | null = null;
-  private unsubscribeStreamSync: (() => void) | null = null;
   private lastKnownState: Partial<ScoreboardState> = {};
+  private readonly senderTag = 'ezlive_sync';
 
   constructor() {
     this.setupListeners();
@@ -79,15 +78,6 @@ export class OverlayBridge {
   }
 
   public broadcastStreamPayload(streamData: Record<string, unknown>) {
-    if (this.hcBroadcastChannel) {
-      try {
-        this.hcBroadcastChannel.postMessage({
-          type: 'stream',
-          data: streamData,
-        });
-      } catch {}
-    }
-
     if (typeof window !== 'undefined') {
       try {
         const iframes = document.querySelectorAll('iframe');
@@ -96,6 +86,7 @@ export class OverlayBridge {
             {
               type: 'stream',
               data: streamData,
+              _ezSender: this.senderTag,
             },
             '*'
           );
@@ -116,35 +107,15 @@ export class OverlayBridge {
         this.broadcastChannel.postMessage({
           type: 'EZ_SCOREBOARD_UPDATE',
           payload: state,
+          _ezSender: this.senderTag,
         });
       } catch (e) {
         console.warn('BroadcastChannel error:', e);
       }
     }
 
-    // 2b. Broadcast via Hoop Culture native channel ('hc_scoreboard_sync') for HTML overlay iframes
-    if (this.hcBroadcastChannel) {
-      try {
-        this.hcBroadcastChannel.postMessage({
-          type: 'state',
-          data: hcData,
-        });
-      } catch (e) {
-        console.warn('hc_scoreboard_sync BroadcastChannel error:', e);
-      }
-    }
-
-    // 3. Post to parent / child iframes
+    // 3. Post directly into overlay iframes only (never post to self window to avoid feedback loops)
     if (typeof window !== 'undefined') {
-      window.postMessage(
-        {
-          type: 'EZ_SCOREBOARD_UPDATE',
-          payload: state,
-        },
-        '*'
-      );
-
-      // Also post directly into all overlay iframes on the stage
       try {
         const iframes = document.querySelectorAll('iframe');
         iframes.forEach((iframe) => {
@@ -152,6 +123,7 @@ export class OverlayBridge {
             {
               type: 'state',
               data: hcData,
+              _ezSender: this.senderTag,
             },
             '*'
           );
@@ -163,33 +135,27 @@ export class OverlayBridge {
   private setupListeners() {
     if (typeof window === 'undefined') return;
 
-    // Connect to the unified ScoreboardSyncManager (HTML overlays read RTDB/BroadcastChannel directly)
+    // Keep lastKnownState synced from unified ScoreboardSyncManager without re-posting into native RTDB overlays
     this.unsubscribeSync = scoreboardSync.subscribe((liveState) => {
       this.lastKnownState = { ...this.lastKnownState, ...liveState };
-      this.notify(liveState);
-    });
-
-    // Forward live optical scanner stream crops directly to embedded overlay iframes
-    this.unsubscribeStreamSync = scoreboardSync.subscribeStream((streamData) => {
-      this.broadcastStreamPayload(streamData);
     });
 
     // Cross-tab BroadcastChannel
     try {
       this.broadcastChannel = new BroadcastChannel('ezlive_scoreboard_channel');
       this.broadcastChannel.onmessage = (event) => {
+        if (event.data && event.data._ezSender === this.senderTag) return;
         if (event.data && event.data.type === 'EZ_SCOREBOARD_UPDATE') {
           this.notify(event.data.payload);
         }
       };
-      this.hcBroadcastChannel = new BroadcastChannel('hc_scoreboard_sync');
     } catch {
       // BroadcastChannel not available in older environments
     }
 
     // Window postMessage listener (for iframes or cross-origin overlays)
     this.messageHandler = (event: MessageEvent) => {
-      if (!event.data) return;
+      if (!event.data || event.data._ezSender === this.senderTag) return;
 
       // Handle standard EZ format
       if (event.data.type === 'EZ_SCOREBOARD_UPDATE' && event.data.payload) {
@@ -252,17 +218,9 @@ export class OverlayBridge {
       this.unsubscribeSync();
       this.unsubscribeSync = null;
     }
-    if (this.unsubscribeStreamSync) {
-      this.unsubscribeStreamSync();
-      this.unsubscribeStreamSync = null;
-    }
     if (this.broadcastChannel) {
       this.broadcastChannel.close();
       this.broadcastChannel = null;
-    }
-    if (this.hcBroadcastChannel) {
-      this.hcBroadcastChannel.close();
-      this.hcBroadcastChannel = null;
     }
     if (this.messageHandler && typeof window !== 'undefined') {
       window.removeEventListener('message', this.messageHandler);

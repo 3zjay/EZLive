@@ -291,17 +291,6 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
     return rawUrl;
   };
 
-  const syncIframeInitialOcrStream = (iframeEl: HTMLIFrameElement) => {
-    try {
-      const win = iframeEl.contentWindow;
-      if (!win) return;
-      const ocr = scoreboardSync.getLatestOcrStream();
-      if (ocr && ocr.aiSyncActive) {
-        win.postMessage({ type: 'stream', data: { ...ocr, streamActive: true } }, '*');
-      }
-    } catch {}
-  };
-
   return (
     <div
       ref={containerRef}
@@ -421,7 +410,6 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
               >
                 <iframe
                   src={resolvedSrc}
-                  onLoad={(e) => syncIframeInitialOcrStream(e.currentTarget)}
                   className="w-full h-full border-0 bg-transparent pointer-events-none"
                   title={source.name}
                   allow="camera; microphone; autoplay"

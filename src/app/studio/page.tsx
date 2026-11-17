@@ -836,31 +836,40 @@ export default function StudioPage() {
     recorderRef.current = rec;
 
     const bridge = new OverlayBridge();
-    const unsubscribeBridge = bridge.subscribe((update) => {
-      setScoreboard((prev) => {
-        const next = { ...prev, ...update };
-        comp.updateScoreboard(next);
-        return next;
-      });
-    });
     bridgeRef.current = bridge;
 
-    // Connect real-time Firebase RTDB listener from Hoop Culture Scoreboard
+    // Connect real-time Firebase RTDB listener from Hoop Culture Scoreboard:
+    // always push liveState to VideoCompositor for 60 FPS canvas sync,
+    // and only update React state when high-level game metadata changes.
+    let lastMetaKey = '';
     const unsubscribeScoreboard = scoreboardSync.subscribe((liveState) => {
-      setScoreboard(liveState);
       comp.updateScoreboard(liveState);
+      const nextMetaKey = `${liveState.syncSource ?? ''}|${liveState.homeTeam}|${liveState.awayTeam}|${liveState.homeName ?? ''}|${liveState.awayName ?? ''}|${liveState.rp1Value ?? ''}|${liveState.rp2Value ?? ''}|${liveState.broadcast ?? ''}|${liveState.venue ?? ''}`;
+      if (nextMetaKey !== lastMetaKey) {
+        lastMetaKey = nextMetaKey;
+        setScoreboard(liveState);
+      }
+    });
+
+    // Forward 10 FPS optical scanner crops directly into VideoCompositor without triggering React re-renders
+    const unsubscribeStream = scoreboardSync.subscribeStream(() => {
+      const st = scoreboardSync.getState();
+      if (st) {
+        comp.updateScoreboard(st);
+      }
     });
 
     const fpsInterval = setInterval(() => {
       if (compositorRef.current) {
-        setFps(compositorRef.current.currentFps);
+        const nextFps = compositorRef.current.currentFps;
+        setFps((prev) => (prev !== nextFps ? nextFps : prev));
       }
     }, 1000);
 
     return () => {
       clearInterval(fpsInterval);
-      unsubscribeBridge();
       unsubscribeScoreboard();
+      unsubscribeStream();
       bridge.destroy();
       comp.stop();
     };
@@ -1271,12 +1280,12 @@ export default function StudioPage() {
     };
   }, []);
 
-  const handleFlipCamera = () => {
-    const nextFacing = facingMode === 'environment' ? 'user' : 'environment';
+  const handleFlipCamera = useCallback(() => {
+    const nextFacing = facingModeRef.current === 'environment' ? 'user' : 'environment';
     setFacingMode(nextFacing);
     setSelectedVideoDeviceId('');
     startCamera(nextFacing);
-  };
+  }, [startCamera]);
 
   const handleToggleMicMute = useCallback(() => {
     setMicMuted((prev) => {
@@ -1295,7 +1304,7 @@ export default function StudioPage() {
   }, []);
 
   // Screen Share Toggle
-  const handleToggleScreenShare = async () => {
+  const handleToggleScreenShare = useCallback(async () => {
     if (isScreenSharing) {
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -1338,10 +1347,10 @@ export default function StudioPage() {
         console.warn('Screen share cancelled or failed:', err);
       }
     }
-  };
+  }, [isScreenSharing]);
 
   // Trigger 10-Second Slow-Motion Instant Replay
-  const handleTriggerInstantReplay = () => {
+  const handleTriggerInstantReplay = useCallback(() => {
     if (!recorderRef.current || !compositorRef.current) return;
     const replayUrl = recorderRef.current.getInstantReplayUrl();
     if (replayUrl) {
@@ -1354,7 +1363,52 @@ export default function StudioPage() {
     } else {
       alert('Instant Replay Buffer is warming up (needs at least 3 seconds of live camera feed). Try again in a moment!');
     }
-  };
+  }, [settings]);
+
+  const handleOpenScoreboardControl = useCallback(() => {
+    setIsSidebarOpen(true);
+  }, []);
+
+  const handleSelectVideoDeviceStage = useCallback(
+    (id: string) => {
+      setSelectedVideoDeviceId(id);
+      cameraLockRef.current = false;
+      startCamera(facingModeRef.current, id, selectedAudioDeviceIdRef.current);
+    },
+    [startCamera]
+  );
+
+  const handleRetryCameraStage = useCallback(() => {
+    cameraLockRef.current = false;
+    startCamera(
+      facingModeRef.current,
+      selectedVideoDeviceIdRef.current || undefined,
+      selectedAudioDeviceIdRef.current || undefined
+    );
+  }, [startCamera]);
+
+  const handleSelectCameraResolutionStage = useCallback(
+    (preset: '720p30' | '1080p30' | '1080p60') => {
+      setProCameraSettings((prev) => ({ ...prev, resolutionPreset: preset }));
+      const nextSettings = { ...settings, targetResolution: preset };
+      handleSaveSettings(nextSettings);
+      if (compositorRef.current) {
+        compositorRef.current.setTargetFps(preset.endsWith('60') ? 60 : 30);
+        compositorRef.current.setStreamResolution(
+          preset.startsWith('1080') ? 1920 : 1280,
+          preset.startsWith('1080') ? 1080 : 720
+        );
+      }
+      cameraLockRef.current = false;
+      startCamera(
+        facingModeRef.current,
+        selectedVideoDeviceIdRef.current || undefined,
+        selectedAudioDeviceIdRef.current || undefined,
+        preset
+      );
+    },
+    [settings, startCamera]
+  );
 
   // Scene Switching (Supports Direct Mode and OBS Studio Mode Preview)
   const handleSelectScene = (sceneId: string) => {
@@ -1647,21 +1701,31 @@ export default function StudioPage() {
     updateScenes(next);
   };
 
-  const handleUpdateSourceTransform = (
-    id: string,
-    transform: { x: number; y: number; width: number; height: number }
-  ) => {
-    const next = scenes.map((sc) => {
-      if (sc.id === activeSceneId) {
-        return {
-          ...sc,
-          sources: sc.sources.map((s) => (s.id === id ? { ...s, ...transform } : s)),
-        };
-      }
-      return sc;
-    });
-    updateScenes(next);
-  };
+  const handleUpdateSourceTransform = useCallback(
+    (id: string, transform: { x: number; y: number; width: number; height: number }) => {
+      setScenes((prevScenes) => {
+        const next = prevScenes.map((sc) => {
+          if (sc.id === activeSceneId) {
+            return {
+              ...sc,
+              sources: sc.sources.map((s) => (s.id === id ? { ...s, ...transform } : s)),
+            };
+          }
+          return sc;
+        });
+        SceneStorage.saveScenes(next);
+        const updatedActive = next.find((s) => s.id === activeSceneId);
+        if (updatedActive && compositorRef.current) {
+          compositorRef.current.updateCurrentScene(updatedActive);
+        }
+        if (user) {
+          saveSessionState({ scenes: next });
+        }
+        return next;
+      });
+    },
+    [activeSceneId, user, saveSessionState]
+  );
 
   const handleOpenSourceProperties = (sourceId: string) => {
     const targetScene = scenes.find((s) => s.id === targetEditingSceneId) || activeScene;
@@ -2130,15 +2194,12 @@ export default function StudioPage() {
                     cameraError={cameraError}
                     videoDevices={videoDevices}
                     selectedVideoDeviceId={selectedVideoDeviceId}
-                    onSelectVideoDevice={(id) => {
-                      setSelectedVideoDeviceId(id);
-                      startCamera(facingMode, id, selectedAudioDeviceId);
-                    }}
-                    onRetryCamera={() => startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined)}
+                    onSelectVideoDevice={handleSelectVideoDeviceStage}
+                    onRetryCamera={handleRetryCameraStage}
                     onToggleScreenShare={handleToggleScreenShare}
                     onFlipCamera={handleFlipCamera}
                     onTriggerInstantReplay={handleTriggerInstantReplay}
-                    onOpenScoreboardControl={() => setIsSidebarOpen(true)}
+                    onOpenScoreboardControl={handleOpenScoreboardControl}
                     isStreaming={isStreaming}
                     isCanvasOverlayActive={
                       isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer)
@@ -2146,20 +2207,7 @@ export default function StudioPage() {
                     cameraCapabilities={cameraCapabilities}
                     proCameraSettings={proCameraSettings}
                     onUpdateProCamera={handleUpdateProCamera}
-                    onSelectCameraResolution={(preset) => {
-                      setProCameraSettings((prev) => ({ ...prev, resolutionPreset: preset }));
-                      const nextSettings = { ...settings, targetResolution: preset };
-                      handleSaveSettings(nextSettings);
-                      if (compositorRef.current) {
-                        compositorRef.current.setTargetFps(preset.endsWith('60') ? 60 : 30);
-                        compositorRef.current.setStreamResolution(
-                          preset.startsWith('1080') ? 1920 : 1280,
-                          preset.startsWith('1080') ? 1080 : 720
-                        );
-                      }
-                      cameraLockRef.current = false;
-                      startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined, preset);
-                    }}
+                    onSelectCameraResolution={handleSelectCameraResolutionStage}
                   />
                 </div>
               </div>
@@ -2177,19 +2225,12 @@ export default function StudioPage() {
               cameraError={cameraError}
               videoDevices={videoDevices}
               selectedVideoDeviceId={selectedVideoDeviceId}
-              onSelectVideoDevice={(id) => {
-                setSelectedVideoDeviceId(id);
-                cameraLockRef.current = false;
-                startCamera(facingMode, id, selectedAudioDeviceId);
-              }}
-              onRetryCamera={() => {
-                cameraLockRef.current = false;
-                startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined);
-              }}
+              onSelectVideoDevice={handleSelectVideoDeviceStage}
+              onRetryCamera={handleRetryCameraStage}
               onToggleScreenShare={handleToggleScreenShare}
               onFlipCamera={handleFlipCamera}
               onTriggerInstantReplay={handleTriggerInstantReplay}
-              onOpenScoreboardControl={() => setIsSidebarOpen(true)}
+              onOpenScoreboardControl={handleOpenScoreboardControl}
               isStreaming={isStreaming}
               isCanvasOverlayActive={
                 isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer)
@@ -2197,19 +2238,7 @@ export default function StudioPage() {
               cameraCapabilities={cameraCapabilities}
               proCameraSettings={proCameraSettings}
               onUpdateProCamera={handleUpdateProCamera}
-              onSelectCameraResolution={(preset) => {
-                setProCameraSettings((prev) => ({ ...prev, resolutionPreset: preset }));
-                const nextSettings = { ...settings, targetResolution: preset };
-                handleSaveSettings(nextSettings);
-                if (compositorRef.current) {
-                  compositorRef.current.setTargetFps(preset.endsWith('60') ? 60 : 30);
-                  compositorRef.current.setStreamResolution(
-                    preset.startsWith('1080') ? 1920 : 1280,
-                    preset.startsWith('1080') ? 1080 : 720
-                  );
-                }
-                startCamera(facingMode, selectedVideoDeviceId || undefined, selectedAudioDeviceId || undefined, preset);
-              }}
+              onSelectCameraResolution={handleSelectCameraResolutionStage}
             />
           )}
         </div>
