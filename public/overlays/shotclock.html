@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+  // Global Storage Shield — prevents WebKit SecurityError exceptions on blocked localStorage/sessionStorage
+  (function() {
+    try {
+      localStorage.setItem('__test_ls__', '1');
+      localStorage.removeItem('__test_ls__');
+    } catch (e) {
+      console.warn("localStorage is blocked. Injecting in-memory fallback.");
+      var store = {};
+      Object.defineProperty(window, 'localStorage', {
+        value: {
+          getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+          setItem: function(k, v) { store[k] = String(v); },
+          removeItem: function(k) { delete store[k]; },
+          clear: function() { store = {}; },
+          key: function(i) { return Object.keys(store)[i] || null; },
+          get length() { return Object.keys(store).length; }
+        },
+        configurable: true, writable: true
+      });
+    }
+    try {
+      sessionStorage.setItem('__test_ss__', '1');
+      sessionStorage.removeItem('__test_ss__');
+    } catch (e) {
+      console.warn("sessionStorage is blocked. Injecting in-memory fallback.");
+      var store = {};
+      Object.defineProperty(window, 'sessionStorage', {
+        value: {
+          getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+          setItem: function(k, v) { store[k] = String(v); },
+          removeItem: function(k) { delete store[k]; },
+          clear: function() { store = {}; },
+          key: function(i) { return Object.keys(store)[i] || null; },
+          get length() { return Object.keys(store).length; }
+        },
+        configurable: true, writable: true
+      });
+    }
+  })();
+
+  // Time-based Redirect Loop Buster Safeguard
+  let stopRedirect = false;
+  try {
+    const now = Date.now();
+    const lastLoad = parseInt(sessionStorage.getItem('hc_last_load_time') || '0', 10);
+    const redirectCount = parseInt(sessionStorage.getItem('hc_redirect_loop_count') || '0', 10);
+    
+    sessionStorage.setItem('hc_last_load_time', now.toString());
+
+    if (now - lastLoad < 1500) {
+      if (redirectCount > 4) {
+        stopRedirect = true;
+        console.warn("Redirect loop detected. Halting redirects to stabilize.");
+        localStorage.removeItem('hc_session_user');
+        document.cookie = "hc_session_user=; path=/; max-age=0; SameSite=Lax; Secure";
+        sessionStorage.setItem('hc_redirect_loop_count', '0');
+      } else {
+        sessionStorage.setItem('hc_redirect_loop_count', (redirectCount + 1).toString());
+      }
+    } else {
+      // Reset counter on slow/normal loads (user interaction)
+      sessionStorage.setItem('hc_redirect_loop_count', '0');
+    }
+  } catch (e) {}
+
+  function getSessionFromCookie() {
+    try {
+      const match = document.cookie.match(new RegExp('(^| )hc_session_user=([^;]+)'));
+      return match ? decodeURIComponent(match[2]) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  let hasUserSession = false;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const userParam = urlParams.get('user');
+    hasUserSession = !!localStorage.getItem('hc_session_user') || 
+                     !!getSessionFromCookie() || 
+                     (userParam && userParam !== 'default');
+  } catch (e) {
+    console.warn("Storage access failed:", e);
+  }
+
+  const isLocal = window.location.hostname === 'localhost' ||
+                  window.location.hostname === '127.0.0.1' ||
+                  !window.location.hostname.includes('.') ||
+                  window.location.hostname.startsWith('192.168.') ||
+                  window.location.hostname.startsWith('10.') ||
+                  window.location.hostname.startsWith('172.') ||
+                  window.location.hostname.endsWith('.local') ||
+                  window.location.hostname.endsWith('.ngrok.io') ||
+                  window.location.hostname.endsWith('.ngrok-free.dev') ||
+                  window.location.hostname.endsWith('.loca.lt') ||
+                  window.location.hostname.endsWith('.trycloudflare.com') ||
+                  window.location.hostname.endsWith('.run.app') ||
+                  window.location.hostname.endsWith('.googleusercontent.com');
+  if (false && !isLocal && !hasUserSession && !stopRedirect) {
+    const currentPath = window.location.pathname + window.location.search;
+    window.location.href = '/login?redirect=' + encodeURIComponent(currentPath);
+  }
+  if (new URLSearchParams(window.location.search).get('embed') === '1') {
+    document.documentElement.classList.add('ez-embed');
+  }
+</script>
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<script src="/overlays/firebase-config.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Shot Clock">
+<meta name="theme-color" content="#0a0c12">
+<title>Shot Clock Operator</title>
+<link rel="manifest" href="/manifest-shotclock.json">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png">
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@700&family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+html, body {
+  width:100%; height:100%;
+  background:#0a0c12;
+  font-family:'Barlow Condensed', sans-serif;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+  overflow:hidden;
+}
+
+/* Full page flex column */
+.page {
+  display:flex; flex-direction:column;
+  width:100%; height:100%;
+  /* Use dvh for devices with dynamic toolbars (iOS Safari) */
+  height:100dvh;
+  min-height:100vh;
+}
+
+/* ── OFFLINE BANNER ── */
+.offline-banner {
+  display:none; align-items:center; justify-content:center;
+  background:#7f1d1d; color:#fca5a5;
+  font-size:clamp(12px,3.5vw,18px); font-weight:800; letter-spacing:0.15vw;
+  padding:8px 4vw; text-transform:uppercase; gap:2vw;
+  flex-shrink:0;
+}
+.offline-banner.show { display:flex; }
+
+/* ── HEADER ── */
+.header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:clamp(8px,1.5vh,16px) 5vw;
+  background:#0d1117;
+  border-bottom:2px solid #1c2030;
+  flex-shrink:0;
+}
+.header-title {
+  font-size:clamp(18px,5vw,28px); font-weight:900;
+  letter-spacing:0.2vw; color:#fff; text-transform:uppercase;
+}
+.conn-badge { display:flex; align-items:center; gap:2vw; }
+.conn-dot {
+  width:clamp(8px,2.5vw,14px); height:clamp(8px,2.5vw,14px);
+  border-radius:50%; background:#ef4444;
+  box-shadow:0 0 6px #ef4444; animation:blink 1.2s ease infinite;
+}
+.conn-dot.live { background:#22c55e; box-shadow:0 0 6px #22c55e; animation:none; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.conn-text {
+  font-size:clamp(12px,3.2vw,18px); font-weight:800;
+  letter-spacing:0.15vw; color:#ef4444; text-transform:uppercase;
+}
+.conn-dot.live ~ .conn-text { color:#22c55e; }
+
+/* ── CLOCK DISPLAY ── */
+.clock-display {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  padding:1vh 4vw; gap:0; min-height:0;
+}
+.clock-label {
+  font-size:clamp(12px,3.5vw,20px); font-weight:800;
+  letter-spacing:0.5vw; color:#444; text-transform:uppercase;
+  margin-bottom:0;
+}
+.clock-number {
+  font-family:'Teko', sans-serif;
+  font-size:clamp(80px,35vw,45vh);
+  font-weight:700; line-height:0.85;
+  color:#ffaa00;
+  text-shadow:0 0 30px rgba(255,170,0,0.35);
+  transition:color 0.2s; font-variant-numeric:tabular-nums;
+  text-align:center;
+}
+.clock-number.warn   { color:#ff9900; }
+.clock-number.danger { color:#ff3300; animation:dangerPulse 0.4s ease infinite alternate; }
+.clock-number.zero   { color:#ff0000; }
+@keyframes dangerPulse { to{ opacity:0.4; } }
+
+.status-row {
+  display:flex; align-items:center; gap:2vw; margin-top:0.5vh;
+}
+.run-dot {
+  width:clamp(8px,2.2vw,12px); height:clamp(8px,2.2vw,12px);
+  border-radius:50%; background:#333; transition:background 0.2s;
+}
+.run-dot.running {
+  background:#22c55e; box-shadow:0 0 8px #22c55e;
+  animation:blink 0.8s ease infinite;
+}
+.status-text {
+  font-size:clamp(12px,3.2vw,18px); font-weight:800;
+  letter-spacing:0.3vw; color:#444; text-transform:uppercase;
+}
+.status-text.running { color:#22c55e; }
+
+/* ── BUTTONS ── */
+.btn-area {
+  display:flex; flex-direction:column;
+  gap:clamp(6px,2vw,14px);
+  padding:0 5vw clamp(12px,3vh,24px);
+  flex-shrink:0;
+}
+
+.btn-main {
+  width:100%; height:clamp(52px,14vh,90px);
+  border-radius:clamp(10px,2.5vw,18px); border:none; cursor:pointer;
+  font-family:'Barlow Condensed', sans-serif;
+  font-size:clamp(20px,6vw,36px); font-weight:900;
+  letter-spacing:0.3vw; text-transform:uppercase; color:#fff;
+  display:flex; align-items:center; justify-content:center; gap:2vw;
+  position:relative; overflow:hidden;
+  transition:transform 0.1s, filter 0.1s;
+}
+.btn-main:active { transform:scale(0.97); filter:brightness(0.9); }
+.btn-main.start {
+  background:linear-gradient(135deg,#15803d,#22c55e);
+  box-shadow:0 0 24px rgba(34,197,94,0.3), 0 4px 12px rgba(0,0,0,0.4);
+}
+.btn-main.stop {
+  background:linear-gradient(135deg,#991b1b,#ef4444);
+  box-shadow:0 0 24px rgba(239,68,68,0.3), 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* Reset row — 3 equal columns */
+.btn-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:clamp(6px,2vw,12px); }
+
+.btn-reset {
+  height:clamp(56px,11vh,80px);
+  border-radius:clamp(8px,2vw,14px); border:2px solid #2a3040;
+  cursor:pointer; background:#141822;
+  font-family:'Teko', sans-serif;
+  font-size:clamp(22px,8vw,48px); font-weight:700;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  line-height:0.88; transition:transform 0.1s, background 0.15s;
+  padding:0;
+}
+.btn-reset:active { transform:scale(0.96); }
+.btn-reset .sub {
+  font-family:'Barlow Condensed', sans-serif;
+  font-size:clamp(9px,2.2vw,14px); font-weight:800;
+  letter-spacing:0.15vw; text-transform:uppercase; color:#666;
+  line-height:1;
+}
+.btn-reset.r24 { border-color:#ff9900; color:#ff9900; }
+.btn-reset.r24:active { background:#1e1000; }
+.btn-reset.r14 { border-color:#ff6600; color:#ff6600; }
+.btn-reset.r14:active { background:#1e0d00; }
+.btn-reset.rcustom { border-color:#6b7280; color:#d1d5db; }
+.btn-reset.rcustom:active { background:#1a1f2e; }
+
+/* Custom input inside button */
+.custom-wrap {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  width:100%; height:100%; padding:0; gap:0;
+}
+.custom-input {
+  width:90%; background:transparent; border:none; outline:none;
+  font-family:'Teko', sans-serif;
+  font-size:clamp(22px,8vw,48px); font-weight:700;
+  color:#d1d5db; text-align:center; line-height:0.88;
+  -moz-appearance:textfield;
+}
+.custom-input::-webkit-outer-spin-button,
+.custom-input::-webkit-inner-spin-button { -webkit-appearance:none; }
+
+/* Buzzer */
+.btn-buzzer {
+  width:100%; height:clamp(44px,9vh,70px);
+  border-radius:clamp(8px,2vw,14px); border:2px solid #ef4444;
+  cursor:pointer; background:#2a0f0f;
+  font-family:'Barlow Condensed', sans-serif;
+  font-size:clamp(16px,5vw,28px); font-weight:900;
+  letter-spacing:0.3vw; text-transform:uppercase; color:#ef4444;
+  display:flex; align-items:center; justify-content:center; gap:2vw;
+  box-shadow:0 0 14px rgba(239,68,68,0.25);
+  transition:transform 0.1s, background 0.15s, box-shadow 0.15s;
+  position:relative; overflow:hidden;
+}
+.btn-buzzer:active {
+  transform:scale(0.97); background:#450f0f;
+  box-shadow:0 0 28px rgba(239,68,68,0.6);
+}
+
+/* Ripple */
+.ripple {
+  position:absolute; border-radius:50%;
+  background:rgba(255,255,255,0.2);
+  width:40px; height:40px;
+  transform:scale(0); animation:rippleAnim 0.5s ease-out forwards;
+  pointer-events:none;
+}
+@keyframes rippleAnim { to { transform:scale(10); opacity:0; } }
+
+.btn-header {
+  background: #1c2030;
+  border: 1.5px solid #2a3040;
+  border-radius: 8px;
+  color: #a0a5b5;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  cursor: pointer;
+  text-decoration: none;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+.btn-header:hover {
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+.btn-header.btn-fs {
+  border-color: #3b82f6;
+  color: #60a5fa;
+  font-weight: 800;
+}
+.btn-header.btn-fs:hover,
+.btn-header.btn-fs:active {
+  border-color: #ffaa00;
+  color: #ffaa00;
+}
+.btn-header.btn-fs.fs-active {
+  border-color: #ffaa00;
+  color: #ffaa00;
+  background: rgba(255, 170, 0, 0.12);
+}
+
+.btn-adjust {
+  height: clamp(40px, 8vh, 58px);
+  border-radius: clamp(8px, 2vw, 12px);
+  border: 1.5px solid #2d3748;
+  cursor: pointer;
+  background: #151a24;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(16px, 4.5vw, 24px);
+  font-weight: 800;
+  letter-spacing: 0.15vw;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s, background 0.15s, color 0.15s, border-color 0.15s;
+}
+.btn-adjust:hover { border-color: #4b5563; color: #cbd5e1; }
+.btn-adjust:active { transform: scale(0.96); background: #1e2638; color: #fff; border-color: #f59e0b; }
+
+/* ── PERIOD CONTROLS ── */
+.period-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 200, 66, 0.1);
+  border: 1.5px solid rgba(245, 200, 66, 0.35);
+  border-radius: 999px;
+  padding: 2px 14px;
+  margin-bottom: 4px;
+}
+.period-badge-label {
+  font-size: clamp(10px, 2.5vw, 14px);
+  font-weight: 800;
+  letter-spacing: 0.2vw;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+.period-badge-val {
+  font-family: 'Teko', sans-serif;
+  font-size: clamp(18px, 4.5vw, 28px);
+  font-weight: 700;
+  line-height: 1;
+  color: #f5c842;
+  letter-spacing: 1px;
+}
+.period-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #111520;
+  border: 1.5px solid #1e2536;
+  border-radius: clamp(8px, 2vw, 14px);
+  padding: clamp(6px, 1.2vh, 10px) clamp(8px, 2vw, 12px);
+}
+.period-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.period-title {
+  font-size: clamp(11px, 2.8vw, 15px);
+  font-weight: 800;
+  letter-spacing: 0.2vw;
+  color: #94a3b8;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.period-title span {
+  color: #f5c842;
+  font-weight: 900;
+}
+.btn-period-next {
+  background: #1a2133;
+  border: 1.5px solid #334155;
+  border-radius: 7px;
+  color: #e2e8f0;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(12px, 2.8vw, 15px);
+  font-weight: 800;
+  letter-spacing: 0.12vw;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.15s, color 0.15s, background 0.15s;
+}
+.btn-period-next:hover { border-color: #f5c842; color: #f5c842; }
+.btn-period-next:active { transform: scale(0.96); background: rgba(245, 200, 66, 0.15); border-color: #f5c842; color: #f5c842; }
+.period-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: clamp(4px, 1.4vw, 8px);
+}
+.btn-period {
+  height: clamp(34px, 6.5vh, 46px);
+  border-radius: clamp(6px, 1.5vw, 10px);
+  border: 1.5px solid #283044;
+  background: #161b28;
+  color: #94a3b8;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: clamp(14px, 3.6vw, 20px);
+  font-weight: 900;
+  letter-spacing: 0.08vw;
+  text-transform: uppercase;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.btn-period:hover { border-color: #475569; color: #e2e8f0; }
+.btn-period:active { transform: scale(0.95); }
+.btn-period.active {
+  background: rgba(245, 200, 66, 0.16);
+  border-color: #f5c842;
+  color: #f5c842;
+  box-shadow: 0 0 12px rgba(245, 200, 66, 0.25);
+}
+
+.keyboard-hints {
+  text-align: center;
+  font-size: clamp(10px, 2.4vw, 12px);
+  color: #64748b;
+  font-family: 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.05vw;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+.keyboard-hints strong { color: #94a3b8; }
+
+/* iOS Install Tooltip */
+#iosInstallBanner {
+  display: none;
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e2535;
+  border: 1.5px solid #3b82f6;
+  border-radius: 14px;
+  padding: 14px 20px;
+  z-index: 9999;
+  width: calc(100% - 40px);
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  animation: slideUp 0.3s ease;
+}
+@keyframes slideUp { from{transform:translateX(-50%) translateY(20px);opacity:0} to{transform:translateX(-50%) translateY(0);opacity:1} }
+#iosInstallBanner .ios-title {
+  font-size: 14px; font-weight: 800; letter-spacing: 1px;
+  color: #fff; margin-bottom: 6px;
+}
+#iosInstallBanner .ios-steps {
+  font-size: 13px; color: #8a95a8; line-height: 1.7;
+}
+#iosInstallBanner .ios-steps span { color: #fff; font-weight: 700; }
+#iosInstallBanner .ios-close {
+  position: absolute; top: 10px; right: 14px;
+  background: none; border: none; color: #8a95a8;
+  font-size: 18px; cursor: pointer; padding: 0;
+}
+#iosInstallBanner .ios-arrow {
+  position: absolute; bottom: -10px; left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 10px solid #3b82f6;
+}
+
+/* ── RESPONSIVE ORIENTATION & LAYOUT ADAPTATION ── */
+.main-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* ── LANDSCAPE MODE (Phones, Tablets, Desktops) ── */
+@media (orientation: landscape) {
+  .page {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .header {
+    padding: clamp(6px, 1.2vh, 12px) 3vw;
+  }
+  .main-body {
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .clock-display {
+    flex: 1 1 44%;
+    padding: 1vh 2vw;
+    justify-content: center;
+  }
+  .clock-number {
+    font-size: min(44vh, 22vw);
+    line-height: 0.85;
+  }
+  .btn-area {
+    flex: 1 1 56%;
+    padding: clamp(6px, 1.2vh, 14px) 3vw clamp(8px, 1.5vh, 16px);
+    justify-content: center;
+    gap: clamp(4px, 1vh, 10px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .btn-main {
+    height: clamp(42px, 13vh, 64px);
+    font-size: clamp(18px, 3.8vw, 28px);
+  }
+  .btn-reset {
+    height: clamp(40px, 11vh, 58px);
+    font-size: clamp(20px, 4.2vw, 36px);
+  }
+  .btn-adjust {
+    height: clamp(32px, 9vh, 46px);
+    font-size: clamp(13px, 2.4vw, 20px);
+  }
+  .btn-buzzer {
+    height: clamp(34px, 9vh, 46px);
+    font-size: clamp(14px, 2.5vw, 22px);
+  }
+  .period-section {
+    padding: clamp(4px, 0.9vh, 8px) clamp(6px, 1.5vw, 10px);
+    gap: 4px;
+  }
+  .btn-period {
+    height: clamp(28px, 6.5vh, 38px);
+    font-size: clamp(13px, 2.2vw, 18px);
+  }
+  .keyboard-hints {
+    font-size: 11px;
+    margin-top: 1px;
+  }
+}
+
+/* Short height landscape mobile phones (e.g. iPhone horizontal height <= 440px) */
+@media (orientation: landscape) and (max-height: 440px) {
+  .header {
+    padding: 4px 16px;
+  }
+  .header-title {
+    font-size: 16px;
+  }
+  .btn-header {
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+  .clock-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+  }
+  .clock-number {
+    font-size: 36vh;
+  }
+  .status-text {
+    font-size: 11px;
+  }
+  .btn-area {
+    gap: 4px;
+    padding: 4px 14px 6px;
+  }
+  .btn-main {
+    height: 36px;
+    font-size: 16px;
+  }
+  .btn-reset {
+    height: 34px;
+    font-size: 22px;
+  }
+  .btn-reset .sub {
+    font-size: 9px;
+  }
+  .btn-adjust {
+    height: 28px;
+    font-size: 12px;
+  }
+  .period-section {
+    padding: 3px 8px;
+    gap: 3px;
+  }
+  .period-title {
+    font-size: 11px;
+  }
+  .btn-period-next {
+    font-size: 11px;
+    padding: 1px 8px;
+  }
+  .btn-period {
+    height: 26px;
+    font-size: 12px;
+  }
+  .btn-buzzer {
+    height: 30px;
+    font-size: 13px;
+  }
+  .keyboard-hints {
+    display: none; /* Hide keyboard shortcut text on compact touch mobile screens */
+  }
+}
+
+/* ── PORTRAIT MODE (Phones & Tablets) ── */
+@media (orientation: portrait) {
+  .page {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .main-body {
+    flex-direction: column;
+  }
+  .clock-display {
+    flex: 1;
+    min-height: 0;
+  }
+  .clock-number {
+    font-size: min(44vh, 42vw);
+  }
+  .btn-area {
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+}
+
+html.ez-embed .ez-hide-embed {
+  display: none !important;
+}
+html.ez-embed .clock-number {
+  font-size: min(36vh, 38vw) !important;
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="offline-banner" id="offlineBanner">⚠ Disconnected — Reconnecting…</div>
+
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <div class="header-title">⏱ Shot Clock</div>
+      <button class="btn-header btn-fs" id="fsToggle" onclick="toggleFullscreen()" title="Toggle Fullscreen (F)">⛶ Fullscreen</button>
+      <a href="https://scoreboard.hoopculture.ca/shotclock-display" target="_blank" class="btn-header" title="Open Fullscreen Display View">📺 Display</a>
+      <button class="btn-header" id="installBtn" onclick="installApp()" style="display:none;border-color:#22c55e;color:#22c55e;">📲 Install App</button>
+      <a href="/overlays/control.html" class="btn-header ez-hide-embed">🏠 Board</a>
+      <button class="btn-header ez-hide-embed" onclick="logout()" style="border-color:#ef4444;color:#ef4444;">🚪 Logout</button>
+    </div>
+    <div class="conn-badge">
+      <div class="conn-dot" id="connDot"></div>
+      <div class="conn-text" id="connText">Offline</div>
+    </div>
+  </div>
+
+  <div class="main-body">
+
+    <div class="clock-display" ondblclick="toggleFullscreen()" title="Double-click to toggle Fullscreen">
+      <div class="period-badge" title="Current Game Period">
+        <span class="period-badge-label">Period</span>
+        <span class="period-badge-val" id="periodBadgeVal">1ST</span>
+      </div>
+      <div class="clock-label">Shot Clock</div>
+      <div class="clock-number" id="clockNum">24</div>
+      <div class="status-row">
+        <div class="run-dot" id="runDot"></div>
+        <div class="status-text" id="statusText">Stopped</div>
+      </div>
+    </div>
+
+    <div class="btn-area">
+
+      <button class="btn-main start" id="mainBtn" onclick="toggleShot(event)">▶ START</button>
+
+      <div class="btn-row">
+        <button class="btn-reset r24" onclick="resetShot(24, event)">
+          24<span class="sub">Reset</span>
+        </button>
+        <button class="btn-reset r14" onclick="resetShot(14, event)">
+          14<span class="sub">Reset</span>
+        </button>
+        <button class="btn-reset rcustom" onclick="resetShotCustom(event)">
+          <div class="custom-wrap">
+            <input id="shotCustomIn" class="custom-input" type="number"
+              min="1" max="60" value="10"
+              onclick="event.stopPropagation()"
+              ontouchstart="event.stopPropagation()">
+            <span class="sub">Set</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Quick Adjust Row: -1s / +1s -->
+      <div class="btn-row" style="grid-template-columns: 1fr 1fr; margin-top: -2px;">
+        <button class="btn-adjust" onclick="adjustShot(-1, event)">−1 SEC</button>
+        <button class="btn-adjust" onclick="adjustShot(+1, event)">+1 SEC</button>
+      </div>
+
+      <!-- Period Selector -->
+      <div class="period-section">
+        <div class="period-header-row">
+          <div class="period-title">🏀 Period: <span id="periodHeaderVal">1ST</span></div>
+          <button class="btn-period-next" onclick="nextPeriod(event)">Next Period →</button>
+        </div>
+        <div class="period-grid">
+          <button class="btn-period active" data-q="1" onclick="setPeriod(1, event)">1ST</button>
+          <button class="btn-period" data-q="2" onclick="setPeriod(2, event)">2ND</button>
+          <button class="btn-period" data-q="3" onclick="setPeriod(3, event)">3RD</button>
+          <button class="btn-period" data-q="4" onclick="setPeriod(4, event)">4TH</button>
+          <button class="btn-period" data-q="OT" onclick="setPeriod('OT', event)">OT</button>
+          <button class="btn-period" data-q="2OT" onclick="setPeriod('2OT', event)">2OT</button>
+        </div>
+      </div>
+
+      <button class="btn-buzzer" id="buzzerBtn" onclick="soundBuzzer(event)">🔔 SOUND BUZZER</button>
+
+      <div class="keyboard-hints">
+        ⌨ <strong>Shortcuts:</strong> Space = Start/Pause • 2 = 24s • 1 = 14s • +/− = Adjust • P = Next Period • B = Buzzer • F = Fullscreen
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+<script>
+const isLocalServer = window.location.hostname === 'localhost' ||
+                      window.location.hostname === '127.0.0.1' ||
+                      window.location.hostname.startsWith('192.168.') ||
+                      window.location.hostname.startsWith('10.');
+
+// ── Firebase Environment Detection ──
+const useFirebase = (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured);
+
+const SERVER_URL = useFirebase
+  ? 'https://scoreboard.hoopculture.ca'
+  : (window.location.protocol === 'file:' ? 'http://localhost:3000' : '');
+
+const urlParams = new URLSearchParams(window.location.search);
+const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'isidro.pascua@gmail.com';
+// Firebase-safe key (Firebase paths cannot contain ".", "#", "$", "[", or "]")
+const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
+
+const myClientId = 'sc_' + Math.random().toString(36).slice(2, 9) + '_' + Date.now();
+let isShotLeader = false;
+let _lastLeaderTime = 0;
+let _sseConnected = false;
+let _lastServerPushTime = 0;
+
+const bc = new BroadcastChannel('hc_scoreboard_sync');
+function broadcastShotclock() {
+  bc.postMessage({
+    type: 'state',
+    user: fbUser,
+    data: {
+      shotSeconds: shotSeconds,
+      shotRunning: shotRunning,
+      quarter: currentQuarter,
+      shotLeader: myClientId,
+      shotLeaderTime: Date.now()
+    }
+  });
+}
+
+// Listen to local BroadcastChannel from other tabs
+bc.onmessage = (e) => {
+  if (!e || !e.data) return;
+  if (e.data.user && e.data.user !== fbUser) return;
+  if (e.data.type === 'state') {
+    const d = e.data.data;
+    if (!d) return;
+    if (d.quarter !== undefined && (Date.now() - _lastPeriodCmd > 800)) {
+      currentQuarter = d.quarter;
+      renderPeriod();
+    }
+    if (d.shotSeconds === undefined) return;
+    if (d.shotLeader && d.shotLeader !== myClientId) {
+      isShotLeader = false;
+      stopLocalTick();
+    }
+    if (!isShotLeader) {
+      shotSeconds = d.shotSeconds;
+      if (Date.now() - _lastCmd > 600) {
+        shotRunning = !!d.shotRunning;
+      }
+      renderClock();
+    }
+  } else if (e.data.type === 'buzz' && e.data.kind === 'shot') {
+    if (Date.now() - (window.lastBuzzTime || 0) > 600) {
+      window.lastBuzzTime = Date.now();
+      playBuzz();
+    }
+  }
+};
+
+let db = null;
+if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.database();
+}
+
+// Warn if using Vercel but Firebase isn't configured
+window.addEventListener('DOMContentLoaded', () => {
+  if (useFirebase && !isFirebaseConfigured) {
+    const banner = document.createElement('div');
+    banner.style.position = 'fixed';
+    banner.style.top = '0';
+    banner.style.left = '0';
+    banner.style.right = '0';
+    banner.style.background = '#e53935';
+    banner.style.color = '#fff';
+    banner.style.textAlign = 'center';
+    banner.style.padding = '12px';
+    banner.style.zIndex = '10000';
+    banner.style.fontFamily = 'sans-serif';
+    banner.style.fontSize = '14px';
+    banner.style.fontWeight = 'bold';
+    banner.innerHTML = '⚠️ Firebase is not configured! Please set up your Firebase project credentials in <strong>firebase-config.js</strong> to enable Vercel Cloud Sync.';
+    document.body.appendChild(banner);
+  }
+});
+
+function logout() {
+  localStorage.removeItem('hc_session_user');
+}
+
+let shotSeconds = 24;
+let shotRunning = false;
+let currentQuarter = 1;
+let _lastCmd = 0;
+let _lastPeriodCmd = 0;
+let _localTick = null;
+
+const PERIODS = ['1ST', '2ND', '3RD', '4TH', 'OT', '2OT'];
+const QTRS = [1, 2, 3, 4, 'OT', '2OT'];
+
+function formatPeriodLabel(q) {
+  if (typeof q === 'number') {
+    return q === 0 ? PERIODS[0] : (PERIODS[q - 1] || `Q${q}`);
+  }
+  return String(q || '1ST').toUpperCase();
+}
+
+function renderPeriod() {
+  const label = formatPeriodLabel(currentQuarter);
+  const badgeEl = document.getElementById('periodBadgeVal');
+  const hdrEl = document.getElementById('periodHeaderVal');
+  if (badgeEl && badgeEl.textContent !== label) badgeEl.textContent = label;
+  if (hdrEl && hdrEl.textContent !== label) hdrEl.textContent = label;
+
+  document.querySelectorAll('.btn-period').forEach(btn => {
+    const qAttr = btn.getAttribute('data-q');
+    const isMatch = String(currentQuarter) === qAttr || btn.textContent.trim() === label;
+    btn.classList.toggle('active', isMatch);
+  });
+}
+
+function setPeriod(q, e) {
+  if (e) ripple(e, e.currentTarget);
+  if (navigator.vibrate) navigator.vibrate(25);
+
+  currentQuarter = q;
+  _lastPeriodCmd = Date.now();
+  renderPeriod();
+
+  bc.postMessage({
+    type: 'state',
+    user: fbUser,
+    data: { quarter: currentQuarter }
+  });
+
+  if (useFirebase && db) {
+    db.ref(`states/${fbUser}`).update({
+      quarter: currentQuarter
+    }).catch(err => console.error(err));
+  } else {
+    fetch(`${SERVER_URL}/update?user=${encodeURIComponent(currentUser)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quarter: currentQuarter })
+    }).catch(() => {});
+  }
+}
+
+function nextPeriod(e) {
+  const idx = QTRS.findIndex(item => String(item) === String(currentQuarter));
+  const nextIdx = (idx >= 0 && idx < QTRS.length - 1) ? idx + 1 : 0;
+  setPeriod(QTRS[nextIdx], e);
+}
+
+// ── Connection status ──
+function setConnected(v) {
+  _sseConnected = v;
+  const dot = document.getElementById('connDot');
+  const txt = document.getElementById('connText');
+  const ban = document.getElementById('offlineBanner');
+  if (v) {
+    dot.classList.add('live');
+    txt.textContent = 'Live'; txt.style.color = '#22c55e';
+    ban.classList.remove('show');
+  } else {
+    dot.classList.remove('live');
+    txt.textContent = 'Offline'; txt.style.color = '#ef4444';
+    ban.classList.add('show');
+  }
+}
+
+// ── Render ──
+function renderClock() {
+  const el  = document.getElementById('clockNum');
+  const dot = document.getElementById('runDot');
+  const st  = document.getElementById('statusText');
+  const btn = document.getElementById('mainBtn');
+
+  if (el.textContent !== String(shotSeconds)) el.textContent = shotSeconds;
+  el.className = 'clock-number';
+  if      (shotSeconds === 0) el.classList.add('zero');
+  else if (shotSeconds <= 5)  el.classList.add('danger');
+  else if (shotSeconds <= 10) el.classList.add('warn');
+
+  if (shotRunning) {
+    dot.classList.add('running');
+    st.textContent = 'Running'; st.classList.add('running');
+    btn.className = 'btn-main stop'; btn.innerHTML = '⏸ PAUSE';
+  } else {
+    dot.classList.remove('running');
+    st.textContent = 'Stopped'; st.classList.remove('running');
+    btn.className = 'btn-main start'; btn.innerHTML = '▶ START';
+  }
+}
+
+// ── Local tick (Active in Firebase Leader mode, or offline watchdog in Server mode) ──
+function startLocalTick() {
+  if (_localTick) return;
+  _localTick = setInterval(() => {
+    // In Server mode with live SSE, yield to server
+    if (!useFirebase && _sseConnected && (Date.now() - _lastServerPushTime < 2500)) {
+      stopLocalTick();
+      return;
+    }
+    // In Firebase mode, only leader ticks
+    if (useFirebase && !isShotLeader) {
+      stopLocalTick();
+      return;
+    }
+
+    if (shotRunning && shotSeconds > 0) { 
+      shotSeconds--; 
+      renderClock(); 
+      broadcastShotclock();
+      if (shotSeconds === 0) {
+        shotRunning = false;
+        stopLocalTick();
+        renderClock();
+        soundBuzzer();
+        broadcastShotclock();
+        if (useFirebase && db) {
+          db.ref(`states/${fbUser}`).update({ 
+            shotSeconds: 0, 
+            shotRunning: false,
+            shotLeader: myClientId,
+            shotLeaderTime: Date.now()
+          }).catch(() => {});
+        }
+        return;
+      }
+      if (useFirebase && db) {
+        db.ref(`states/${fbUser}`).update({ 
+          shotSeconds: shotSeconds,
+          shotRunning: true,
+          shotLeader: myClientId,
+          shotLeaderTime: Date.now()
+        }).catch(() => {});
+      }
+    } else if (shotSeconds <= 0 && shotRunning) { 
+      shotSeconds = 0; 
+      shotRunning = false;
+      stopLocalTick(); 
+      renderClock(); 
+      soundBuzzer();
+      broadcastShotclock();
+      if (useFirebase && db) {
+        db.ref(`states/${fbUser}`).update({ 
+          shotSeconds: 0, 
+          shotRunning: false,
+          shotLeader: myClientId,
+          shotLeaderTime: Date.now()
+        }).catch(() => {});
+      }
+    }
+  }, 1000);
+}
+
+function stopLocalTick() {
+  if (_localTick) { clearInterval(_localTick); _localTick = null; }
+}
+
+// ── Server command ──
+function cmd(command, seconds) {
+  _lastCmd = Date.now();
+  const body = seconds != null ? { cmd: command, seconds } : { cmd: command };
+  if (useFirebase && db) {
+    handleLocalCommand(command, seconds);
+    return;
+  }
+  fetch(`${SERVER_URL}/cmd?user=${encodeURIComponent(currentUser)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).catch(() => {});
+}
+
+function handleLocalCommand(command, seconds) {
+  isShotLeader = true;
+  _lastLeaderTime = Date.now();
+
+  if (command === 'shot_start') {
+    shotRunning = true;
+    startLocalTick();
+  } else if (command === 'shot_stop') {
+    shotRunning = false;
+    stopLocalTick();
+  } else if (command === 'shot_reset') {
+    stopLocalTick();
+    shotSeconds = seconds || 24;
+    if (shotRunning) {
+      startLocalTick();
+    }
+  } else if (command === 'shot_adjust') {
+    shotSeconds = Math.max(0, shotSeconds + (seconds || 0));
+  }
+  
+  renderClock();
+  broadcastShotclock();
+
+  if (db) {
+    db.ref(`states/${fbUser}`).update({
+      shotSeconds: shotSeconds,
+      shotRunning: shotRunning,
+      shotLeader: myClientId,
+      shotLeaderTime: Date.now()
+    }).catch(e => console.error(e));
+  }
+}
+
+// ── Button actions ──
+function toggleShot(e) {
+  if (e) ripple(e, document.getElementById('mainBtn'));
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  if (shotRunning) {
+    shotRunning = false;
+    stopLocalTick();
+    renderClock();
+    broadcastShotclock();
+    if (useFirebase && db) {
+      isShotLeader = true;
+      db.ref(`states/${fbUser}`).update({
+        shotRunning: false,
+        shotSeconds: shotSeconds,
+        shotLeader: myClientId,
+        shotLeaderTime: Date.now()
+      }).catch(() => {});
+    } else {
+      cmd('shot_stop');
+    }
+  } else {
+    if (shotSeconds <= 0) return;
+    shotRunning = true;
+    renderClock();
+    broadcastShotclock();
+    if (useFirebase && db) {
+      isShotLeader = true;
+      startLocalTick();
+      db.ref(`states/${fbUser}`).update({
+        shotRunning: true,
+        shotSeconds: shotSeconds,
+        shotLeader: myClientId,
+        shotLeaderTime: Date.now()
+      }).catch(() => {});
+    } else {
+      // In server mode, server is master clock
+      if (!_sseConnected) startLocalTick();
+      cmd('shot_start');
+    }
+  }
+}
+
+function resetShot(n, e) {
+  if (e) ripple(e, e.currentTarget);
+  if (navigator.vibrate) navigator.vibrate(35);
+
+  stopLocalTick();
+  shotSeconds = n;
+  if (shotRunning) {
+    startLocalTick();
+  }
+  renderClock();
+  broadcastShotclock();
+
+  if (useFirebase && db) {
+    isShotLeader = true;
+    db.ref(`states/${fbUser}`).update({
+      shotSeconds: shotSeconds,
+      shotRunning: shotRunning,
+      shotLeader: myClientId,
+      shotLeaderTime: Date.now()
+    }).catch(() => {});
+  } else {
+    if (shotRunning && !_sseConnected) startLocalTick();
+    cmd('shot_reset', n);
+  }
+}
+
+function adjustShot(delta, e) {
+  if (e) ripple(e, e.currentTarget);
+  if (navigator.vibrate) navigator.vibrate(25);
+
+  shotSeconds = Math.max(0, shotSeconds + delta);
+  renderClock();
+  broadcastShotclock();
+
+  if (useFirebase && db) {
+    isShotLeader = true;
+    db.ref(`states/${fbUser}`).update({
+      shotSeconds: shotSeconds,
+      shotLeader: myClientId,
+      shotLeaderTime: Date.now()
+    }).catch(() => {});
+  } else {
+    cmd('shot_adjust', delta);
+  }
+}
+
+function resetShotCustom(e) {
+  const n = parseInt(document.getElementById('shotCustomIn').value);
+  if (isNaN(n) || n < 1 || n > 60) return;
+  resetShot(n, e);
+}
+
+function soundBuzzer(e) {
+  if (e) ripple(e, document.getElementById('buzzerBtn'));
+  if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  playBuzz();
+  const timestamp = Date.now();
+  bc.postMessage({ type: 'buzz', user: fbUser, kind: 'shot', timestamp });
+  if (useFirebase && db) {
+    db.ref(`buzz/${fbUser}`).set({
+      kind: 'shot',
+      timestamp: timestamp
+    }).catch(e => console.error(e));
+    return;
+  }
+  fetch(`${SERVER_URL}/buzz?user=${encodeURIComponent(currentUser)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind: 'shot' })
+  }).catch(() => {});
+}
+
+// ── Ripple effect ──
+function ripple(e, btn) {
+  if (!btn) return;
+  const r = document.createElement('span');
+  r.className = 'ripple';
+  const rect = btn.getBoundingClientRect();
+  const x = (e.clientX || rect.left + rect.width / 2) - rect.left;
+  const y = (e.clientY || rect.top + rect.height / 2) - rect.top;
+  r.style.left = (x - 20) + 'px';
+  r.style.top  = (y - 20) + 'px';
+  btn.appendChild(r);
+  r.addEventListener('animationend', () => r.remove());
+}
+
+// ── Audio ──
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+const _buzzAudio = new Audio('/buzzer.mp3');
+_buzzAudio.preload = 'auto';
+_buzzAudio.load();
+
+function getAudio() {
+  if (!audioCtx) audioCtx = new AudioCtx();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  _buzzAudio.volume = 0;
+  _buzzAudio.play().then(() => {
+    _buzzAudio.pause();
+    _buzzAudio.currentTime = 0;
+    _buzzAudio.volume = 1.0;
+  }).catch(() => {});
+  return audioCtx;
+}
+document.addEventListener('touchstart', () => getAudio(), { once: true, passive: true });
+document.addEventListener('click',      () => getAudio(), { once: true, passive: true });
+function playBuzz() { 
+  _buzzAudio.currentTime = 0; 
+  _buzzAudio.volume = 1.0; 
+  _buzzAudio.play().catch(() => {}); 
+}
+
+// ── Keyboard Shortcuts ──
+document.addEventListener('keydown', (e) => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (e.code === 'Space' || k === ' ') {
+    e.preventDefault();
+    toggleShot();
+  } else if (k === '2') {
+    resetShot(24);
+  } else if (k === '1') {
+    resetShot(14);
+  } else if (k === '+' || k === '=') {
+    adjustShot(1);
+  } else if (k === '-' || k === '_') {
+    adjustShot(-1);
+  } else if (k === 'p') {
+    nextPeriod();
+  } else if (k === 'b') {
+    soundBuzzer();
+  } else if (k === 'f') {
+    toggleFullscreen();
+  }
+});
+
+// ── SSE / Realtime Sync ──
+function connectSSE() {
+  if (useFirebase && db) {
+    // Real-time connection status
+    db.ref('.info/connected').on('value', snapshot => {
+      setConnected(snapshot.val() === true);
+    });
+    db.ref(`states/${fbUser}`).on('value', snapshot => {
+      const d = snapshot.val();
+      if (!d) return;
+
+      if (d.quarter !== undefined && (Date.now() - _lastPeriodCmd > 800)) {
+        currentQuarter = d.quarter;
+        renderPeriod();
+      }
+
+      // Check if another client is leader
+      if (d.shotLeader && d.shotLeader !== myClientId && (Date.now() - (d.shotLeaderTime || 0) < 3000)) {
+        isShotLeader = false;
+        stopLocalTick();
+      }
+
+      if (!isShotLeader) {
+        if (d.shotSeconds != null) shotSeconds = d.shotSeconds;
+        if (Date.now() - _lastCmd > 600) {
+          shotRunning = !!d.shotRunning;
+        }
+        renderClock();
+      }
+    });
+    
+    db.ref(`buzz/${fbUser}`).on('value', snapshot => {
+      const msg = snapshot.val();
+      if (!msg) return;
+      if (msg.kind === 'shot' && msg.timestamp > (window.lastBuzzTime || 0)) {
+        window.lastBuzzTime = msg.timestamp;
+        playBuzz();
+      }
+    });
+    return;
+  }
+
+  setConnected(false);
+  const es = new EventSource(`${SERVER_URL}/events?user=${encodeURIComponent(currentUser)}`);
+  es.onopen = () => setConnected(true);
+  es.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'state') {
+        _lastServerPushTime = Date.now();
+        const d = msg.data;
+        // In server mode, server is master clock: stop any local tick
+        stopLocalTick();
+        if (d.quarter !== undefined && (Date.now() - _lastPeriodCmd > 800)) {
+          currentQuarter = d.quarter;
+          renderPeriod();
+        }
+        if (d.shotSeconds != null) shotSeconds = d.shotSeconds;
+        if (Date.now() - _lastCmd > 600) {
+          shotRunning = !!d.shotRunning;
+        }
+        renderClock();
+        broadcastShotclock();
+      } else if (msg.type === 'buzz' && msg.kind === 'shot') {
+        playBuzz();
+      }
+    } catch (err) {}
+  };
+  es.onerror = () => {
+    setConnected(false);
+    es.close();
+    setTimeout(connectSSE, 2000);
+  };
+}
+
+// ── Init ──
+if (useFirebase && db) {
+  db.ref(`states/${fbUser}`).once('value').then(snapshot => {
+    const d = snapshot.val();
+    if (d) {
+      if (d.shotSeconds != null) shotSeconds = d.shotSeconds;
+      shotRunning = !!d.shotRunning;
+      if (d.quarter !== undefined) currentQuarter = d.quarter;
+    }
+    renderClock();
+    renderPeriod();
+  }).catch(() => {
+    renderClock();
+    renderPeriod();
+  }).finally(() => connectSSE());
+} else {
+  fetch(`${SERVER_URL}/state?user=${encodeURIComponent(currentUser)}`).then(r => r.json()).then(d => {
+    if (d.shotSeconds != null) shotSeconds = d.shotSeconds;
+    shotRunning = !!d.shotRunning;
+    if (d.quarter !== undefined) currentQuarter = d.quarter;
+    renderClock();
+    renderPeriod();
+  }).catch(() => {
+    renderPeriod();
+  }).finally(() => connectSSE());
+}
+
+// ── PWA Install Logic ──
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isInStandaloneMode = ('standalone' in window.navigator) && (window.navigator.standalone);
+const iosDismissed = localStorage.getItem('iosBannerDismissed');
+if (isIOS && !isInStandaloneMode && !iosDismissed) {
+  setTimeout(() => {
+    const banner = document.getElementById('iosInstallBanner');
+    if (banner) banner.style.display = 'block';
+  }, 2000);
+}
+function dismissIOSBanner() {
+  const banner = document.getElementById('iosInstallBanner');
+  if (banner) banner.style.display = 'none';
+  localStorage.setItem('iosBannerDismissed', '1');
+}
+
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'inline-flex';
+});
+window.addEventListener('appinstalled', () => {
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'none';
+  deferredInstallPrompt = null;
+});
+function installApp() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then(() => {
+    deferredInstallPrompt = null;
+    document.getElementById('installBtn').style.display = 'none';
+  });
+}
+
+// ── Fullscreen Support ──
+function toggleFullscreen() {
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+  if (!isFs) {
+    const el = document.documentElement;
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    } else if (el.webkitRequestFullscreen) {
+      el.webkitRequestFullscreen();
+    } else if (el.mozRequestFullScreen) {
+      el.mozRequestFullScreen();
+    } else if (el.msRequestFullscreen) {
+      el.msRequestFullscreen();
+    }
+  } else {
+    if (document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    } else if (document.mozCancelFullScreen) {
+      document.mozCancelFullScreen();
+    } else if (document.msExitFullscreen) {
+      document.msExitFullscreen();
+    }
+  }
+}
+
+function updateFullscreenBtn() {
+  const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+  const btn = document.getElementById('fsToggle');
+  if (btn) {
+    btn.innerHTML = isFs ? '✕ Exit Fullscreen' : '⛶ Fullscreen';
+    if (isFs) {
+      btn.classList.add('fs-active');
+    } else {
+      btn.classList.remove('fs-active');
+    }
+  }
+}
+
+document.addEventListener('fullscreenchange', updateFullscreenBtn);
+document.addEventListener('webkitfullscreenchange', updateFullscreenBtn);
+document.addEventListener('mozfullscreenchange', updateFullscreenBtn);
+document.addEventListener('MSFullscreenChange', updateFullscreenBtn);
+
+/* Service worker managed by parent EZLive shell */
+</script>
+
+<!-- iOS Install Banner -->
+<div id="iosInstallBanner">
+  <button class="ios-close" onclick="dismissIOSBanner()">✕</button>
+  <div class="ios-title">📲 Install Shot Clock App</div>
+  <div class="ios-steps">
+    1. Tap the <span>Share</span> button (□↑) at the bottom of Safari<br>
+    2. Scroll down and tap <span>Add to Home Screen</span><br>
+    3. Tap <span>Add</span> — done!
+  </div>
+  <div class="ios-arrow"></div>
+</div>
+</body>
+</html>

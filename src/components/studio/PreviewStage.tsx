@@ -52,6 +52,7 @@ interface PreviewStageProps {
   onTriggerInstantReplay?: () => void;
   onOpenScoreboardControl?: () => void;
   isStreaming?: boolean;
+  isCanvasOverlayActive?: boolean;
   cameraCapabilities?: ProCameraCapabilities;
   proCameraSettings?: ProCameraSettings;
   onUpdateProCamera?: (partial: Partial<ProCameraSettings>) => void;
@@ -77,6 +78,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   onTriggerInstantReplay,
   onOpenScoreboardControl,
   isStreaming = false,
+  isCanvasOverlayActive = isStreaming,
   cameraCapabilities,
   proCameraSettings,
   onUpdateProCamera,
@@ -261,6 +263,14 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
         }
         const query = parsed.searchParams.toString();
         const path = parsed.pathname.toLowerCase();
+        const camMatch = path.match(/\/cam([1-5])\/?$/);
+        if (camMatch) {
+          parsed.searchParams.set('style', camMatch[1]);
+          return `/overlays/frontcam.html?${parsed.searchParams.toString()}`;
+        }
+        if (path.includes('frontcam') || path.includes('front-cam')) {
+          return `/overlays/frontcam.html?${query}`;
+        }
         if (path.includes('scripps') || path.includes('overlay3') || path === '/pill') {
           return `/overlays/scripps.html?${query}`;
         }
@@ -281,53 +291,10 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
     return rawUrl;
   };
 
-  const syncIframeInitialState = (iframeEl: HTMLIFrameElement) => {
+  const syncIframeInitialOcrStream = (iframeEl: HTMLIFrameElement) => {
     try {
       const win = iframeEl.contentWindow;
       if (!win) return;
-      const st = scoreboardSync.getState();
-      if (st) {
-        win.postMessage(
-          {
-            type: 'state',
-            data: {
-              homeAbbr: st.homeTeam,
-              awayAbbr: st.awayTeam,
-              homeName: st.homeName || st.homeTeam,
-              awayName: st.awayName || st.awayTeam,
-              homeScore: st.homeScore,
-              awayScore: st.awayScore,
-              homeFouls: st.homeFouls,
-              awayFouls: st.awayFouls,
-              homeColor: st.homeColor,
-              awayColor: st.awayColor,
-              homeLogo: st.homeLogo,
-              awayLogo: st.awayLogo,
-              homeRecord: st.homeRecord,
-              awayRecord: st.awayRecord,
-              quarter: st.quarter ?? st.period,
-              gameSeconds: st.gameSeconds,
-              gameRunning: st.isClockRunning,
-              clockRunning: st.isClockRunning,
-              shotRunning: st.shotRunning ?? st.isClockRunning,
-              shotSeconds: st.shotSeconds ?? st.shotClock,
-              possession: st.possession === 'none' ? null : st.possession,
-              rp1Title: st.rp1Title ?? 'BROADCAST',
-              rp1Value: st.rp1Value ?? st.broadcast,
-              rp2Title: st.rp2Title ?? 'VENUE',
-              rp2Value: st.rp2Value ?? st.venue,
-              venue: st.venue ?? st.rp2Value,
-              broadcast: st.broadcast ?? st.rp1Value,
-              barColor: st.barColor,
-              periodDisabled: st.periodDisabled,
-              shotClockDisabled: st.shotClockDisabled,
-              enabledCrops: st.enabledCrops,
-              invertStates: st.invertStates,
-            },
-          },
-          '*'
-        );
-      }
       const ocr = scoreboardSync.getLatestOcrStream();
       if (ocr && ocr.aiSyncActive) {
         win.postMessage({ type: 'stream', data: { ...ocr, streamActive: true } }, '*');
@@ -446,7 +413,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
                 key={`${source.id}-${resolvedSrc}`}
                 className="absolute pointer-events-none inset-0 w-full h-full"
                 style={{
-                  opacity: source.opacity,
+                  opacity: isCanvasOverlayActive ? 0 : source.opacity,
                   zIndex: source.zIndex + 10,
                   transform: 'translateZ(0)',
                   backfaceVisibility: 'hidden',
@@ -454,7 +421,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
               >
                 <iframe
                   src={resolvedSrc}
-                  onLoad={(e) => syncIframeInitialState(e.currentTarget)}
+                  onLoad={(e) => syncIframeInitialOcrStream(e.currentTarget)}
                   className="w-full h-full border-0 bg-transparent pointer-events-none"
                   title={source.name}
                   allow="camera; microphone; autoplay"

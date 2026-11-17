@@ -252,6 +252,56 @@ export const SourcePropertiesModal: React.FC<SourcePropertiesModalProps> = ({
                   <span className="font-extrabold text-xs text-orange-400">4. NBC Pro Broadcast Bug</span>
                   <span className="text-[10px] text-slate-400">Segmented top bug (/nbc)</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
+                      name: 'Front Cam Corner Frame (/frontcam)',
+                      url: `https://scoreboard.hoopculture.ca/frontcam?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    localSource.url?.includes('/frontcam')
+                      ? 'border-sky-500 bg-sky-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-sky-400">5. Front Cam Corner Frame</span>
+                  <span className="text-[10px] text-slate-400">Bottom-right camera PiP frame (/frontcam)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const email = (localSource.url?.includes('user=') ? new URL(localSource.url).searchParams.get('user') : null) || (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) || 'isidro.pascua@gmail.com';
+                    setLocalSource({
+                      ...localSource,
+                      name: 'Standalone Camera Overlay (/cam1)',
+                      url: `https://scoreboard.hoopculture.ca/cam1?user=${encodeURIComponent(email)}`,
+                      x: 0,
+                      y: 0,
+                      width: 1920,
+                      height: 1080,
+                      locked: true,
+                    });
+                  }}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col gap-1 transition ${
+                    /\/cam[1-5]/.test(localSource.url || '')
+                      ? 'border-cyan-500 bg-cyan-950/40 text-white'
+                      : 'border-slate-800 bg-slate-900/60 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span className="font-extrabold text-xs text-cyan-400">6. Standalone Camera Frame</span>
+                  <span className="text-[10px] text-slate-400">OBS cam styles 1–5 (/cam1–/cam5)</span>
+                </button>
               </div>
 
               <div>

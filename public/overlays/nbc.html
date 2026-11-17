@@ -623,12 +623,18 @@ function applyStateMessage(msgData) {
 }
 
 function handleBCMessage(e) {
-  if (!e || !e.data) return;
-  if (e.data.type === 'state') {
-    applyStateMessage(e.data.data);
-  } else if (e.data.type === 'stream') {
+  const msg = e && e.data ? e.data : null;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.type === 'state') {
+    applyStateMessage(msg.data);
+  } else if (msg.type === 'stream' || msg.type === 'ocr') {
     _lastLocalMsgTime = Date.now();
-    applyStreamData(e.data.data);
+    applyStreamData(msg.data || msg);
+  } else if (msg.type === 'buzz') {
+    if ((msg.timestamp || 0) > _lb) {
+      _lb = msg.timestamp || Date.now();
+      msg.kind === 'game' ? gbuzz() : sbuzz();
+    }
   }
 }
 
@@ -636,17 +642,7 @@ const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('hc_sc
 if (bc) bc.onmessage = handleBCMessage;
 const bcLegacy = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('basketball_scoreboard') : null;
 if (bcLegacy) bcLegacy.onmessage = handleBCMessage;
-
-window.addEventListener('message', (e) => {
-  if (!e || !e.data) return;
-  _ll = Date.now();
-  if (e.data.type === 'state' && e.data.data) {
-    applyStateMessage(e.data.data);
-  } else if ((e.data.type === 'stream' || e.data.type === 'ocr') && (e.data.data || e.data)) {
-    _lastLocalMsgTime = Date.now();
-    applyStreamData(e.data.data || e.data);
-  }
-});
+window.addEventListener('message', handleBCMessage);
 
 function $(i){return document.getElementById(i);}
 function tx(i,v){

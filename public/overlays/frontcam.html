@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    // Global Storage Shield — prevents WebKit SecurityError exceptions on blocked localStorage/sessionStorage
+    (function() {
+      try {
+        localStorage.setItem('__test_ls__', '1');
+        localStorage.removeItem('__test_ls__');
+      } catch (e) {
+        var store = {};
+        Object.defineProperty(window, 'localStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+      try {
+        sessionStorage.setItem('__test_ss__', '1');
+        sessionStorage.removeItem('__test_ss__');
+      } catch (e) {
+        var store = {};
+        Object.defineProperty(window, 'sessionStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Hoop Culture — Standalone Camera Overlays (5 Styles)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;0,900;1,700;1,800;1,900&family=Barlow:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg-dark: #080605;
+      --fire: #e8430a;
+      --ember: #ff6b1a;
+      --gold: #ffaa00;
+      --gold-soft: #f2c94c;
+      --cyan: #38bdf8;
+      --crimson: #c8102e;
+      --navy: #0a1224;
+      --cam-aspect: 16 / 9;
+      --cam-width: 24.5vw;
+      --cam-unit: 0.96vw;
+    }
+
+    html, body {
+      background: transparent;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      font-family: 'Barlow Condensed', sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       OPTIONAL PREVIEW BACKDROP (?preview=1) FOR SINGLE STYLE VIEWING
+       ════════════════════════════════════════════════════════════════════════ */
+    #preview-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background:
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 14px, transparent 14px, transparent 28px),
+        radial-gradient(ellipse 65% 55% at 50% 42%, rgba(232, 67, 10, 0.14) 0%, transparent 65%),
+        linear-gradient(160deg, #15110d 0%, #090706 60%, #050404 100%);
+      pointer-events: none;
+    }
+    body.preview-mode:not(.gallery-mode) #preview-backdrop {
+      display: block;
+    }
+    .pv-hint {
+      position: absolute;
+      top: 2vw;
+      left: 2vw;
+      background: rgba(8, 6, 5, 0.88);
+      border: 1px solid rgba(232, 67, 10, 0.55);
+      border-radius: 10px;
+      padding: 12px 18px;
+      color: #f2ede8;
+      max-width: 520px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+    }
+    .pv-kicker {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--gold);
+      text-transform: uppercase;
+    }
+    .pv-title {
+      font-size: 22px;
+      font-weight: 900;
+      text-transform: uppercase;
+      color: #fff;
+      margin-top: 2px;
+    }
+    .pv-sub {
+      font-family: 'Barlow', sans-serif;
+      font-size: 12.5px;
+      color: #bfb3a8;
+      margin-top: 4px;
+      line-height: 1.45;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       SINGLE OVERLAY STAGE (OBS PRODUCTION DEFAULT)
+       ════════════════════════════════════════════════════════════════════════ */
+    #single-stage {
+      position: fixed;
+      inset: 0;
+      background: transparent;
+      pointer-events: none;
+      z-index: 10;
+    }
+    body.gallery-mode #single-stage {
+      display: none;
+    }
+
+    #cam-anchor {
+      position: fixed;
+      bottom: 2.2vw;
+      right: 2.2vw;
+      transform-origin: bottom right;
+      pointer-events: auto;
+      transition: transform 0.25s ease, top 0.25s ease, bottom 0.25s ease, left 0.25s ease, right 0.25s ease;
+    }
+    body.fit-full #cam-anchor {
+      inset: 1.5vw !important;
+      transform: none !important;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    body.fit-full .cam-frame {
+      width: 100%;
+      height: 100%;
+      font-size: 2.2vw;
+    }
+    body.fit-full .cam-middle {
+      flex: 1;
+      min-height: 0;
+    }
+    body.fit-full .cam-cutout {
+      width: 100%;
+      height: 100%;
+      aspect-ratio: auto;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       SHARED CAMERA FRAME COMPONENT (.cam-frame)
+       100% alpha-transparent center cutout (.cam-cutout)
+       ════════════════════════════════════════════════════════════════════════ */
+    .cam-frame {
+      width: var(--cam-width);
+      font-size: var(--cam-unit);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: transparent;
+      color: #ffffff;
+    }
+
+    .cam-middle {
+      display: flex;
+      align-items: stretch;
+      position: relative;
+      background: transparent;
+    }
+
+    /* Transparent Camera Video Window */
+    .cam-cutout {
+      width: 100%;
+      aspect-ratio: var(--cam-aspect);
+      background: transparent;
+      position: relative;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    /* Live Browser Webcam inside cutout (when enabled via HUD or ?webcam=1) */
+    .cam-webcam-video {
+      display: none;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+    .cam-webcam-video.active { display: block; }
+    .cam-webcam-video.mirrored { transform: scaleX(-1); }
+
+    /* Simulated Camera Interior (shown ONLY in ?preview=1 or ?gallery=1) */
+    .cam-sim-interior {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background:
+        linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%),
+        linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%),
+        radial-gradient(ellipse 70% 60% at 50% 42%, rgba(232, 67, 10, 0.22) 0%, transparent 65%),
+        #0c0f17;
+      background-size: 20px 20px, 20px 20px, 100% 100%, 100% 100%;
+      background-position: 0 0, 10px 10px, 0 0, 0 0;
+      align-items: flex-end;
+      justify-content: center;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    body.preview-mode .cam-sim-interior:not(.webcam-running),
+    body.gallery-mode .cam-sim-interior:not(.webcam-running) {
+      display: flex;
+    }
+    .sim-sil {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      opacity: 0.72;
+      position: relative;
+      z-index: 2;
+    }
+    .sim-head {
+      width: 3.5em;
+      height: 3.5em;
+      border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #685447 0%, #241b16 74%);
+      border: 1.5px solid rgba(255, 170, 0, 0.45);
+      margin-bottom: -0.35em;
+    }
+    .sim-body {
+      width: 9.6em;
+      height: 5.5em;
+      border-radius: 4.5em 4.5em 0 0;
+      background: linear-gradient(180deg, #342822 0%, #14100d 100%);
+      border-top: 1.5px solid rgba(255, 170, 0, 0.35);
+      position: relative;
+    }
+    .sim-mic {
+      position: absolute;
+      right: 2.1em;
+      top: 1em;
+      width: 0.42em;
+      height: 2.4em;
+      background: #94a3b8;
+      border-radius: 99px;
+      transform: rotate(18deg);
+    }
+    .sim-mic::before {
+      content: '';
+      position: absolute;
+      top: -0.42em;
+      left: -0.18em;
+      width: 0.78em;
+      height: 0.78em;
+      border-radius: 50%;
+      background: var(--fire);
+      border: 1.5px solid var(--gold);
+    }
+    .sim-cutout-tag {
+      position: absolute;
+      top: 46%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(8, 6, 5, 0.78);
+      border: 1px dashed rgba(255, 170, 0, 0.45);
+      color: rgba(255, 255, 255, 0.65);
+      padding: 0.22em 0.65em;
+      border-radius: 999px;
+      font-size: 0.62em;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      z-index: 3;
+    }
+
+    .hc-logo-img {
+      width: 86%;
+      height: 86%;
+      object-fit: contain;
+    }
+
+    @keyframes pulseRed {
+      0% { opacity: 0.45; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1.18); box-shadow: 0 0 0.55em #ff3b30; }
+    }
+
+    /* Helper: hide customizable text bars if user toggles ?labels=0 */
+    .cam-frame.hide-labels .c-foot-hideable {
+      display: none !important;
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       STYLE 1: FIRE & STEEL ARENA PRO (/cam1)
+       ════════════════════════════════════════════════════════════════════════ */
+    .cam-frame.style-1 {
+      filter: drop-shadow(0 0.8em 2em rgba(0, 0, 0, 0.86));
+    }
+    .cam-frame.style-1 .s1-hdr {
+      height: 2.35em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5em;
+      padding: 0 0.75em 0 3.7em;
+      background: linear-gradient(180deg, #161d2b 0%, #090c14 100%);
+      border-top: 2.5px solid var(--fire);
+      border-left: 1.5px solid rgba(232, 67, 10, 0.8);
+      border-right: 1.5px solid rgba(56, 189, 248, 0.7);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 0.65em 0.65em 0 0;
+      position: relative;
+      z-index: 5;
+    }
+    .cam-frame.style-1 .s1-medallion {
+      position: absolute;
+      left: 0.48em;
+      top: -0.45em;
+      width: 2.85em;
+      height: 2.85em;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #fff 0%, #cbd5e1 40%, #64748b 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.95);
+      box-shadow: 0 0.3em 0.9em rgba(0, 0, 0, 0.85);
+      padding: 0.14em;
+      z-index: 20;
+    }
+    .cam-frame.style-1 .s1-medallion-in {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: radial-gradient(circle at 48% 36%, #fff 0%, #e2e8f0 75%, #cbd5e1 100%);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .cam-frame.style-1 .s1-kicker {
+      font-size: 0.66em; font-weight: 900; letter-spacing: 0.11em; color: var(--gold); text-transform: uppercase;
+    }
+    .cam-frame.style-1 .s1-title {
+      font-size: 1.08em; font-weight: 900; letter-spacing: 0.06em; color: #fff; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cam-frame.style-1 .s1-live {
+      display: inline-flex; align-items: center; gap: 0.34em;
+      background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.7);
+      border-radius: 999px; padding: 0.16em 0.55em; font-size: 0.7em; font-weight: 900; letter-spacing: 0.1em;
+    }
+    .cam-frame.style-1 .s1-dot {
+      width: 0.48em; height: 0.48em; border-radius: 50%; background: #ff3b30; animation: pulseRed 1.1s infinite alternate;
+    }
+    .cam-frame.style-1 .s1-rail-l {
+      width: 0.42em; flex-shrink: 0;
+      background: linear-gradient(180deg, #161d2b, #090c14);
+      border-left: 1.5px solid var(--fire);
+    }
+    .cam-frame.style-1 .s1-rail-r {
+      width: 0.42em; flex-shrink: 0;
+      background: linear-gradient(180deg, #161d2b, #090c14);
+      border-right: 1.5px solid var(--cyan);
+    }
+    .cam-frame.style-1 .s1-c {
+      position: absolute; width: 1.5em; height: 1.5em; z-index: 6; pointer-events: none;
+    }
+    .cam-frame.style-1 .s1-c.tl { top: 0.4em; left: 0.4em; border-top: 2.5px solid var(--fire); border-left: 2.5px solid var(--fire); }
+    .cam-frame.style-1 .s1-c.tr { top: 0.4em; right: 0.4em; border-top: 2.5px solid var(--cyan); border-right: 2.5px solid var(--cyan); }
+    .cam-frame.style-1 .s1-c.bl { bottom: 0.4em; left: 0.4em; border-bottom: 2.5px solid var(--gold); border-left: 2.5px solid var(--gold); }
+    .cam-frame.style-1 .s1-c.br { bottom: 0.4em; right: 0.4em; border-bottom: 2.5px solid var(--cyan); border-right: 2.5px solid var(--cyan); }
+    .cam-frame.style-1 .s1-ftr {
+      height: 2.1em;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 0.85em;
+      background: linear-gradient(180deg, #101522 0%, #05070c 100%);
+      border-left: 1.5px solid rgba(255, 170, 0, 0.75);
+      border-right: 1.5px solid rgba(56, 189, 248, 0.7);
+      border-bottom: 2.5px solid var(--gold);
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 0 0 0.65em 0.65em;
+    }
+    .cam-frame.style-1 .s1-btitle { font-size: 0.98em; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+    .cam-frame.style-1 .s1-bsub { font-size: 0.74em; font-weight: 800; letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase; }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       STYLE 2: STADIUM PILL CHROME & GOLD (/cam2)
+       ════════════════════════════════════════════════════════════════════════ */
+    .cam-frame.style-2 {
+      filter: drop-shadow(0 0.8em 2.2em rgba(0, 0, 0, 0.9));
+    }
+    .cam-frame.style-2 .s2-shell {
+      border-radius: 1.25em;
+      border: 2px solid rgba(255, 255, 255, 0.36);
+      background: transparent;
+      box-shadow: inset 0 0 0 2px rgba(255, 170, 0, 0.45);
+      padding: 0.42em;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .cam-frame.style-2 .cam-cutout {
+      border-radius: 0.82em;
+      border: 1.5px solid rgba(255, 255, 255, 0.25);
+    }
+    .cam-frame.style-2 .s2-top-pill {
+      position: absolute;
+      top: -0.95em;
+      left: 0.85em;
+      right: 0.85em;
+      height: 2.05em;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #1b2234 0%, #070a12 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 0.35em 1em rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 3.35em 0 0.85em;
+      z-index: 12;
+    }
+    .cam-frame.style-2 .s2-live-grp {
+      display: flex; align-items: center; gap: 0.42em;
+    }
+    .cam-frame.style-2 .s2-dot {
+      width: 0.46em; height: 0.46em; border-radius: 50%; background: #ff3b30; animation: pulseRed 1.1s infinite alternate;
+    }
+    .cam-frame.style-2 .s2-live { font-size: 0.72em; font-weight: 900; letter-spacing: 0.14em; color: var(--gold); text-transform: uppercase; }
+    .cam-frame.style-2 .s2-title { font-size: 1.02em; font-weight: 900; letter-spacing: 0.06em; color: #fff; text-transform: uppercase; }
+    .cam-frame.style-2 .s2-medallion {
+      position: absolute;
+      right: -0.25em;
+      top: -0.5em;
+      width: 3em;
+      height: 3em;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #fff 0%, #cbd5e1 40%, #64748b 100%);
+      border: 1.5px solid #fff;
+      box-shadow: 0 0.35em 1em rgba(0, 0, 0, 0.85);
+      padding: 0.15em;
+      z-index: 20;
+    }
+    .cam-frame.style-2 .s2-medallion-in {
+      width: 100%; height: 100%; border-radius: 50%;
+      background: radial-gradient(circle at 48% 36%, #fff 0%, #e2e8f0 80%);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .cam-frame.style-2 .s2-bot-pill {
+      position: absolute;
+      bottom: -0.88em;
+      left: 50%;
+      transform: translateX(-50%);
+      height: 1.9em;
+      padding: 0 1.25em;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #c8102e 0%, #0d1220 26%, #0d1220 74%, #e8430a 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.38);
+      box-shadow: 0 0.35em 1em rgba(0, 0, 0, 0.85);
+      display: flex;
+      align-items: center;
+      gap: 0.55em;
+      white-space: nowrap;
+      z-index: 12;
+    }
+    .cam-frame.style-2 .s2-btitle { font-size: 0.92em; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; }
+    .cam-frame.style-2 .s2-sep { color: var(--gold); font-weight: 900; }
+    .cam-frame.style-2 .s2-bsub { font-size: 0.78em; font-weight: 800; letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase; }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       STYLE 3: NETWORK GOLD & CRIMSON BROADCAST CARD (/cam3)
+       ════════════════════════════════════════════════════════════════════════ */
+    .cam-frame.style-3 {
+      filter: drop-shadow(0 0.8em 2em rgba(0, 0, 0, 0.88));
+    }
+    .cam-frame.style-3 .s3-wrap {
+      border: 2px solid #f2c94c;
+      box-shadow: 0 0 0 2px #0a1224, 0 0 18px rgba(242, 201, 76, 0.25);
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      background: transparent;
+    }
+    .cam-frame.style-3 .s3-gold-rail {
+      height: 0.32em;
+      background: linear-gradient(90deg, #b8860b 0%, #ffe885 50%, #b8860b 100%);
+    }
+    .cam-frame.style-3 .s3-top-bug {
+      position: absolute;
+      top: 0.55em;
+      right: 0.55em;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      gap: 0.45em;
+      background: rgba(10, 18, 36, 0.92);
+      border: 1.5px solid #f2c94c;
+      border-right: 4px solid var(--crimson);
+      padding: 0.22em 0.6em 0.22em 0.28em;
+      box-shadow: 0 0.25em 0.8em rgba(0, 0, 0, 0.8);
+    }
+    .cam-frame.style-3 .s3-bug-logo {
+      width: 1.9em; height: 1.9em; border-radius: 50%;
+      background: #fff; padding: 0.12em; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .cam-frame.style-3 .s3-bug-txt {
+      font-size: 0.78em; font-weight: 900; letter-spacing: 0.12em; color: #fff; text-transform: uppercase;
+    }
+    .cam-frame.style-3 .s3-tick {
+      position: absolute; width: 1.2em; height: 1.2em; z-index: 8; pointer-events: none;
+    }
+    .cam-frame.style-3 .s3-tick.tl { top: 0.45em; left: 0.45em; border-top: 2px solid #f2c94c; border-left: 2px solid #f2c94c; }
+    .cam-frame.style-3 .s3-tick.bl { bottom: 0.45em; left: 0.45em; border-bottom: 2px solid #f2c94c; border-left: 2px solid #f2c94c; }
+    .cam-frame.style-3 .s3-tick.br { bottom: 0.45em; right: 0.45em; border-bottom: 2px solid #f2c94c; border-right: 2px solid #f2c94c; }
+    .cam-frame.style-3 .s3-lower {
+      display: flex;
+      height: 2.15em;
+      background: #0a1224;
+      border-top: 2px solid #f2c94c;
+    }
+    .cam-frame.style-3 .s3-lower-gold {
+      background: linear-gradient(180deg, #ffe885 0%, #f2c94c 55%, #d49a18 100%);
+      color: #0a1224;
+      font-size: 0.96em;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      padding: 0 1.2em 0 0.75em;
+      clip-path: polygon(0 0, 100% 0, 88% 100%, 0 100%);
+      flex-shrink: 0;
+    }
+    .cam-frame.style-3 .s3-lower-navy {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0.75em 0 0.4em;
+      min-width: 0;
+    }
+    .cam-frame.style-3 .s3-btitle { font-size: 0.94em; font-weight: 900; letter-spacing: 0.06em; color: #fff; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cam-frame.style-3 .s3-bsub { font-size: 0.72em; font-weight: 800; letter-spacing: 0.08em; color: #f2c94c; text-transform: uppercase; white-space: nowrap; }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       STYLE 4: HARDWOOD STREET & EMBER GLOW (/cam4)
+       ════════════════════════════════════════════════════════════════════════ */
+    .cam-frame.style-4 {
+      filter: drop-shadow(0 0.9em 2.2em rgba(0, 0, 0, 0.92));
+    }
+    .cam-frame.style-4 .s4-box {
+      border: 2.5px solid var(--fire);
+      box-shadow: 0 0 18px rgba(232, 67, 10, 0.4), inset 0 0 12px rgba(255, 140, 0, 0.25);
+      background: transparent;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .cam-frame.style-4 .s4-crest {
+      position: absolute;
+      top: -0.55em;
+      left: -0.45em;
+      width: 3.1em;
+      height: 3.1em;
+      background: linear-gradient(145deg, #2a1810 0%, #080605 100%);
+      border: 2px solid var(--ember);
+      clip-path: polygon(16% 0%, 100% 0%, 100% 84%, 84% 100%, 0% 100%, 0% 16%);
+      box-shadow: 0 0 15px rgba(232, 67, 10, 0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.22em;
+      z-index: 20;
+    }
+    .cam-frame.style-4 .s4-top-tag {
+      position: absolute;
+      top: 0.55em;
+      right: 0.6em;
+      z-index: 12;
+      background: rgba(8, 6, 5, 0.88);
+      border-left: 3px solid var(--fire);
+      border-right: 1px solid rgba(255, 170, 0, 0.45);
+      padding: 0.2em 0.65em;
+      display: flex;
+      align-items: center;
+      gap: 0.4em;
+    }
+    .cam-frame.style-4 .s4-dot { width: 0.45em; height: 0.45em; border-radius: 50%; background: var(--fire); animation: pulseRed 1s infinite alternate; }
+    .cam-frame.style-4 .s4-top-txt { font-size: 0.85em; font-weight: 900; letter-spacing: 0.1em; color: #fff; text-transform: uppercase; }
+    .cam-frame.style-4 .s4-footer {
+      height: 2.25em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 0.85em;
+      background:
+        repeating-linear-gradient(-45deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 6px, transparent 6px, transparent 12px),
+        linear-gradient(90deg, #e8430a 0%, #9a2007 34%, #0f0a07 72%, #080605 100%);
+      border-top: 2px solid var(--gold);
+    }
+    .cam-frame.style-4 .s4-btitle { font-size: 1.05em; font-weight: 900; letter-spacing: 0.08em; color: #fff; text-transform: uppercase; text-shadow: 0 2px 4px rgba(0,0,0,0.85); }
+    .cam-frame.style-4 .s4-bsub { font-size: 0.78em; font-weight: 900; letter-spacing: 0.1em; color: var(--gold); text-transform: uppercase; }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       STYLE 5: MINIMALIST PRO VIEWFINDER HUD (/cam5)
+       Maximum transparent camera space + crisp floating glass HUD pills
+       ════════════════════════════════════════════════════════════════════════ */
+    .cam-frame.style-5 {
+      filter: drop-shadow(0 0.5em 1.4em rgba(0, 0, 0, 0.75));
+    }
+    .cam-frame.style-5 .s5-perimeter {
+      border: 1.5px solid rgba(255, 255, 255, 0.34);
+      box-shadow: inset 0 0 0 1px rgba(232, 67, 10, 0.45);
+      border-radius: 0.55em;
+      position: relative;
+      overflow: hidden;
+    }
+    .cam-frame.style-5 .s5-tick {
+      position: absolute; width: 1.35em; height: 1.35em; z-index: 8; pointer-events: none;
+    }
+    .cam-frame.style-5 .s5-tick.tl { top: 0.35em; left: 0.35em; border-top: 2px solid var(--gold); border-left: 2px solid var(--gold); }
+    .cam-frame.style-5 .s5-tick.tr { top: 0.35em; right: 0.35em; border-top: 2px solid #fff; border-right: 2px solid #fff; }
+    .cam-frame.style-5 .s5-tick.bl { bottom: 0.35em; left: 0.35em; border-bottom: 2px solid #fff; border-left: 2px solid #fff; }
+    .cam-frame.style-5 .s5-tick.br { bottom: 0.35em; right: 0.35em; border-bottom: 2px solid var(--gold); border-right: 2px solid var(--gold); }
+    .cam-frame.style-5 .s5-rec-pill {
+      position: absolute;
+      top: 0.74em;
+      left: 0.74em;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      gap: 0.42em;
+      background: rgba(8, 6, 5, 0.72);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 999px;
+      padding: 0.22em 0.68em 0.22em 0.32em;
+    }
+    .cam-frame.style-5 .s5-mini-logo {
+      width: 1.65em; height: 1.65em; border-radius: 50%;
+      background: #fff; display: flex; align-items: center; justify-content: center; padding: 0.1em; flex-shrink: 0;
+    }
+    .cam-frame.style-5 .s5-dot {
+      width: 0.44em; height: 0.44em; border-radius: 50%; background: #ff3b30; animation: pulseRed 1s infinite alternate;
+    }
+    .cam-frame.style-5 .s5-top-txt {
+      font-size: 0.82em; font-weight: 900; letter-spacing: 0.08em; color: #fff; text-transform: uppercase;
+    }
+    .cam-frame.style-5 .s5-bot-bar {
+      position: absolute;
+      bottom: 0.74em;
+      left: 0.74em;
+      right: 0.74em;
+      z-index: 12;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .cam-frame.style-5 .s5-glass-tag {
+      background: rgba(8, 6, 5, 0.76);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-left: 3px solid var(--fire);
+      border-radius: 0.35em;
+      padding: 0.24em 0.7em;
+      display: flex;
+      align-items: center;
+      gap: 0.48em;
+    }
+    .cam-frame.style-5 .s5-btitle { font-size: 0.88em; font-weight: 900; letter-spacing: 0.08em; color: #fff; text-transform: uppercase; }
+    .cam-frame.style-5 .s5-bsub { font-size: 0.74em; font-weight: 800; letter-spacing: 0.08em; color: var(--gold); text-transform: uppercase; }
+    .cam-frame.style-5 .s5-eq {
+      display: flex; align-items: flex-end; gap: 0.16em;
+      background: rgba(8, 6, 5, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 0.3em;
+      padding: 0.25em 0.42em;
+      height: 1.45em;
+    }
+    .cam-frame.style-5 .s5-eq span {
+      width: 0.2em; background: linear-gradient(180deg, var(--gold), var(--fire)); border-radius: 1px;
+      animation: eqDance 0.9s infinite ease-in-out alternate;
+    }
+    .cam-frame.style-5 .s5-eq span:nth-child(1) { height: 45%; animation-delay: 0s; }
+    .cam-frame.style-5 .s5-eq span:nth-child(2) { height: 95%; animation-delay: 0.2s; }
+    .cam-frame.style-5 .s5-eq span:nth-child(3) { height: 65%; animation-delay: 0.4s; }
+    .cam-frame.style-5 .s5-eq span:nth-child(4) { height: 85%; animation-delay: 0.15s; }
+    @keyframes eqDance {
+      0% { transform: scaleY(0.45); transform-origin: bottom; }
+      100% { transform: scaleY(1); transform-origin: bottom; }
+    }
+
+    /* ════════════════════════════════════════════════════════════════════════
+       ALL-5 GALLERY VIEW (?gallery=1 or Press G)
+       ════════════════════════════════════════════════════════════════════════ */
+    #gallery-stage {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(232, 67, 10, 0.16) 0%, transparent 65%),
+        linear-gradient(180deg, #0d0a08 0%, #070504 100%);
+      color: #f2ede8;
+      padding: 1.6vw 2.4vw;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow-y: auto;
+    }
+    body.gallery-mode #gallery-stage {
+      display: flex;
+    }
+    .gal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1vw;
+      padding-bottom: 0.75vw;
+      border-bottom: 1px solid rgba(255, 170, 0, 0.22);
+    }
+    .gal-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.9vw;
+    }
+    .gal-brand img {
+      height: 2.8vw;
+      width: auto;
+      object-fit: contain;
+    }
+    .gal-kicker {
+      font-size: 0.72vw;
+      font-weight: 800;
+      letter-spacing: 0.16vw;
+      color: var(--gold);
+      text-transform: uppercase;
+    }
+    .gal-title {
+      font-size: 1.75vw;
+      font-weight: 900;
+      letter-spacing: 0.04vw;
+      text-transform: uppercase;
+      color: #fff;
+      line-height: 1;
+    }
+    .gal-tip {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.78vw;
+      color: #bfb3a8;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 0.5vw;
+      padding: 0.45vw 0.85vw;
+    }
+    .gal-grid {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 1.15vw 2.1vw;
+      padding: 1.1vw 0 0.5vw;
+      flex: 1;
+    }
+    .gal-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.65vw;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 0.9vw;
+      padding: 1.1vw 1.15vw 0.8vw;
+      cursor: pointer;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .gal-item:hover {
+      transform: translateY(-2px);
+      border-color: var(--fire);
+      box-shadow: 0 12px 28px rgba(232, 67, 10, 0.18);
+    }
+    .gal-item .cam-frame {
+      width: 23.2vw;
+      font-size: 0.86vw;
+    }
+    .gal-meta {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8vw;
+      padding-top: 0.45vw;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .gal-name {
+      font-size: 1.05vw;
+      font-weight: 900;
+      letter-spacing: 0.04vw;
+      color: #fff;
+      text-transform: uppercase;
+    }
+    .gal-route {
+      font-family: monospace;
+      font-size: 0.82vw;
+      font-weight: 700;
+      color: var(--gold);
+      background: rgba(255, 170, 0, 0.12);
+      border: 1px solid rgba(255, 170, 0, 0.35);
+      padding: 0.15vw 0.55vw;
+      border-radius: 0.35vw;
+    }
+
+    /* ════ TOAST & HUD PANEL ════ */
+    #toast-alert {
+      position: fixed;
+      top: 1.5vw;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(13, 17, 23, 0.95);
+      border: 1.5px solid #ffaa00;
+      color: #ffffff;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      padding: 6px 18px;
+      border-radius: 9999px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.85);
+      opacity: 0;
+      pointer-events: none;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+      z-index: 99999;
+    }
+    #toast-alert.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    #hud-panel {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background: rgba(13, 17, 23, 0.96);
+      border: 1.5px solid #2a3040;
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 13px;
+      z-index: 9999;
+      display: none;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.85);
+      font-family: 'Barlow', sans-serif;
+      width: 320px;
+      max-height: 92vh;
+      overflow-y: auto;
+    }
+    #hud-panel.show { display: block; }
+    #hud-panel h4 {
+      margin-bottom: 4px;
+      color: #ffaa00;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 16px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    #hud-panel label {
+      display: block;
+      margin-top: 8px;
+      font-size: 11px;
+      color: #a0a5b5;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    #hud-panel input[type="text"],
+    #hud-panel input[type="range"],
+    #hud-panel select {
+      width: 100%;
+      background: #161b26;
+      border: 1px solid #3b4252;
+      color: #fff;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-top: 3px;
+    }
+    #hud-panel .check-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #e2e8f0;
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #hud-panel .btn-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    #hud-panel button {
+      flex: 1;
+      padding: 7px 8px;
+      border-radius: 6px;
+      border: none;
+      background: #e8430a;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    #hud-panel button.secondary { background: #1e293b; border: 1px solid #334155; }
+  </style>
+</head>
+<body>
+
+<!-- Optional Single-Style Preview Backdrop (?preview=1) -->
+<div id="preview-backdrop" aria-hidden="true">
+  <div class="pv-hint">
+    <div class="pv-kicker">Standalone Camera Frame Overlay (No Scoreboard)</div>
+    <div class="pv-title" id="pvStyleTitle">Style 1 · Fire &amp; Steel Arena Pro</div>
+    <div class="pv-sub">
+      Layer this above any OBS Camera + Scoreboard overlay. The inside window is <strong>100% transparent in OBS</strong>.
+      Press <strong>1–5</strong> to switch styles · <strong>G</strong> for all 5 side-by-side · <strong>F</strong> for Full-Box · <strong>H</strong> for HUD.
+    </div>
+  </div>
+</div>
+
+<!-- Single Camera Frame Stage (Default for /cam1 .. /cam5 and OBS) -->
+<div id="single-stage">
+  <div id="cam-anchor"></div>
+</div>
+
+<!-- 5-Style Showcase Gallery Stage (?gallery=1 or press G) -->
+<div id="gallery-stage">
+  <div class="gal-header">
+    <div class="gal-brand">
+      <img src="hoop-culture-logo2.png" alt="Hoop Culture" onerror="this.onerror=null;this.src='/hoop-culture-logo2.png';">
+      <div>
+        <div class="gal-kicker">OBS Browser Source Collection · No Scoreboard</div>
+        <div class="gal-title">5 Standalone Front-Facing Camera Overlays</div>
+      </div>
+    </div>
+    <div class="gal-tip">
+      Click any design to preview fullscreen or copy its route (<code>/cam1</code> – <code>/cam5</code>). Add <code>?aspect=9:16</code> for vertical phone cams or <code>?fit=full</code> to resize to OBS source bounds.
+    </div>
+  </div>
+  <div class="gal-grid" id="galGrid"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast-alert"></div>
+
+<!-- Customization HUD (Press H to toggle) -->
+<div id="hud-panel">
+  <h4>⚙ Camera Overlay Controls</h4>
+  <p style="font-size:11px;color:#8a95a8;margin-bottom:4px;">Keys: <strong>1–5</strong> Style · <strong>G</strong> Gallery · <strong>F</strong> Fit · <strong>H</strong> HUD</p>
+
+  <label>Overlay Style (1–5):</label>
+  <select id="hudStyle" onchange="setStyle(Number(this.value))">
+    <option value="1">1 · Fire &amp; Steel Arena Pro (/cam1)</option>
+    <option value="2">2 · Stadium Pill Chrome &amp; Gold (/cam2)</option>
+    <option value="3">3 · Network Gold &amp; Crimson (/cam3)</option>
+    <option value="4">4 · Hardwood Street &amp; Ember (/cam4)</option>
+    <option value="5">5 · Minimalist Pro Viewfinder (/cam5)</option>
+  </select>
+
+  <label>Camera Aspect Ratio:</label>
+  <select id="hudAspect" onchange="setAspect(this.value)">
+    <option value="16:9">16:9 Widescreen Cam</option>
+    <option value="4:3">4:3 Classic Cam</option>
+    <option value="1:1">1:1 Square Box</option>
+    <option value="9:16">9:16 Vertical Phone Cam</option>
+  </select>
+
+  <label>Screen Corner Position:</label>
+  <select id="hudPos" onchange="setPos(this.value)">
+    <option value="br">Bottom Right (Alongside Scoreboard)</option>
+    <option value="bl">Bottom Left</option>
+    <option value="tr">Top Right</option>
+    <option value="tl">Top Left</option>
+  </select>
+
+  <label>Scale:</label>
+  <input type="range" id="hudScale" min="0.6" max="1.6" step="0.05" value="1.0" oninput="setScale(this.value)">
+
+  <label>Top Camera Label:</label>
+  <input type="text" id="hudTopLabel" value="COURTSIDE CAM" oninput="updateTextLabels()">
+
+  <label>Bottom Primary Label:</label>
+  <input type="text" id="hudBotLabel" value="HOOP CULTURE" oninput="updateTextLabels()">
+
+  <label>Bottom Sub-Tag:</label>
+  <input type="text" id="hudSubLabel" value="LIVE BROADCAST" oninput="updateTextLabels()">
+
+  <label class="check-row">
+    <input type="checkbox" id="hudFitFull" onchange="setFitFull(this.checked)">
+    Fill Entire OBS Browser Source (?fit=full)
+  </label>
+  <label class="check-row">
+    <input type="checkbox" id="hudShowLabels" checked onchange="toggleLabels(this.checked)">
+    Show Bottom Nameplate Bar
+  </label>
+  <label class="check-row">
+    <input type="checkbox" id="hudMirrorWebcam" onchange="toggleMirror(this.checked)">
+    Mirror Browser Webcam (Selfie Flip)
+  </label>
+  <label class="check-row">
+    <input type="checkbox" id="hudPreviewMode" onchange="togglePreviewMode(this.checked)">
+    Preview Simulated Camera Window
+  </label>
+
+  <div class="btn-row">
+    <button onclick="toggleWebcam()" id="hudWebcamBtn">📷 Test Webcam</button>
+    <button class="secondary" onclick="toggleGallery()">⊞ 5-Up Gallery</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+function gP(n) { return new URLSearchParams(window.location.search).get(n); }
+function $(id) { return document.getElementById(id); }
+
+const STYLE_META = {
+  1: { name: 'Fire & Steel Arena Pro', route: '/cam1', desc: 'Beveled obsidian steel, orange/cyan rails & reticle corners' },
+  2: { name: 'Stadium Pill Chrome & Gold', route: '/cam2', desc: 'Rounded chrome capsule & floating pill lower-third matching /scripps' },
+  3: { name: 'Network Gold & Crimson', route: '/cam3', desc: 'Prime-time TV sports gold/navy frame & split nameplate banner' },
+  4: { name: 'Hardwood Street & Ember', route: '/cam4', desc: 'Clipped crest corner shield, fire glow & textured court banner' },
+  5: { name: 'Minimalist Pro Viewfinder', route: '/cam5', desc: 'Ultra-thin border, corner ticks, REC glass pill & live VU bars' }
+};
+
+function detectInitialStyle() {
+  const qStyle = parseInt(gP('style') || gP('theme') || '', 10);
+  if (qStyle >= 1 && qStyle <= 5) return qStyle;
+  const pathMatch = (window.location.pathname || '').match(/\/cam([1-5])\/?$/i);
+  if (pathMatch) return parseInt(pathMatch[1], 10);
+  return 1;
+}
+
+let state = {
+  style: detectInitialStyle(),
+  aspect: gP('aspect') || '16:9',
+  pos: (gP('pos') || 'br').toLowerCase(),
+  scale: parseFloat(gP('scale') || '1.0') || 1.0,
+  fitFull: gP('fit') === 'full',
+  showLabels: gP('labels') !== '0',
+  preview: gP('preview') === '1',
+  gallery: gP('gallery') === '1',
+  mirror: gP('mirror') === '1',
+  topText: (gP('top') || gP('toptext') || 'COURTSIDE CAM').toUpperCase(),
+  botText: (gP('bottom') || gP('bottomtext') || 'HOOP CULTURE').toUpperCase(),
+  subText: (gP('sub') || gP('subtext') || 'LIVE BROADCAST').toUpperCase()
+};
+
+let webcamStream = null;
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function buildCutoutInnerHtml(idSuffix, extraOverlayHtml) {
+  return `
+    <div class="cam-cutout">
+      <video id="camWebcamVideo${idSuffix}" class="cam-webcam-video${state.mirror ? ' mirrored' : ''}" autoplay playsinline muted></video>
+      <div class="cam-sim-interior" id="camSim${idSuffix}">
+        <div class="sim-cutout-tag">TRANSPARENT CAMERA WINDOW IN OBS</div>
+        <div class="sim-sil">
+          <div class="sim-head"></div>
+          <div class="sim-body"><div class="sim-mic"></div></div>
+        </div>
+      </div>
+      ${extraOverlayHtml || ''}
+    </div>
+  `;
+}
+
+function renderCamFrameMarkup(styleNum, idSuffix) {
+  const top = escHtml(state.topText);
+  const bot = escHtml(state.botText);
+  const sub = escHtml(state.subText);
+  const hideCls = state.showLabels ? '' : ' hide-labels';
+  const logoTag = `<img src="hoop-culture-logo2.png" alt="Hoop Culture" class="hc-logo-img" onerror="this.onerror=null;this.src='/hoop-culture-logo2.png';">`;
+
+  if (styleNum === 1) {
+    const corners = `<div class="s1-c tl"></div><div class="s1-c tr"></div><div class="s1-c bl"></div><div class="s1-c br"></div>`;
+    return `
+      <div class="cam-frame style-1${hideCls}">
+        <div class="s1-hdr">
+          <div class="s1-medallion"><div class="s1-medallion-in">${logoTag}</div></div>
+          <div style="display:flex;align-items:center;gap:0.4em;min-width:0;">
+            <span class="s1-kicker">HC CAM</span>
+            <span class="s1-title" data-role="top">${top}</span>
+          </div>
+          <span class="s1-live"><span class="s1-dot"></span>LIVE</span>
+        </div>
+        <div class="cam-middle">
+          <div class="s1-rail-l"></div>
+          ${buildCutoutInnerHtml(idSuffix, corners)}
+          <div class="s1-rail-r"></div>
+        </div>
+        <div class="s1-ftr c-foot-hideable">
+          <span class="s1-btitle" data-role="bot">${bot}</span>
+          <span class="s1-bsub" data-role="sub">${sub}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  if (styleNum === 2) {
+    return `
+      <div class="cam-frame style-2${hideCls}">
+        <div class="s2-shell">
+          <div class="s2-top-pill">
+            <div class="s2-live-grp"><span class="s2-dot"></span><span class="s2-live">LIVE</span></div>
+            <span class="s2-title" data-role="top">${top}</span>
+            <div class="s2-medallion"><div class="s2-medallion-in">${logoTag}</div></div>
+          </div>
+          <div class="cam-middle">${buildCutoutInnerHtml(idSuffix, '')}</div>
+          <div class="s2-bot-pill c-foot-hideable">
+            <span class="s2-btitle" data-role="bot">${bot}</span>
+            <span class="s2-sep">·</span>
+            <span class="s2-bsub" data-role="sub">${sub}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (styleNum === 3) {
+    const innerBugAndTicks = `
+      <div class="s3-tick tl"></div><div class="s3-tick bl"></div><div class="s3-tick br"></div>
+      <div class="s3-top-bug">
+        <div class="s3-bug-logo">${logoTag}</div>
+        <span class="s3-bug-txt">LIVE CAM</span>
+      </div>
+    `;
+    return `
+      <div class="cam-frame style-3${hideCls}">
+        <div class="s3-wrap">
+          <div class="s3-gold-rail"></div>
+          <div class="cam-middle">${buildCutoutInnerHtml(idSuffix, innerBugAndTicks)}</div>
+          <div class="s3-lower c-foot-hideable">
+            <div class="s3-lower-gold" data-role="top">${top}</div>
+            <div class="s3-lower-navy">
+              <span class="s3-btitle" data-role="bot">${bot}</span>
+              <span class="s3-bsub" data-role="sub">${sub}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (styleNum === 4) {
+    const innerTopTag = `
+      <div class="s4-top-tag">
+        <span class="s4-dot"></span>
+        <span class="s4-top-txt" data-role="top">${top}</span>
+      </div>
+    `;
+    return `
+      <div class="cam-frame style-4${hideCls}">
+        <div class="s4-box">
+          <div class="s4-crest">${logoTag}</div>
+          <div class="cam-middle">${buildCutoutInnerHtml(idSuffix, innerTopTag)}</div>
+          <div class="s4-footer c-foot-hideable">
+            <span class="s4-btitle" data-role="bot">${bot}</span>
+            <span class="s4-bsub" data-role="sub">${sub}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Style 5: Minimalist Pro Viewfinder HUD
+  const hudInner = `
+    <div class="s5-tick tl"></div><div class="s5-tick tr"></div><div class="s5-tick bl"></div><div class="s5-tick br"></div>
+    <div class="s5-rec-pill">
+      <div class="s5-mini-logo">${logoTag}</div>
+      <span class="s5-dot"></span>
+      <span class="s5-top-txt" data-role="top">${top}</span>
+    </div>
+    <div class="s5-bot-bar c-foot-hideable">
+      <div class="s5-glass-tag">
+        <span class="s5-btitle" data-role="bot">${bot}</span>
+        <span class="s5-bsub" data-role="sub">${sub}</span>
+      </div>
+      <div class="s5-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    </div>
+  `;
+  return `
+    <div class="cam-frame style-5${hideCls}">
+      <div class="s5-perimeter">
+        <div class="cam-middle">${buildCutoutInnerHtml(idSuffix, hudInner)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSingleStage() {
+  const anchor = $('cam-anchor');
+  if (!anchor) return;
+  anchor.innerHTML = renderCamFrameMarkup(state.style, 'Main');
+  const meta = STYLE_META[state.style] || STYLE_META[1];
+  const pvTitle = $('pvStyleTitle');
+  if (pvTitle) pvTitle.textContent = `Style ${state.style} · ${meta.name} (${meta.route})`;
+  applyAnchorGeometry();
+  rebindWebcamIfActive();
+}
+
+function renderGalleryStage() {
+  const grid = $('galGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  [1, 2, 3, 4, 5].forEach(num => {
+    const meta = STYLE_META[num];
+    const card = document.createElement('div');
+    card.className = 'gal-item';
+    card.onclick = () => {
+      state.gallery = false;
+      state.preview = true;
+      state.style = num;
+      syncUIState();
+      renderAllViews();
+      showToast(`Selected Style ${num}: ${meta.name}`);
+    };
+    card.innerHTML = `
+      ${renderCamFrameMarkup(num, 'Gal' + num)}
+      <div class="gal-meta">
+        <div>
+          <div class="gal-name">Style ${num} · ${meta.name}</div>
+          <div style="font-family:Barlow,sans-serif;font-size:0.72vw;color:#9c8f84;margin-top:2px;">${meta.desc}</div>
+        </div>
+        <span class="gal-route">${meta.route}</span>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function applyAspectRatioCss() {
+  const root = document.documentElement;
+  if (state.aspect === '4:3') {
+    root.style.setProperty('--cam-aspect', '4 / 3');
+    root.style.setProperty('--cam-width', '22vw');
+  } else if (state.aspect === '1:1') {
+    root.style.setProperty('--cam-aspect', '1 / 1');
+    root.style.setProperty('--cam-width', '18vw');
+  } else if (state.aspect === '9:16') {
+    root.style.setProperty('--cam-aspect', '9 / 16');
+    root.style.setProperty('--cam-width', '13.8vw');
+  } else {
+    root.style.setProperty('--cam-aspect', '16 / 9');
+    root.style.setProperty('--cam-width', '24.5vw');
+  }
+}
+
+function applyAnchorGeometry() {
+  const anchor = $('cam-anchor');
+  if (!anchor) return;
+  document.body.classList.toggle('fit-full', !!state.fitFull);
+  if (state.fitFull) return;
+
+  const p = state.pos;
+  if (p === 'bl') {
+    anchor.style.top = 'auto'; anchor.style.right = 'auto';
+    anchor.style.bottom = '2.2vw'; anchor.style.left = '2.2vw';
+    anchor.style.transformOrigin = 'bottom left';
+  } else if (p === 'tr') {
+    anchor.style.bottom = 'auto'; anchor.style.left = 'auto';
+    anchor.style.top = '2.2vw'; anchor.style.right = '2.2vw';
+    anchor.style.transformOrigin = 'top right';
+  } else if (p === 'tl') {
+    anchor.style.bottom = 'auto'; anchor.style.right = 'auto';
+    anchor.style.top = '2.2vw'; anchor.style.left = '2.2vw';
+    anchor.style.transformOrigin = 'top left';
+  } else {
+    anchor.style.top = 'auto'; anchor.style.left = 'auto';
+    anchor.style.bottom = '2.2vw'; anchor.style.right = '2.2vw';
+    anchor.style.transformOrigin = 'bottom right';
+  }
+  anchor.style.transform = state.scale !== 1.0 ? `scale(${state.scale})` : 'none';
+}
+
+function rebindWebcamIfActive() {
+  const vid = $('camWebcamVideoMain');
+  const sim = $('camSimMain');
+  if (webcamStream && vid) {
+    vid.srcObject = webcamStream;
+    vid.classList.add('active');
+    vid.classList.toggle('mirrored', !!state.mirror);
+    if (sim) sim.classList.add('webcam-running');
+  }
+}
+
+function renderAllViews() {
+  document.body.classList.toggle('preview-mode', !!state.preview);
+  document.body.classList.toggle('gallery-mode', !!state.gallery);
+  applyAspectRatioCss();
+  if (state.gallery) renderGalleryStage();
+  else renderSingleStage();
+}
+
+function syncUIState() {
+  if ($('hudStyle')) $('hudStyle').value = String(state.style);
+  if ($('hudAspect')) $('hudAspect').value = state.aspect;
+  if ($('hudPos')) $('hudPos').value = state.pos;
+  if ($('hudScale')) $('hudScale').value = String(state.scale);
+  if ($('hudTopLabel')) $('hudTopLabel').value = state.topText;
+  if ($('hudBotLabel')) $('hudBotLabel').value = state.botText;
+  if ($('hudSubLabel')) $('hudSubLabel').value = state.subText;
+  if ($('hudFitFull')) $('hudFitFull').checked = !!state.fitFull;
+  if ($('hudShowLabels')) $('hudShowLabels').checked = !!state.showLabels;
+  if ($('hudMirrorWebcam')) $('hudMirrorWebcam').checked = !!state.mirror;
+  if ($('hudPreviewMode')) $('hudPreviewMode').checked = !!state.preview;
+}
+
+/* ══ INTERACTIVE CONTROLS ══ */
+function setStyle(num) {
+  state.style = (num >= 1 && num <= 5) ? num : 1;
+  syncUIState();
+  renderAllViews();
+  showToast(`Style ${state.style}: ${STYLE_META[state.style].name}`);
+}
+
+function setAspect(val) {
+  state.aspect = val || '16:9';
+  renderAllViews();
+}
+
+function setPos(val) {
+  state.pos = val || 'br';
+  applyAnchorGeometry();
+}
+
+function setScale(val) {
+  const parsed = parseFloat(val);
+  state.scale = isNaN(parsed) ? 1.0 : parsed;
+  applyAnchorGeometry();
+}
+
+function setFitFull(enabled) {
+  state.fitFull = !!enabled;
+  applyAnchorGeometry();
+}
+
+function toggleLabels(show) {
+  state.showLabels = !!show;
+  document.querySelectorAll('.cam-frame').forEach(el => el.classList.toggle('hide-labels', !state.showLabels));
+}
+
+function updateTextLabels() {
+  state.topText = (($('hudTopLabel') && $('hudTopLabel').value) || '').trim().toUpperCase() || 'COURTSIDE CAM';
+  state.botText = (($('hudBotLabel') && $('hudBotLabel').value) || '').trim().toUpperCase() || 'HOOP CULTURE';
+  state.subText = (($('hudSubLabel') && $('hudSubLabel').value) || '').trim().toUpperCase();
+  document.querySelectorAll('[data-role="top"]').forEach(el => { el.textContent = state.topText; });
+  document.querySelectorAll('[data-role="bot"]').forEach(el => { el.textContent = state.botText; });
+  document.querySelectorAll('[data-role="sub"]').forEach(el => { el.textContent = state.subText; });
+}
+
+function toggleMirror(mirrored) {
+  state.mirror = !!mirrored;
+  document.querySelectorAll('.cam-webcam-video').forEach(v => v.classList.toggle('mirrored', state.mirror));
+}
+
+function togglePreviewMode(enabled) {
+  state.preview = !!enabled;
+  document.body.classList.toggle('preview-mode', state.preview);
+}
+
+function toggleGallery() {
+  state.gallery = !state.gallery;
+  renderAllViews();
+}
+
+async function toggleWebcam() {
+  const btn = $('hudWebcamBtn');
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(t => t.stop());
+    webcamStream = null;
+    document.querySelectorAll('.cam-webcam-video').forEach(v => { v.srcObject = null; v.classList.remove('active'); });
+    document.querySelectorAll('.cam-sim-interior').forEach(s => s.classList.remove('webcam-running'));
+    if (btn) btn.textContent = '📷 Test Webcam';
+    showToast('📷 Webcam Off (Transparent Cutout Active)');
+    return;
+  }
+  try {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast('Webcam API requires HTTPS or localhost');
+      return;
+    }
+    webcamStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    rebindWebcamIfActive();
+    if (btn) btn.textContent = '⏹ Stop Webcam';
+    showToast('📷 Front Camera Feed Active');
+  } catch (err) {
+    showToast('Camera error: ' + (err.message || 'Permission denied'));
+  }
+}
+
+let toastTimer = null;
+function showToast(msg) {
+  const t = $('toast-alert');
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+window.addEventListener('keydown', (e) => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
+  if (e.key >= '1' && e.key <= '5') {
+    state.gallery = false;
+    setStyle(parseInt(e.key, 10));
+  } else if (e.key === 'g' || e.key === 'G') {
+    toggleGallery();
+  } else if (e.key === 'f' || e.key === 'F') {
+    state.fitFull = !state.fitFull;
+    syncUIState();
+    applyAnchorGeometry();
+    showToast(state.fitFull ? '⛶ Full OBS Source Bounds Mode' : '↘ Corner Overlay Mode');
+  } else if (e.key === 'h' || e.key === 'H') {
+    const hud = $('hud-panel');
+    if (hud) hud.classList.toggle('show');
+  }
+});
+
+// Initialize
+syncUIState();
+renderAllViews();
+if (gP('webcam') === '1') toggleWebcam();
+</script>
+</body>
+</html>

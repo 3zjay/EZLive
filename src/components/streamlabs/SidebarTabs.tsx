@@ -13,9 +13,7 @@ import {
   EyeOff,
   Trash2,
   Settings2,
-  Play,
-  Pause,
-  RotateCcw,
+  ExternalLink,
   X,
   Lock,
   Unlock,
@@ -59,8 +57,9 @@ interface SidebarTabsProps {
   onOpenSourceProperties: (id: string) => void;
 
   // Scoreboard
-  scoreboard: ScoreboardState;
-  onChangeScoreboard: (update: Partial<ScoreboardState>) => void;
+  scoreboard?: ScoreboardState;
+  onChangeScoreboard?: (update: Partial<ScoreboardState>) => void;
+  sessionUser?: string;
   onTriggerInstantReplay?: () => void;
 
   // Audio Mixer
@@ -97,8 +96,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   onToggleSourceLock,
   onMoveSourceOrder,
   onOpenSourceProperties,
-  scoreboard,
-  onChangeScoreboard,
+  sessionUser,
   onTriggerInstantReplay,
   micVolume,
   micMuted,
@@ -107,6 +105,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'chat' | 'ticker' | 'brand' | 'obs' | 'scoreboard' | 'mixer'>('scoreboard');
+  const [scoreboardSubMode, setScoreboardSubMode] = useState<'control' | 'shotclock' | 'camera'>('control');
   const [chatInputText, setChatInputText] = useState('');
   const [chatPlatform, setChatPlatform] = useState<'youtube' | 'facebook'>('youtube');
   const [bannerTitle, setBannerTitle] = useState('HOOP CULTURE CHAMPIONSHIPS');
@@ -136,8 +135,18 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
     }
   };
 
+  const activeUser =
+    sessionUser ||
+    (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) ||
+    'isidro.pascua@gmail.com';
+  const embeddedBoardUrl =
+    scoreboardSubMode === 'camera'
+      ? `/overlays/camera.html?user=${encodeURIComponent(activeUser)}`
+      : `/overlays/${scoreboardSubMode}.html?user=${encodeURIComponent(activeUser)}&embed=1`;
+  const popOutBoardUrl = `/overlays/${scoreboardSubMode}.html?user=${encodeURIComponent(activeUser)}`;
+
   return (
-    <div className="w-full md:w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full text-xs select-none z-20">
+    <div className="w-full bg-slate-900 border-l border-slate-800 flex flex-col h-full text-xs select-none z-20">
       {/* Streamlabs Tab Navigation Icons */}
       <div className="flex items-center justify-between bg-slate-950 border-b border-slate-800 px-1 py-1 overflow-x-auto">
         <button
@@ -230,7 +239,13 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
       </div>
 
       {/* --- TAB CONTENT BODY --- */}
-      <div className="flex-1 overflow-y-auto p-3 text-slate-200">
+      <div
+        className={
+          activeTab === 'scoreboard'
+            ? 'flex-1 flex flex-col overflow-hidden p-1.5 text-slate-200'
+            : 'flex-1 overflow-y-auto p-3 text-slate-200'
+        }
+      >
         {/* 1. CHAT & SHOW ON STREAM */}
         {activeTab === 'chat' && (
           <div className="h-full flex flex-col justify-between space-y-3">
@@ -656,271 +671,71 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
           </div>
         )}
 
-        {/* 5. BASKETBALL SCOREBOARD OPERATOR */}
+        {/* 5. INTEGRATED HOOP CULTURE SCOREBOARD SUITE */}
         {activeTab === 'scoreboard' && (
-          <div className="space-y-3">
-            {/* Away & Home Score Cards */}
-            <div className="grid grid-cols-2 gap-2">
-              {/* Away */}
-              <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
-                <input
-                  type="text"
-                  value={scoreboard.awayTeam}
-                  onChange={(e) => onChangeScoreboard({ awayTeam: e.target.value })}
-                  className="w-full bg-transparent text-center font-black text-xs text-slate-300 uppercase focus:outline-none mb-1"
-                />
-                <div className="text-3xl font-black text-sky-400 font-mono mb-2">{scoreboard.awayScore}</div>
-                <div className="flex justify-center gap-1">
-                  <button
-                    onClick={() => onChangeScoreboard({ awayScore: scoreboard.awayScore + 1 })}
-                    className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 rounded font-black text-white"
-                  >
-                    +1
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ awayScore: scoreboard.awayScore + 2 })}
-                    className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 rounded font-black text-white"
-                  >
-                    +2
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ awayScore: scoreboard.awayScore + 3 })}
-                    className="flex-1 py-1.5 bg-sky-600 hover:bg-sky-500 rounded font-black text-white"
-                  >
-                    +3
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ awayScore: Math.max(0, scoreboard.awayScore - 1) })}
-                    className="px-2 py-1.5 bg-slate-800 rounded font-bold text-slate-400"
-                  >
-                    -1
-                  </button>
-                </div>
-                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/80 text-[10px]">
-                  <span className="text-slate-400 font-bold">FOULS</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onChangeScoreboard({ awayFouls: Math.max(0, (scoreboard.awayFouls || 0) - 1) })}
-                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold"
-                    >
-                      -
-                    </button>
-                    <span className="font-mono font-black text-sky-300 w-4 text-center">{scoreboard.awayFouls || 0}</span>
-                    <button
-                      onClick={() => onChangeScoreboard({ awayFouls: (scoreboard.awayFouls || 0) + 1 })}
-                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-sky-300 font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Home */}
-              <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
-                <input
-                  type="text"
-                  value={scoreboard.homeTeam}
-                  onChange={(e) => onChangeScoreboard({ homeTeam: e.target.value })}
-                  className="w-full bg-transparent text-center font-black text-xs text-slate-300 uppercase focus:outline-none mb-1"
-                />
-                <div className="text-3xl font-black text-[#ff6b1a] font-mono mb-2">{scoreboard.homeScore}</div>
-                <div className="flex justify-center gap-1">
-                  <button
-                    onClick={() => onChangeScoreboard({ homeScore: scoreboard.homeScore + 1 })}
-                    className="flex-1 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] rounded font-black text-white"
-                  >
-                    +1
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ homeScore: scoreboard.homeScore + 2 })}
-                    className="flex-1 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] rounded font-black text-white"
-                  >
-                    +2
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ homeScore: scoreboard.homeScore + 3 })}
-                    className="flex-1 py-1.5 bg-[#e8430a] hover:bg-[#ff6b1a] rounded font-black text-white"
-                  >
-                    +3
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ homeScore: Math.max(0, scoreboard.homeScore - 1) })}
-                    className="px-2 py-1.5 bg-slate-800 rounded font-bold text-slate-400"
-                  >
-                    -1
-                  </button>
-                </div>
-                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800/80 text-[10px]">
-                  <span className="text-slate-400 font-bold">FOULS</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => onChangeScoreboard({ homeFouls: Math.max(0, (scoreboard.homeFouls || 0) - 1) })}
-                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold"
-                    >
-                      -
-                    </button>
-                    <span className="font-mono font-black text-orange-300 w-4 text-center">{scoreboard.homeFouls || 0}</span>
-                    <button
-                      onClick={() => onChangeScoreboard({ homeFouls: (scoreboard.homeFouls || 0) + 1 })}
-                      className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-orange-300 font-bold"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Game Clock & Shot Clock Controls */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
-              <div className="flex items-center justify-between">
+          <div className="flex-1 min-h-0 flex flex-col gap-1.5 h-full">
+            <div className="flex items-center justify-between gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
+              <div className="flex items-center gap-1 flex-1 min-w-0">
                 <button
-                  onClick={() => onChangeScoreboard({ isClockRunning: !scoreboard.isClockRunning })}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold transition shadow ${
-                    scoreboard.isClockRunning
-                      ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  type="button"
+                  onClick={() => setScoreboardSubMode('control')}
+                  className={`flex-1 py-1.5 px-1.5 rounded-lg font-black text-[10px] whitespace-nowrap transition ${
+                    scoreboardSubMode === 'control'
+                      ? 'bg-[#e8430a] text-white shadow'
+                      : 'bg-slate-900 text-slate-400 hover:text-white'
                   }`}
                 >
-                  {scoreboard.isClockRunning ? <Pause size={14} /> : <Play size={14} />}
-                  <span>{scoreboard.isClockRunning ? 'Stop Clock' : 'Start Clock'}</span>
+                  🏀 Board
                 </button>
-
-                <div className="text-center">
-                  <div className="text-[9px] text-slate-400 uppercase font-bold">Game Clock</div>
-                  <input
-                    type="text"
-                    value={scoreboard.gameClock}
-                    onChange={(e) => onChangeScoreboard({ gameClock: e.target.value })}
-                    className="w-20 bg-transparent text-center font-mono font-black text-xl text-white focus:outline-none"
-                  />
-                </div>
-
                 <button
-                  onClick={() => onChangeScoreboard({ gameClock: '10:00', shotClock: 24, isClockRunning: false })}
-                  className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
-                  title="Reset Game Clock to 10:00"
+                  type="button"
+                  onClick={() => setScoreboardSubMode('shotclock')}
+                  className={`flex-1 py-1.5 px-1.5 rounded-lg font-black text-[10px] whitespace-nowrap transition ${
+                    scoreboardSubMode === 'shotclock'
+                      ? 'bg-[#e8430a] text-white shadow'
+                      : 'bg-slate-900 text-slate-400 hover:text-white'
+                  }`}
                 >
-                  <RotateCcw size={15} />
+                  ⏱️ Shot Clock
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScoreboardSubMode('camera')}
+                  className={`flex-1 py-1.5 px-1.5 rounded-lg font-black text-[10px] whitespace-nowrap transition ${
+                    scoreboardSubMode === 'camera'
+                      ? 'bg-[#e8430a] text-white shadow'
+                      : 'bg-slate-900 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  📷 AI Scan
                 </button>
               </div>
-
-              {/* Shot Clock Row (:24 / :14) */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase text-slate-400">Shot Clock</span>
-                  <span
-                    className={`font-mono font-black text-lg px-2 py-0.5 rounded border ${
-                      scoreboard.shotClock <= 5
-                        ? 'bg-rose-950 text-rose-400 border-rose-700'
-                        : 'bg-slate-900 text-amber-400 border-slate-800'
-                    }`}
-                  >
-                    :{scoreboard.shotClock.toString().padStart(2, '0')}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => onChangeScoreboard({ shotClock: 24 })}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black rounded-lg text-xs border border-slate-700"
-                  >
-                    Reset :24
-                  </button>
-                  <button
-                    onClick={() => onChangeScoreboard({ shotClock: 14 })}
-                    className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-black rounded-lg text-xs border border-slate-700"
-                  >
-                    Reset :14
-                  </button>
-                </div>
-              </div>
+              <a
+                href={popOutBoardUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="p-1.5 bg-slate-900 hover:bg-slate-800 text-sky-400 rounded-lg border border-slate-800 shrink-0 transition"
+                title="Pop out full Scoreboard Controller in new tab"
+              >
+                <ExternalLink size={12} />
+              </a>
             </div>
 
-            {/* Period (Q1-Q4/OT) & Possession Arrow */}
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase text-slate-400">Quarter / Period</span>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => onChangeScoreboard({ period: q })}
-                      className={`px-2.5 py-1 rounded-lg font-black text-[10px] transition ${
-                        scoreboard.period === q
-                          ? 'bg-[#e8430a] text-white'
-                          : 'bg-slate-900 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {q === 5 ? 'OT' : `Q${q}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-                <span className="text-[10px] font-black uppercase text-slate-400">Possession</span>
-                <div className="flex gap-1">
-                  {(['away', 'none', 'home'] as const).map((pos) => (
-                    <button
-                      key={pos}
-                      onClick={() => onChangeScoreboard({ possession: pos })}
-                      className={`px-2.5 py-1 rounded-lg font-bold text-[10px] uppercase transition ${
-                        scoreboard.possession === pos
-                          ? 'bg-amber-600 text-white'
-                          : 'bg-slate-900 text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      {pos === 'away' ? `◀ ${scoreboard.awayTeam.slice(0, 3)}` : pos === 'home' ? `${scoreboard.homeTeam.slice(0, 3)} ▶` : 'Neutral'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Broadcast & Venue Labels (for Stadium Pill, NBC, Fullscreen Overlays) */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
-                <div>
-                  <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Broadcast</label>
-                  <input
-                    type="text"
-                    value={scoreboard.rp1Value ?? scoreboard.broadcast ?? ''}
-                    placeholder="Facebook"
-                    onChange={(e) =>
-                      onChangeScoreboard({
-                        rp1Title: scoreboard.rp1Title || 'BROADCAST',
-                        rp1Value: e.target.value,
-                        broadcast: e.target.value,
-                      })
-                    }
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-[#ff6b1a]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[9px] font-black uppercase text-slate-400 mb-1">Venue</label>
-                  <input
-                    type="text"
-                    value={scoreboard.rp2Value ?? scoreboard.venue ?? ''}
-                    placeholder="Audley"
-                    onChange={(e) =>
-                      onChangeScoreboard({
-                        rp2Title: scoreboard.rp2Title || 'VENUE',
-                        rp2Value: e.target.value,
-                        venue: e.target.value,
-                      })
-                    }
-                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-200 focus:outline-none focus:border-[#ff6b1a]"
-                  />
-                </div>
-              </div>
-            </div>
+            <iframe
+              key={`${scoreboardSubMode}-${activeUser}`}
+              src={embeddedBoardUrl}
+              className="flex-1 w-full h-full min-h-[420px] rounded-xl border border-[#2a1e14] bg-[#0d1117]"
+              allow="camera; microphone; autoplay; clipboard-read; clipboard-write"
+              title="Hoop Culture Scoreboard Controller"
+            />
 
             {/* Instant Replay Trigger Button */}
             {onTriggerInstantReplay && (
               <button
                 onClick={onTriggerInstantReplay}
-                className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-[#e8430a] hover:from-amber-500 hover:to-[#ff6b1a] text-white font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2 shadow-lg transition active:scale-98"
+                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-[#e8430a] hover:from-amber-500 hover:to-[#ff6b1a] text-white font-black uppercase tracking-wider text-[11px] flex items-center justify-center gap-2 shadow-lg transition active:scale-98 shrink-0"
               >
-                <Zap size={14} />
+                <Zap size={13} />
                 <span>Play 10s Slow-Mo Instant Replay</span>
               </button>
             )}

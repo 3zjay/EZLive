@@ -1,0 +1,2524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    // Global Storage Shield — prevents WebKit SecurityError exceptions on blocked localStorage/sessionStorage
+    (function() {
+      try {
+        localStorage.setItem('__test_ls__', '1');
+        localStorage.removeItem('__test_ls__');
+      } catch (e) {
+        console.warn("localStorage is blocked. Injecting in-memory fallback.");
+        var store = {};
+        Object.defineProperty(window, 'localStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+      try {
+        sessionStorage.setItem('__test_ss__', '1');
+        sessionStorage.removeItem('__test_ss__');
+      } catch (e) {
+        console.warn("sessionStorage is blocked. Injecting in-memory fallback.");
+        var store = {};
+        Object.defineProperty(window, 'sessionStorage', {
+          value: {
+            getItem: function(k) { return store[k] === undefined ? null : store[k]; },
+            setItem: function(k, v) { store[k] = String(v); },
+            removeItem: function(k) { delete store[k]; },
+            clear: function() { store = {}; },
+            key: function(i) { return Object.keys(store)[i] || null; },
+            get length() { return Object.keys(store).length; }
+          },
+          configurable: true, writable: true
+        });
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Scanner">
+  <meta name="theme-color" content="#080605">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png">
+  <title>Hoop Culture — Optical Bridge Scanner</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;900&family=Barlow:wght@400;600&display=swap" rel="stylesheet"/>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script src="/overlays/firebase-config.js"></script>
+  <style>
+    :root {
+      --bg: #080605;
+      --orange: #e8430a;
+      --orange2: #ff6b1a;
+      --white: #f2ede8;
+      --grey: #a09080;
+      --border: #2a1e14;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--white);
+      font-family: 'Barlow', sans-serif;
+    }
+
+    #video-container {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      background: #000;
+    }
+
+    #camera-view {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* SVG overlay for drag boxes */
+    #overlay-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      pointer-events: none;
+    }
+
+    .crop-frame {
+      position: absolute;
+      z-index: 10;
+      border: 2px dashed #000;
+      box-shadow: 0 0 0 1px #fff;
+      border-radius: 4px;
+      cursor: move;
+      touch-action: none;
+      background: rgba(255, 255, 255, 0.05);
+      transition: opacity 0.2s ease;
+    }
+
+    .crop-frame.clock { border-color: var(--orange2); box-shadow: 0 0 10px rgba(255, 107, 26, 0.5); }
+    .crop-frame.home { border-color: #f5c842; box-shadow: 0 0 10px rgba(245, 200, 66, 0.5); }
+    .crop-frame.away { border-color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); }
+    .crop-frame.period { border-color: #a855f7; box-shadow: 0 0 10px rgba(168, 85, 247, 0.5); }
+    .crop-frame.shot { border-color: #00d2ff; box-shadow: 0 0 10px rgba(0, 210, 255, 0.5); }
+
+    .crop-label {
+      position: absolute;
+      top: -18px;
+      left: -2px;
+      padding: 1px 6px;
+      font-size: 10px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      border-radius: 3px 3px 0 0;
+      color: #000;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .crop-frame.clock .crop-label { background: var(--orange2); color: #fff; }
+    .crop-frame.home .crop-label { background: #f5c842; }
+    .crop-frame.away .crop-label { background: #ef4444; color: #fff; }
+    .crop-frame.period .crop-label { background: #a855f7; color: #fff; }
+    .crop-frame.shot .crop-label { background: #00d2ff; }
+
+    .resize-handle {
+      position: absolute;
+      right: -6px;
+      bottom: -6px;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      border: 2px solid #000;
+      border-radius: 50%;
+      cursor: se-resize;
+      touch-action: none;
+    }
+
+    /* UI Controls overlay */
+    .controls-overlay {
+      position: absolute;
+      z-index: 100;
+      background: rgba(8, 6, 5, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      border-radius: 8px;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+    }
+
+    .top-bar {
+      top: max(10px, env(safe-area-inset-top));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .bottom-bar {
+      bottom: max(10px, env(safe-area-inset-bottom));
+      left: max(10px, env(safe-area-inset-left));
+      right: max(10px, env(safe-area-inset-right));
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: calc(100vh - 75px);
+      max-height: calc(100dvh - 75px);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .title {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 900;
+      font-size: 16px;
+      color: var(--orange2);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn {
+      background: #18120c;
+      border: 1px solid var(--border);
+      color: var(--white);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn:active {
+      transform: scale(0.95);
+    }
+
+    .btn.primary {
+      background: var(--orange);
+      border-color: var(--orange2);
+      color: #fff;
+    }
+
+    .btn.active {
+      background: #16c784;
+      border-color: #10b981;
+      color: #fff;
+    }
+
+    /* Status Pill */
+    .status-panel {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      font-family: monospace;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .status-item span {
+      font-weight: bold;
+    }
+
+    #helper-canvas {
+      display: none;
+    }
+
+    /* Configuration Tabs */
+    .config-tabs {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+
+    .config-tab {
+      padding: 4px 10px;
+      font-size: 11px;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      text-transform: uppercase;
+      background: #120d09;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--grey);
+      cursor: pointer;
+    }
+
+    .config-tab.active {
+      color: #fff;
+      border-color: var(--orange2);
+      background: rgba(232, 67, 10, 0.1);
+    }
+
+    /* ── LANDSCAPE ADAPTATION (Mobile Phones, Tablets) ── */
+    @media (orientation: landscape) and (max-height: 520px) {
+      .top-bar {
+        padding: 5px 10px;
+        gap: 4px;
+      }
+      .title {
+        font-size: 13px;
+      }
+      .btn {
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+      .bottom-bar {
+        padding: 6px 10px;
+        gap: 3px;
+        max-height: calc(100vh - 54px);
+        max-height: calc(100dvh - 54px);
+      }
+      .config-tabs {
+        margin-bottom: 1px;
+        gap: 4px;
+      }
+      .config-tab {
+        padding: 2px 7px;
+        font-size: 10px;
+      }
+      .status-panel {
+        font-size: 10px;
+        padding: 2px 6px;
+      }
+    }
+
+    /* ── PORTRAIT ADAPTATION (Phones) ── */
+    @media (orientation: portrait) {
+      .top-bar {
+        padding: 8px 10px;
+        gap: 6px;
+      }
+      .title {
+        font-size: 14px;
+      }
+      .top-bar .btn {
+        padding: 5px 8px;
+        font-size: 11px;
+      }
+      .bottom-bar {
+        max-height: 55vh;
+        max-height: 55dvh;
+      }
+    }
+
+    body.controls-hidden .top-bar {
+      transform: translateY(calc(-100% - 25px)) !important;
+    }
+    body.controls-hidden .bottom-bar {
+      transform: translateY(calc(100% + 45px)) !important;
+    }
+    body.saver-mode #video-container {
+      opacity: 0.01 !important;
+      pointer-events: none !important;
+    }
+    body.saver-mode .controls-overlay,
+    body.saver-mode .crop-frame {
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+    @keyframes pulseSaver {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Camera Viewport -->
+  <div id="video-container">
+    <video id="camera-view" autoplay playsinline muted></video>
+  </div>
+
+  <!-- Draggable Crop Frames -->
+  <div class="crop-frame clock" id="frame-clock" style="top: 15%; left: 15%; width: 140px; height: 50px;">
+    <div class="crop-label">CLOCK</div>
+    <canvas class="crop-binarized-preview" id="crop-preview-clock" style="position:absolute; inset:0; width:100%; height:100%; opacity:0.65; pointer-events:none; border-radius:3px; image-rendering:pixelated; object-fit:fill; z-index:1;"></canvas>
+    <div class="resize-handle" onmousedown="startResize(event, 'clock')" ontouchstart="startResize(event, 'clock')"></div>
+  </div>
+
+  <div class="crop-frame home" id="frame-home" style="top: 30%; left: 15%; width: 100px; height: 50px;">
+    <div class="crop-label">HOME</div>
+    <canvas class="crop-binarized-preview" id="crop-preview-home" style="position:absolute; inset:0; width:100%; height:100%; opacity:0.65; pointer-events:none; border-radius:3px; image-rendering:pixelated; object-fit:fill; z-index:1;"></canvas>
+    <div class="resize-handle" onmousedown="startResize(event, 'home')" ontouchstart="startResize(event, 'home')"></div>
+  </div>
+
+  <div class="crop-frame away" id="frame-away" style="top: 30%; left: 55%; width: 100px; height: 50px;">
+    <div class="crop-label">AWAY</div>
+    <canvas class="crop-binarized-preview" id="crop-preview-away" style="position:absolute; inset:0; width:100%; height:100%; opacity:0.65; pointer-events:none; border-radius:3px; image-rendering:pixelated; object-fit:fill; z-index:1;"></canvas>
+    <div class="resize-handle" onmousedown="startResize(event, 'away')" ontouchstart="startResize(event, 'away')"></div>
+  </div>
+
+  <div class="crop-frame period" id="frame-period" style="top: 15%; left: 65%; width: 60px; height: 50px;">
+    <div class="crop-label">QTR</div>
+    <canvas class="crop-binarized-preview" id="crop-preview-period" style="position:absolute; inset:0; width:100%; height:100%; opacity:0.65; pointer-events:none; border-radius:3px; image-rendering:pixelated; object-fit:fill; z-index:1;"></canvas>
+    <div class="resize-handle" onmousedown="startResize(event, 'period')" ontouchstart="startResize(event, 'period')"></div>
+  </div>
+
+  <div class="crop-frame shot" id="frame-shot" style="top: 20%; left: 20%; width: 60%; height: 58%;">
+    <div class="crop-label">SHOT</div>
+    <canvas class="crop-binarized-preview" id="crop-preview-shot" style="position:absolute; inset:0; width:100%; height:100%; opacity:0.65; pointer-events:none; border-radius:3px; image-rendering:pixelated; object-fit:fill; z-index:1;"></canvas>
+    <div class="resize-handle" onmousedown="startResize(event, 'shot')" ontouchstart="startResize(event, 'shot')"></div>
+  </div>
+
+  <!-- Top bar status controls -->
+  <div class="controls-overlay top-bar">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="title">📸 Optical Bridge</div>
+      <button class="btn" onclick="toggleHelp()" style="padding:4px; font-size:12px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-color:var(--grey); color:var(--grey); border-radius:50%; line-height:1;">?</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <button class="btn" onclick="toggleFullscreen()" style="padding:6px 8px; font-size:12px;" id="fs-btn">🖥️ Fullscreen</button>
+      <button class="btn" onclick="toggleBatterySaver()" style="padding:6px 8px; font-size:12px; border-color:#16c784; color:#16c784;" id="saver-btn">🔋 Saver Mode</button>
+      <button class="btn" id="sync-btn" onclick="toggleSync()">🛰️ Start Sync</button>
+    </div>
+  </div>
+
+  <!-- Bottom bar configuration settings -->
+  <div class="controls-overlay bottom-bar">
+    <div style="font-size:9px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-bottom:4px;">Select Box to Calibrate:</div>
+    <div class="config-tabs">
+      <div class="config-tab active" onclick="selectCrop('clock')">Clock</div>
+      <div class="config-tab" onclick="selectCrop('home')">Home Score</div>
+      <div class="config-tab" onclick="selectCrop('away')">Away Score</div>
+      <div class="config-tab" onclick="selectCrop('period')">Period</div>
+      <div class="config-tab" onclick="selectCrop('shot')">Shot Clock</div>
+    </div>
+    
+    <!-- Binarization slider and preview monitor -->
+    <div style="display:flex; align-items:center; gap:12px; width:100%; border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:8px 0; margin:2px 0;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:2px; flex-shrink:0;">
+        <canvas id="ocr-preview-canvas" style="width:85px; height:42px; border:2px solid var(--orange2); background:#000; border-radius:4px; flex-shrink:0; image-rendering:pixelated;"></canvas>
+        <div id="ocr-recognized-text" style="font-family:'Barlow Condensed',sans-serif; font-size:12px; font-weight:800; color:#16c784; letter-spacing:1px; margin-top:2px;">OCR: --</div>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase;">
+          <span>Binarization Filter:</span>
+          <span id="threshold-val" style="color:var(--orange); font-size:12px; font-weight:bold;">120</span>
+        </div>
+        <input type="range" id="threshold-slider" min="40" max="220" value="120" oninput="updateThreshold(this.value)" style="width:100%; height:6px; background:var(--border); border-radius:3px; cursor:pointer; accent-color:var(--orange);">
+        <div style="display:flex; gap:12px; margin-top:4px; flex-wrap:wrap;">
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase;">
+            <input type="checkbox" id="dilation-toggle" onchange="toggleDilation(this.checked)" style="accent-color:var(--orange); cursor:pointer; width:12px; height:12px;" checked>
+            🔌 Connect LED Gaps (Dilation)
+          </label>
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase;">
+            <input type="checkbox" id="invert-toggle" onchange="toggleInvert(this.checked)" style="accent-color:var(--orange); cursor:pointer; width:12px; height:12px;">
+            🔄 Invert Black/White
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-Device Camera Role Selector -->
+    <div style="background:#0a0604; border:1px solid #2a1c12; border-radius:6px; padding:6px 10px; margin-top:4px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <span style="font-size:10px; color:var(--orange2); font-family:'Barlow Condensed',sans-serif; font-weight:800; letter-spacing:1px; text-transform:uppercase;">📱 Camera Role (Multi-Device Setup):</span>
+        <span id="device-role-badge" style="font-size:9px; font-weight:700; color:#16c784; background:#0f2918; border:1px solid #1c5230; padding:1px 6px; border-radius:10px; font-family:'Barlow Condensed',sans-serif; letter-spacing:0.5px;">🌟 ALL-IN-ONE</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px;">
+        <button type="button" id="role-btn-all" onclick="setDeviceRole('all')" class="cam-role-btn active" style="padding:5px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:0.5px; border-radius:4px; border:1px solid var(--orange); background:var(--orange); color:#fff; cursor:pointer;">🌟 All-in-One</button>
+        <button type="button" id="role-btn-main" onclick="setDeviceRole('main')" class="cam-role-btn" style="padding:5px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:0.5px; border-radius:4px; border:1px solid #332318; background:#120c08; color:#d6dbe6; cursor:pointer;">📹 Main Board</button>
+        <button type="button" id="role-btn-shot" onclick="setDeviceRole('shot')" class="cam-role-btn" style="padding:5px; font-size:10px; font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:0.5px; border-radius:4px; border:1px solid #332318; background:#120c08; color:#d6dbe6; cursor:pointer;">⏱️ Shot Clock</button>
+      </div>
+    </div>
+
+    <!-- Active Field Crop Toggles (Uncheck to fall back to digital scoreboard graphic) -->
+    <div style="font-size:9px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-top:2px;">Active Camera Stream Crops (Uncheck to show digital graphic):</div>
+    <div style="display:flex; gap:12px; margin-top:2px; flex-wrap:wrap;">
+      <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:10px; color:var(--orange2); font-weight:700;">
+        <input type="checkbox" id="crop-toggle-clock" onchange="toggleCropField('clock',this.checked)" style="accent-color:var(--orange); width:12px; height:12px;" checked>
+        CLOCK
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:10px; color:#f5c842; font-weight:700;">
+        <input type="checkbox" id="crop-toggle-home" onchange="toggleCropField('home',this.checked)" style="accent-color:var(--orange); width:12px; height:12px;" checked>
+        HOME SCORE
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:10px; color:#ef4444; font-weight:700;">
+        <input type="checkbox" id="crop-toggle-away" onchange="toggleCropField('away',this.checked)" style="accent-color:var(--orange); width:12px; height:12px;" checked>
+        AWAY SCORE
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:10px; color:#a855f7; font-weight:700;">
+        <input type="checkbox" id="crop-toggle-period" onchange="toggleCropField('period',this.checked)" style="accent-color:var(--orange); width:12px; height:12px;" checked>
+        QTR / PERIOD
+      </label>
+      <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-size:10px; color:#00d2ff; font-weight:700;">
+        <input type="checkbox" id="crop-toggle-shot" onchange="toggleCropField('shot',this.checked)" style="accent-color:var(--orange); width:12px; height:12px;" checked>
+        SHOT CLOCK
+      </label>
+    </div>
+
+    <!-- Session Target & Status -->
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:4px;">
+      <div style="display:flex; align-items:center; gap:6px; flex:1;">
+        <span style="font-size:11px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase; white-space:nowrap;">Session User:</span>
+        <input type="text" id="session-input" value="default" style="background:#0d0906; border:1px solid var(--border); color:#fff; border-radius:4px; padding:4px 8px; font-size:12px; font-weight:bold; width:110px; outline:none;" onchange="saveSession()">
+      </div>
+      
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="font-size:11px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase; white-space:nowrap;">Target:</span>
+        <select id="sync-target-select" onchange="updateSyncTarget()" style="background:#0d0906; border:1px solid var(--border); color:#fff; border-radius:4px; padding:4px 6px; font-size:11px; font-family:sans-serif; cursor:pointer; outline:none;">
+          <option value="auto">Auto-Detect</option>
+          <option value="firebase">Firebase Realtime DB</option>
+          <option value="api-onrender">OnRender Cloud Sync (API)</option>
+          <option value="api-local">Local Offline Sync (API)</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:10px; width:100%; margin-top:2px;">
+      <span style="font-size:11px; color:var(--grey); font-family:'Barlow Condensed',sans-serif; font-weight:700; letter-spacing:1px; text-transform:uppercase; white-space:nowrap;">Camera Source:</span>
+      <select id="camera-device-select" onchange="switchCamera(this.value)" style="flex:1; background:#0d0906; border:1px solid var(--border); color:#fff; border-radius:4px; padding:4px 8px; font-size:11px; font-family:sans-serif; cursor:pointer; outline:none;">
+        <option value="">Detecting cameras...</option>
+      </select>
+    </div>
+
+    <div class="status-panel" style="margin-top:4px;">
+      <div class="status-item">Status: <span id="status-text" style="color:#f5c842;">Ready</span></div>
+      <div class="status-item">Mode: <span id="engine-status" style="color:#16c784;">Optical Bridge (Live 12.5 FPS)</span></div>
+    </div>
+  </div>
+
+  <!-- Help Overlay Modal -->
+  <div id="help-overlay" style="display:none;position:absolute;inset:0;background:rgba(8,6,5,0.95);z-index:2000;padding:20px;overflow-y:auto;align-items:center;justify-content:center;">
+    <div style="max-width:400px;width:100%;border:1px solid var(--border);background:#0d0906;border-radius:12px;padding:24px;position:relative;">
+      <h3 style="font-family:'Barlow Condensed',sans-serif;font-size:20px;color:var(--orange2);margin-bottom:16px;text-transform:uppercase;letter-spacing:1px;text-align:center;">Optical Bridge Guide 📱</h3>
+      <ol style="margin-left:16px;margin-bottom:20px;font-size:13px;line-height:1.6;color:#dfd5cb;">
+        <li style="margin-bottom:8px;">Position your phone on a tripod facing the gym's physical scoreboard.</li>
+        <li style="margin-bottom:8px;">Grant camera permissions when prompted to load the rear camera feed.</li>
+        <li style="margin-bottom:8px;">Drag and resize the colored boxes on the screen to frame only the scoreboard digits.</li>
+        <li style="margin-bottom:8px;">Tap the selection buttons (<strong>Clock, Home Score, Away Score, Period, Shot Clock</strong>) at the bottom to calibrate each box individually:
+          <ul style="margin-left:16px; margin-top:4px; font-size:12px; color:var(--grey);">
+            <li>Adjust the <strong>Binarization Filter Slider</strong> for each box until its digits display as clean, solid black shapes on a white background in the preview monitor.</li>
+          </ul>
+        </li>
+        <li style="margin-bottom:8px;">Use the <strong>Active Camera Stream Crops</strong> checkboxes to choose which fields stream from the camera vs. which fields show the standard digital scoreboard graphic created on the control panel!</li>
+        <li style="margin-bottom:8px;">Tap <strong>Start Sync</strong>. The status will update to green.</li>
+        <li style="margin-bottom:8px;">Go to your controller console page on your operator tablet, and toggle <strong>AI Sync</strong> to <strong>ON</strong>.</li>
+      </ol>
+      <button class="btn" onclick="toggleHelp()" style="width:100%;border-color:var(--orange);color:var(--orange);padding:10px;">Close Guide</button>
+    </div>
+  </div>
+
+  <!-- Background Processing canvas -->
+  <canvas id="helper-canvas"></canvas>
+
+  <script>
+    let stream = null;
+    let syncActive = false;
+    let activeCrop = 'clock';
+    let syncTarget = 'auto';
+
+    let enabledCrops = { clock: true, home: true, away: true, period: true, shot: true };
+
+    const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('basketball_scoreboard') : null;
+    const bc2 = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('hc_scoreboard_sync') : null;
+
+    // Initialize Firebase if configured
+    let db = null;
+    if (typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
+      firebase.initializeApp(firebaseConfig);
+      db = firebase.database();
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryRole = urlParams.get('role');
+    if (queryRole) {
+      try { sessionStorage.setItem('hc_camera_role_tab', queryRole); } catch(e) {}
+    }
+    let deviceRole = queryRole || (function(){ try { return sessionStorage.getItem('hc_camera_role_tab'); } catch(e){ return null; } })() || localStorage.getItem('hc_camera_role') || 'all';
+
+    let tabSessionId = null;
+    try { tabSessionId = sessionStorage.getItem('hc_cam_tab_id'); } catch(e) {}
+    if (!tabSessionId) {
+      tabSessionId = Math.random().toString(36).slice(2, 7) + '_' + Date.now().toString(36);
+      try { sessionStorage.setItem('hc_cam_tab_id', tabSessionId); } catch(e) {}
+    }
+    let myClientId = 'cam_' + deviceRole + '_' + tabSessionId;
+
+    function getConfigurableCropKeys(role = deviceRole) {
+      if (role === 'shot') return ['shot'];
+      return ['clock', 'home', 'away', 'period', 'shot'];
+    }
+
+    function getOwnedCropKeys(role = deviceRole) {
+      if (role === 'shot') return ['shot'];
+      if (role === 'main') {
+        if (enabledCrops.shot === true || !window._hasDedicatedShotCam) {
+          return ['clock', 'home', 'away', 'period', 'shot'];
+        }
+        return ['clock', 'home', 'away', 'period'];
+      }
+      return ['clock', 'home', 'away', 'period', 'shot'];
+    }
+
+    function updateRoleBadgeText() {
+      const badge = document.getElementById('device-role-badge');
+      if (!badge) return;
+      if (deviceRole === 'shot') {
+        badge.textContent = '⏱️ SHOT CLOCK ONLY';
+        badge.style.color = '#00d2ff';
+        badge.style.background = '#09212b';
+        badge.style.borderColor = '#13475c';
+      } else if (deviceRole === 'main') {
+        badge.textContent = enabledCrops.shot ? '📹 CAM 1: MAIN + SHOT' : '📹 CAM 1: MAIN (NO SHOT)';
+        badge.style.color = enabledCrops.shot ? '#16c784' : '#f5c842';
+        badge.style.background = enabledCrops.shot ? '#0f2918' : '#292109';
+        badge.style.borderColor = enabledCrops.shot ? '#1c5230' : '#5c4813';
+      } else {
+        badge.textContent = '🌟 ALL-IN-ONE';
+        badge.style.color = '#16c784';
+        badge.style.background = '#0f2918';
+        badge.style.borderColor = '#1c5230';
+      }
+    }
+
+    // Drag-and-drop state
+    let activeDragFrame = null;
+    let activeResizeFrame = null;
+    let dragStartX, dragStartY, dragStartLeft, dragStartTop;
+    let resizeStartWidth, resizeStartHeight;
+
+    const frames = {
+      clock: document.getElementById('frame-clock'),
+      home: document.getElementById('frame-home'),
+      away: document.getElementById('frame-away'),
+      period: document.getElementById('frame-period'),
+      shot: document.getElementById('frame-shot')
+    };
+
+    let currentDeviceId = null;
+
+    // ── Normalized Video Space (0.0 to 1.0) Mapping Helpers ──
+    function screenToVideoNorm(frame) {
+      const video = document.getElementById('camera-view');
+      if (!video || !video.videoWidth || !video.offsetWidth) return null;
+      const videoW = video.videoWidth;
+      const videoH = video.videoHeight;
+      const viewW = video.offsetWidth;
+      const viewH = video.offsetHeight;
+      const streamRatio = videoW / videoH;
+      const viewRatio = viewW / viewH;
+
+      let scaledWidth, scaledHeight;
+      let offsetX = 0, offsetY = 0;
+
+      if (viewRatio > streamRatio) {
+        scaledWidth = viewW;
+        scaledHeight = viewW / streamRatio;
+        offsetY = (scaledHeight - viewH) / 2;
+      } else {
+        scaledWidth = viewH * streamRatio;
+        scaledHeight = viewH;
+        offsetX = (scaledWidth - viewW) / 2;
+      }
+
+      const boxX = frame.offsetLeft;
+      const boxY = frame.offsetTop;
+      const boxW = frame.offsetWidth;
+      const boxH = frame.offsetHeight;
+
+      const xInScaled = boxX + offsetX;
+      const yInScaled = boxY + offsetY;
+
+      const cropX = Math.max(0, Math.min(videoW - 1, (xInScaled / scaledWidth) * videoW));
+      const cropY = Math.max(0, Math.min(videoH - 1, (yInScaled / scaledHeight) * videoH));
+      const cropW = Math.max(1, Math.min(videoW - cropX, (boxW / scaledWidth) * videoW));
+      const cropH = Math.max(1, Math.min(videoH - cropY, (boxH / scaledHeight) * videoH));
+
+      return {
+        x: +(cropX / videoW).toFixed(4),
+        y: +(cropY / videoH).toFixed(4),
+        w: +(cropW / videoW).toFixed(4),
+        h: +(cropH / videoH).toFixed(4)
+      };
+    }
+
+    function videoNormToScreen(norm) {
+      const video = document.getElementById('camera-view');
+      if (!video || !video.videoWidth || !video.offsetWidth) return null;
+      const videoW = video.videoWidth;
+      const videoH = video.videoHeight;
+      const viewW = video.offsetWidth;
+      const viewH = video.offsetHeight;
+      const streamRatio = videoW / videoH;
+      const viewRatio = viewW / viewH;
+
+      let scaledWidth, scaledHeight;
+      let offsetX = 0, offsetY = 0;
+
+      if (viewRatio > streamRatio) {
+        scaledWidth = viewW;
+        scaledHeight = viewW / streamRatio;
+        offsetY = (scaledHeight - viewH) / 2;
+      } else {
+        scaledWidth = viewH * streamRatio;
+        scaledHeight = viewH;
+        offsetX = (scaledWidth - viewW) / 2;
+      }
+
+      const cropX = norm.x * videoW;
+      const cropY = norm.y * videoH;
+      const cropW = norm.w * videoW;
+      const cropH = norm.h * videoH;
+
+      const xInScaled = (cropX / videoW) * scaledWidth;
+      const yInScaled = (cropY / videoH) * scaledHeight;
+      const boxX = xInScaled - offsetX;
+      const boxY = yInScaled - offsetY;
+      const boxW = (cropW / videoW) * scaledWidth;
+      const boxH = (cropH / videoH) * scaledHeight;
+
+      return {
+        left: Math.round(boxX) + 'px',
+        top: Math.round(boxY) + 'px',
+        width: Math.max(30, Math.round(boxW)) + 'px',
+        height: Math.max(20, Math.round(boxH)) + 'px'
+      };
+    }
+
+    function getNormalizedCrops(onlyOwned = true) {
+      const norm = {};
+      const keys = onlyOwned ? getOwnedCropKeys(deviceRole) : ['clock', 'home', 'away', 'period', 'shot'];
+      keys.forEach(k => {
+        const f = frames[k];
+        if (f && f.style.display !== 'none' && f.offsetWidth > 0 && f.offsetHeight > 0) {
+          const n = screenToVideoNorm(f);
+          if (n) norm[k] = n;
+        }
+      });
+      return norm;
+    }
+
+    function applyRemoteCropPositions(data) {
+      if (!data) return;
+      if (data.sender === myClientId) return;
+      if (data.targetRole && data.targetRole !== 'all' && data.targetRole !== deviceRole && !(deviceRole === 'all' && data.targetRole === 'main')) {
+        return;
+      }
+
+      const myOwned = getConfigurableCropKeys(deviceRole);
+
+      if (data.crops) {
+        const crops = data.crops;
+        try {
+          const existingRaw = localStorage.getItem('hc_ocr_crops_norm_' + deviceRole);
+          const existingNorm = existingRaw ? JSON.parse(existingRaw) : {};
+          const mergedNorm = { ...existingNorm };
+          myOwned.forEach(k => {
+            if (crops[k] && crops[k].w > 0.01 && crops[k].h > 0.01) {
+              mergedNorm[k] = crops[k];
+            }
+          });
+          localStorage.setItem('hc_ocr_crops_norm_' + deviceRole, JSON.stringify(mergedNorm));
+        } catch(e) {}
+
+        const video = document.getElementById('camera-view');
+        if (video && video.videoWidth) {
+          myOwned.forEach(k => {
+            const norm = crops[k];
+            const frame = frames[k];
+            if (norm && frame && norm.w > 0.01 && norm.h > 0.01) {
+              const domPos = videoNormToScreen(norm);
+              if (domPos) {
+                frame.style.left = domPos.left;
+                frame.style.top = domPos.top;
+                frame.style.width = domPos.width;
+                frame.style.height = domPos.height;
+              }
+            }
+          });
+          window._pendingRemoteCrops = null;
+        } else {
+          window._pendingRemoteCrops = Object.assign(window._pendingRemoteCrops || {}, crops);
+        }
+      }
+
+      if (data.enabledCrops) {
+        myOwned.forEach(k => {
+          if (data.enabledCrops[k] !== undefined) {
+            enabledCrops[k] = !!data.enabledCrops[k];
+            const cb = document.getElementById(`crop-toggle-${k}`);
+            if (cb) cb.checked = !!enabledCrops[k];
+            const frame = frames[k];
+            if (frame) {
+              frame.style.display = enabledCrops[k] ? 'block' : 'none';
+              frame.style.opacity = enabledCrops[k] ? '1' : '0.2';
+            }
+          }
+        });
+        try { localStorage.setItem('hc_ocr_enabled_crops_' + deviceRole, JSON.stringify(enabledCrops)); } catch(e) {}
+      }
+
+      if (data.thresholds) {
+        myOwned.forEach(k => {
+          if (data.thresholds[k] != null) thresholds[k] = data.thresholds[k];
+        });
+        localStorage.setItem('hc_ocr_thresholds', JSON.stringify(thresholds));
+        updateThreshold(thresholds[activeCrop] || 120);
+      }
+
+      if (data.invertStates) {
+        myOwned.forEach(k => {
+          if (data.invertStates[k] != null) invertStates[k] = data.invertStates[k];
+        });
+        localStorage.setItem('hc_ocr_invert_states', JSON.stringify(invertStates));
+        const checkbox = document.getElementById('invert-toggle');
+        if (checkbox) checkbox.checked = !!invertStates[activeCrop];
+      }
+
+      saveCropPositions(false);
+      updateRoleBadgeText();
+      resetCropHashCache();
+    }
+
+    let _boundRoleRef = null;
+    let _boundClientRef = null;
+    function bindRoleCropListeners() {
+      if (!db) return;
+      const user = (document.getElementById('session-input') && document.getElementById('session-input').value) || 'default';
+      const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+
+      if (_boundRoleRef) {
+        try { _boundRoleRef.off(); } catch(e) {}
+      }
+      if (_boundClientRef) {
+        try { _boundClientRef.off(); } catch(e) {}
+      }
+
+      _boundClientRef = db.ref(`camera_crops/${fbUser}/${myClientId}`);
+      _boundClientRef.on('value', snapshot => {
+        const val = snapshot.val();
+        if (val && val.sender !== myClientId) {
+          applyRemoteCropPositions(val);
+        }
+      });
+
+      const targetSlot = (deviceRole === 'shot') ? 'shot' : 'main';
+      _boundRoleRef = db.ref(`camera_crops/${fbUser}/${targetSlot}`);
+      _boundRoleRef.on('value', snapshot => {
+        const val = snapshot.val();
+        if (val && val.sender !== myClientId) {
+          applyRemoteCropPositions(val);
+        }
+      });
+    }
+
+    function setDeviceRole(role, broadcast = true) {
+      const prevRole = deviceRole;
+      const prevClientId = myClientId;
+      deviceRole = role;
+      myClientId = 'cam_' + deviceRole + '_' + tabSessionId;
+      try { sessionStorage.setItem('hc_camera_role_tab', role); } catch(e) {}
+      if (!queryRole) {
+        try { localStorage.setItem('hc_camera_role', role); } catch(e) {}
+      }
+
+      if (db && prevClientId && prevClientId !== myClientId) {
+        const user = (document.getElementById('session-input') && document.getElementById('session-input').value) || 'default';
+        const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+        db.ref(`ocr_devices/${fbUser}/${prevClientId}`).remove().catch(() => {});
+      }
+
+      // Update button highlights
+      ['all', 'main', 'shot'].forEach(r => {
+        const btn = document.getElementById(`role-btn-${r}`);
+        if (btn) {
+          const isActive = (r === role);
+          btn.style.border = isActive ? '1px solid var(--orange)' : '1px solid #332318';
+          btn.style.background = isActive ? 'var(--orange)' : '#120c08';
+          btn.style.color = isActive ? '#fff' : '#d6dbe6';
+        }
+      });
+
+      if (role === 'shot') {
+        enabledCrops = { clock: false, home: false, away: false, period: false, shot: true };
+        const sf = frames.shot;
+        if (sf && (!sf.style.width || parseInt(sf.style.width) < 120)) {
+          sf.style.left = '20%';
+          sf.style.top = '18%';
+          sf.style.width = '60%';
+          sf.style.height = '58%';
+        }
+        selectCrop('shot');
+      } else if (role === 'main') {
+        enabledCrops = { clock: true, home: true, away: true, period: true, shot: false };
+        const sf = frames.shot;
+        if (sf && sf.style.width === '60%') {
+          sf.style.left = '42%';
+          sf.style.top = '55%';
+          sf.style.width = '100px';
+          sf.style.height = '50px';
+        }
+        if (activeCrop === 'shot') selectCrop('clock');
+      } else if (role === 'all') {
+        enabledCrops = { clock: true, home: true, away: true, period: true, shot: true };
+        const sf = frames.shot;
+        if (sf && sf.style.width === '60%') {
+          sf.style.left = '42%';
+          sf.style.top = '55%';
+          sf.style.width = '100px';
+          sf.style.height = '50px';
+        }
+      }
+
+      updateRoleBadgeText();
+
+      Object.keys(enabledCrops).forEach(k => {
+        const cb = document.getElementById(`crop-toggle-${k}`);
+        if (cb) cb.checked = !!enabledCrops[k];
+        const frame = frames[k];
+        if (frame) {
+          frame.style.display = enabledCrops[k] ? 'block' : 'none';
+          frame.style.opacity = enabledCrops[k] ? '1' : '0.2';
+        }
+      });
+      try { localStorage.setItem('hc_ocr_enabled_crops_' + deviceRole, JSON.stringify(enabledCrops)); } catch(e) {}
+
+      if (prevRole !== role && db) {
+        bindRoleCropListeners();
+      }
+
+      resetCropHashCache();
+
+      if (broadcast) {
+        saveCropPositions(true);
+        registerDevicePresence();
+      }
+    }
+
+    function registerDevicePresence() {
+      if (!db) return;
+      const user = (document.getElementById('session-input') && document.getElementById('session-input').value) || 'default';
+      const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+      const devRef = db.ref(`ocr_devices/${fbUser}/${myClientId}`);
+      
+      const video = document.getElementById('camera-view');
+      const aspect = (video && video.videoWidth && video.videoHeight)
+        ? +(video.videoWidth / video.videoHeight).toFixed(3)
+        : 1.777;
+
+      const myOwned = getOwnedCropKeys(deviceRole);
+      const normCrops = getNormalizedCrops(true);
+      const roleEnabled = {};
+      const roleThresholds = {};
+      const roleInverts = {};
+      myOwned.forEach(k => {
+        roleEnabled[k] = enabledCrops[k] !== false;
+        if (thresholds[k] != null) roleThresholds[k] = thresholds[k];
+        roleInverts[k] = !!invertStates[k];
+      });
+
+      const devData = {
+        id: myClientId,
+        role: deviceRole,
+        name: deviceRole === 'shot' ? 'Dedicated Shot Clock Camera' : (deviceRole === 'main' ? 'Main Scoreboard Camera' : 'All-In-One Camera'),
+        enabledCrops: roleEnabled,
+        crops: normCrops,
+        thresholds: roleThresholds,
+        invertStates: roleInverts,
+        aspectRatio: aspect,
+        lastSeen: Date.now()
+      };
+
+      devRef.update(devData).catch(() => {});
+      try {
+        devRef.onDisconnect().remove();
+      } catch(e) {}
+    }
+
+    function toggleCropField(key, enabled) {
+      enabledCrops[key] = enabled;
+      try { localStorage.setItem('hc_ocr_enabled_crops_' + deviceRole, JSON.stringify(enabledCrops)); } catch(e) {}
+      const frame = frames[key];
+      if (frame) {
+        if (enabled && key === 'shot' && deviceRole !== 'shot' && frame.style.width === '60%') {
+          frame.style.left = '42%';
+          frame.style.top = '55%';
+          frame.style.width = '100px';
+          frame.style.height = '50px';
+        }
+        frame.style.display = enabled ? 'block' : 'none';
+        frame.style.opacity = enabled ? '1' : '0.2';
+      }
+      updateRoleBadgeText();
+      resetCropHashCache();
+      saveCropPositions(true);
+      registerDevicePresence();
+    }
+
+    function restoreEnabledCrops() {
+      const saved = localStorage.getItem('hc_ocr_enabled_crops_' + deviceRole);
+      const myOwned = getConfigurableCropKeys(deviceRole);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          myOwned.forEach(k => {
+            if (parsed[k] !== undefined) enabledCrops[k] = !!parsed[k];
+          });
+          Object.keys(enabledCrops).forEach(k => {
+            if (!myOwned.includes(k)) enabledCrops[k] = false;
+            const cb = document.getElementById(`crop-toggle-${k}`);
+            if (cb) cb.checked = !!enabledCrops[k];
+            const frame = frames[k];
+            if (frame) {
+              frame.style.display = enabledCrops[k] ? 'block' : 'none';
+              frame.style.opacity = enabledCrops[k] ? '1' : '0.2';
+            }
+          });
+        } catch(e) {}
+      }
+      updateRoleBadgeText();
+    }
+
+    // Initialize Camera Stream
+    async function startCamera(deviceId = null) {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      try {
+        const constraints = {
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+        if (deviceId) {
+          constraints.video.deviceId = { exact: deviceId };
+        } else {
+          constraints.video.facingMode = 'environment';
+        }
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        const video = document.getElementById('camera-view');
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          restoreCropPositions();
+          if (window._pendingRemoteCrops) {
+            const pending = window._pendingRemoteCrops;
+            window._pendingRemoteCrops = null;
+            applyRemoteCropPositions({ crops: pending });
+          }
+          saveCropPositions(true);
+        };
+        
+        await enumerateCameras();
+      } catch (err) {
+        console.error("Camera access error:", err);
+        if (!deviceId) {
+          try {
+            const fallbackConstraints = {
+              video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+              },
+              audio: false
+            };
+            stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+            const video = document.getElementById('camera-view');
+            video.srcObject = stream;
+            video.onloadedmetadata = () => {
+              restoreCropPositions();
+              if (window._pendingRemoteCrops) {
+                const pending = window._pendingRemoteCrops;
+                window._pendingRemoteCrops = null;
+                applyRemoteCropPositions({ crops: pending });
+              }
+              saveCropPositions(true);
+            };
+            await enumerateCameras();
+          } catch(e) {
+            alert('Could not access camera. Please check your camera permissions.');
+          }
+        } else {
+          alert('Could not access selected camera.');
+        }
+      }
+    }
+
+    async function enumerateCameras() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        const select = document.getElementById('camera-device-select');
+        if (!select) return;
+        
+        select.innerHTML = '';
+        
+        if (videoDevices.length === 0) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = 'No cameras found';
+          select.appendChild(opt);
+          return;
+        }
+
+        let activeId = null;
+        if (stream) {
+          const videoTrack = stream.getVideoTracks()[0];
+          if (videoTrack) {
+            activeId = videoTrack.getSettings().deviceId;
+          }
+        }
+
+        videoDevices.forEach((device, index) => {
+          const opt = document.createElement('option');
+          opt.value = device.deviceId;
+          opt.textContent = device.label || `Camera ${index + 1}`;
+          if (device.deviceId === activeId) {
+            opt.selected = true;
+          }
+          select.appendChild(opt);
+        });
+      } catch(err) {
+        console.warn("Could not enumerate camera devices:", err);
+      }
+    }
+
+    function switchCamera(deviceId) {
+      if (!deviceId) return;
+      currentDeviceId = deviceId;
+      startCamera(deviceId);
+    }
+
+    // Interactive Calibration States
+    let thresholdValue = 120;
+    let thresholds = { clock: 120, home: 120, away: 120, period: 120, shot: 120 };
+
+    function updateThreshold(val) {
+      thresholdValue = parseInt(val, 10);
+      thresholds[activeCrop] = thresholdValue;
+      document.getElementById('threshold-val').textContent = thresholdValue;
+      localStorage.setItem('hc_ocr_thresholds', JSON.stringify(thresholds));
+      resetCropHashCache();
+    }
+
+    // Drag-and-drop mechanics
+    Object.keys(frames).forEach(k => {
+      const f = frames[k];
+      if (f) {
+        f.addEventListener('mousedown', (e) => startDrag(e, k));
+        f.addEventListener('touchstart', (e) => startDrag(e, k), { passive: false });
+      }
+    });
+
+    function startDrag(e, key) {
+      if (e.target.classList.contains('resize-handle')) return;
+      e.preventDefault();
+      
+      if (window.hideControls) window.hideControls();
+      
+      activeDragFrame = frames[key];
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      dragStartX = clientX;
+      dragStartY = clientY;
+      dragStartLeft = activeDragFrame.offsetLeft;
+      dragStartTop = activeDragFrame.offsetTop;
+
+      document.addEventListener('mousemove', onDrag);
+      document.addEventListener('touchmove', onDrag, { passive: false });
+      document.addEventListener('mouseup', endDrag);
+      document.addEventListener('touchend', endDrag);
+    }
+
+    function onDrag(e) {
+      if (!activeDragFrame) return;
+      e.preventDefault();
+
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const dx = clientX - dragStartX;
+      const dy = clientY - dragStartY;
+
+      activeDragFrame.style.left = `${dragStartLeft + dx}px`;
+      activeDragFrame.style.top = `${dragStartTop + dy}px`;
+    }
+
+    function saveCropPositions(broadcast = true) {
+      const myOwned = getOwnedCropKeys(deviceRole);
+      const positions = {};
+      myOwned.forEach(k => {
+        const f = frames[k];
+        if (f && f.style.display !== 'none' && f.offsetWidth > 0 && f.offsetHeight > 0) {
+          positions[k] = {
+            left: f.style.left || (f.offsetLeft + 'px'),
+            top: f.style.top || (f.offsetTop + 'px'),
+            width: f.style.width || (f.offsetWidth + 'px'),
+            height: f.style.height || (f.offsetHeight + 'px')
+          };
+        }
+      });
+      try { localStorage.setItem('hc_ocr_crop_positions_' + deviceRole, JSON.stringify(positions)); } catch(e) {}
+
+      const normCrops = getNormalizedCrops(true);
+      if (normCrops && Object.keys(normCrops).length) {
+        try { localStorage.setItem('hc_ocr_crops_norm_' + deviceRole, JSON.stringify(normCrops)); } catch(e) {}
+      }
+
+      resetCropHashCache();
+
+      if (broadcast) {
+        const user = (document.getElementById('session-input') && document.getElementById('session-input').value) || 'default';
+        const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+
+        const roleNormCrops = {};
+        const roleThresholds = {};
+        const roleInvertStates = {};
+        const roleEnabledCrops = {};
+        myOwned.forEach(k => {
+          if (normCrops[k]) roleNormCrops[k] = normCrops[k];
+          if (thresholds[k] != null) roleThresholds[k] = thresholds[k];
+          if (invertStates[k] != null) roleInvertStates[k] = invertStates[k];
+          roleEnabledCrops[k] = enabledCrops[k] !== false;
+        });
+
+        if (db) {
+          const targetSlot = (deviceRole === 'shot') ? 'shot' : 'main';
+          const cropPayload = {
+            sender: myClientId,
+            role: deviceRole,
+            targetRole: targetSlot,
+            timestamp: Date.now(),
+            crops: roleNormCrops,
+            thresholds: roleThresholds,
+            invertStates: roleInvertStates,
+            enabledCrops: roleEnabledCrops
+          };
+          db.ref(`camera_crops/${fbUser}/${targetSlot}`).set(cropPayload).catch(() => {});
+          db.ref(`camera_crops/${fbUser}/${myClientId}`).set(cropPayload).catch(() => {});
+        }
+        registerDevicePresence();
+        if (bc2) {
+          const targetSlot = (deviceRole === 'shot') ? 'shot' : 'main';
+          bc2.postMessage({
+            type: 'crop_update',
+            user: fbUser,
+            sender: myClientId,
+            role: deviceRole,
+            targetRole: targetSlot,
+            crops: roleNormCrops,
+            thresholds: roleThresholds,
+            invertStates: roleInvertStates,
+            enabledCrops: roleEnabledCrops
+          });
+        }
+      }
+    }
+
+    function restoreCropPositions() {
+      const myOwned = getConfigurableCropKeys(deviceRole);
+      // First attempt to restore using normalized coordinates mapped to current screen dimensions
+      const normSaved = localStorage.getItem('hc_ocr_crops_norm_' + deviceRole) || localStorage.getItem('hc_ocr_crops_norm');
+      const video = document.getElementById('camera-view');
+      if (normSaved && video && video.videoWidth && video.offsetWidth) {
+        try {
+          const norm = JSON.parse(normSaved);
+          let applied = false;
+          myOwned.forEach(k => {
+            const frame = frames[k];
+            if (frame && norm[k] && norm[k].w > 0.01 && norm[k].h > 0.01) {
+              const domPos = videoNormToScreen(norm[k]);
+              if (domPos) {
+                frame.style.left = domPos.left;
+                frame.style.top = domPos.top;
+                frame.style.width = domPos.width;
+                frame.style.height = domPos.height;
+                applied = true;
+              }
+            }
+          });
+          if (applied) return;
+        } catch(e) {}
+      }
+
+      // Fallback to literal saved screen pixels
+      const saved = localStorage.getItem('hc_ocr_crop_positions_' + deviceRole) || localStorage.getItem('hc_ocr_crop_positions');
+      if (saved) {
+        try {
+          const positions = JSON.parse(saved);
+          myOwned.forEach(k => {
+            const f = frames[k];
+            const p = positions[k];
+            if (f && p && parseInt(p.width) >= 25 && parseInt(p.height) >= 18) {
+              if (p.left) f.style.left = p.left;
+              if (p.top) f.style.top = p.top;
+              if (p.width) f.style.width = p.width;
+              if (p.height) f.style.height = p.height;
+            }
+          });
+        } catch(e) {}
+      }
+    }
+
+    // ── Realtime Dynamic Orientation & Resize Adaptor ──
+    let orientationResizeTimer = null;
+    function handleOrientationOrResize() {
+      clearTimeout(orientationResizeTimer);
+      orientationResizeTimer = setTimeout(() => {
+        const myOwned = getConfigurableCropKeys(deviceRole);
+        let norm = null;
+        const normSaved = localStorage.getItem('hc_ocr_crops_norm_' + deviceRole) || localStorage.getItem('hc_ocr_crops_norm');
+        if (normSaved) {
+          try { norm = JSON.parse(normSaved); } catch(e) {}
+        }
+        if (!norm) {
+          norm = getNormalizedCrops(true);
+        }
+        if (!norm) return;
+        const video = document.getElementById('camera-view');
+        if (!video || !video.videoWidth || !video.offsetWidth) return;
+        myOwned.forEach(k => {
+          const frame = frames[k];
+          if (frame && norm[k] && norm[k].w > 0.01 && norm[k].h > 0.01) {
+            const domPos = videoNormToScreen(norm[k]);
+            if (domPos) {
+              frame.style.left = domPos.left;
+              frame.style.top = domPos.top;
+              frame.style.width = domPos.width;
+              frame.style.height = domPos.height;
+            }
+          }
+        });
+      }, 100);
+    }
+    window.addEventListener('resize', handleOrientationOrResize);
+    window.addEventListener('orientationchange', handleOrientationOrResize);
+    if (window.screen && window.screen.orientation) {
+      window.screen.orientation.addEventListener('change', handleOrientationOrResize);
+    }
+
+    function endDrag() {
+      activeDragFrame = null;
+      document.removeEventListener('mousemove', onDrag);
+      document.removeEventListener('touchmove', onDrag);
+      saveCropPositions();
+    }
+
+    function startResize(e, key) {
+      e.stopPropagation();
+      e.preventDefault();
+
+      if (window.hideControls) window.hideControls();
+
+      activeResizeFrame = frames[key];
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      dragStartX = clientX;
+      dragStartY = clientY;
+      resizeStartWidth = activeResizeFrame.offsetWidth;
+      resizeStartHeight = activeResizeFrame.offsetHeight;
+
+      document.addEventListener('mousemove', onResize);
+      document.addEventListener('touchmove', onResize, { passive: false });
+      document.addEventListener('mouseup', endResize);
+      document.addEventListener('touchend', endResize);
+    }
+
+    function onResize(e) {
+      if (!activeResizeFrame) return;
+      e.preventDefault();
+
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const dx = clientX - dragStartX;
+      const dy = clientY - dragStartY;
+
+      activeResizeFrame.style.width = `${Math.max(50, resizeStartWidth + dx)}px`;
+      activeResizeFrame.style.height = `${Math.max(30, resizeStartHeight + dy)}px`;
+    }
+
+    function endResize() {
+      activeResizeFrame = null;
+      document.removeEventListener('mousemove', onResize);
+      document.removeEventListener('touchmove', onResize);
+      saveCropPositions();
+    }
+
+    let dilationEnabled = true;
+    let invertStates = {};
+
+    function toggleDilation(enabled) {
+      dilationEnabled = enabled;
+      localStorage.setItem('hc_ocr_dilation', enabled);
+      resetCropHashCache();
+    }
+
+    function toggleInvert(enabled) {
+      invertStates[activeCrop] = !!enabled;
+      localStorage.setItem('hc_ocr_invert_states', JSON.stringify(invertStates));
+      resetCropHashCache();
+      saveCropPositions(true);
+    }
+
+    function dilate(data, w, h) {
+      if (!window._dilateBuf || window._dilateBuf.length !== data.length) {
+        window._dilateBuf = new Uint8ClampedArray(data.length);
+      }
+      const temp = window._dilateBuf;
+      for (let iter = 0; iter < 2; iter++) {
+        temp.set(data);
+        for (let y = 1; y < h - 1; y++) {
+          for (let x = 1; x < w - 1; x++) {
+            const idx = (y * w + x) * 4;
+            if (temp[idx] === 255) {
+              const top = ((y - 1) * w + x) * 4;
+              const bot = ((y + 1) * w + x) * 4;
+              const left = (y * w + (x - 1)) * 4;
+              const right = (y * w + (x + 1)) * 4;
+              const tl = ((y - 1) * w + (x - 1)) * 4;
+              const tr = ((y - 1) * w + (x + 1)) * 4;
+              const bl = ((y + 1) * w + (x - 1)) * 4;
+              const br = ((y + 1) * w + (x + 1)) * 4;
+
+              if (temp[top] === 0 || temp[bot] === 0 || temp[left] === 0 || temp[right] === 0 ||
+                  temp[tl] === 0 || temp[tr] === 0 || temp[bl] === 0 || temp[br] === 0) {
+                data[idx] = 255;
+                data[idx+1] = 255;
+                data[idx+2] = 255;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const _cropCanvases = {};
+    const _cropContexts = {};
+    function getCropCanvasAndCtx(key, w, h) {
+      let c = _cropCanvases[key];
+      if (!c) {
+        c = document.createElement('canvas');
+        _cropCanvases[key] = c;
+        _cropContexts[key] = c.getContext('2d', { willReadFrequently: true });
+      }
+      if (c.width !== w || c.height !== h) {
+        c.width = w;
+        c.height = h;
+      }
+      return { canvas: c, ctx: _cropContexts[key] };
+    }
+
+    function resetCropHashCache() {
+      if (typeof _lastCropHashes === 'object') {
+        Object.keys(_lastCropHashes).forEach(k => delete _lastCropHashes[k]);
+      }
+      if (typeof _lastSentStreams === 'object') {
+        Object.keys(_lastSentStreams).forEach(k => delete _lastSentStreams[k]);
+      }
+      if (typeof _lastHeartbeatByKey === 'object') {
+        Object.keys(_lastHeartbeatByKey).forEach(k => delete _lastHeartbeatByKey[k]);
+      }
+    }
+
+    function preprocess(ctx, w, h, key) {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      const tVal = thresholds[key] || thresholdValue;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const brightness = 0.34 * data[i] + 0.5 * data[i + 1] + 0.16 * data[i + 2];
+        const v = brightness > tVal ? 0 : 255;
+        data[i] = v;
+        data[i+1] = v;
+        data[i+2] = v;
+      }
+
+      if (invertStates[key] === undefined || invertStates[key] === null) {
+        invertStates[key] = false;
+        if (key === activeCrop) {
+          const invCheckbox = document.getElementById('invert-toggle');
+          if (invCheckbox) invCheckbox.checked = false;
+        }
+        localStorage.setItem('hc_ocr_invert_states', JSON.stringify(invertStates));
+      }
+
+      // If Invert is checked: flip so LED digits become 255 (white) and background becomes 0 (black)
+      if (invertStates[key]) {
+        for (let i = 0; i < data.length; i += 4) {
+          const inv = 255 - data[i];
+          data[i] = inv;
+          data[i+1] = inv;
+          data[i+2] = inv;
+        }
+      }
+
+      if (dilationEnabled) {
+        dilate(data, w, h);
+      }
+
+      // Render 100% True Native Alpha Transparent Output + compute fast FNV-1a checksum in one pass
+      const isInverted = !!invertStates[key];
+      let hash = 2166136261;
+      hash = Math.imul(hash ^ (isInverted ? 1 : 0), 16777619);
+      hash = Math.imul(hash ^ w, 16777619);
+      hash = Math.imul(hash ^ h, 16777619);
+
+      for (let i = 0; i < data.length; i += 4) {
+        let on;
+        if (isInverted) {
+          if (data[i] === 255) {
+            data[i] = 255;
+            data[i+1] = 255;
+            data[i+2] = 255;
+            data[i+3] = 255; // Solid opaque white digit
+            on = 1;
+          } else {
+            data[i] = 0;
+            data[i+1] = 0;
+            data[i+2] = 0;
+            data[i+3] = 0;   // 100% True Alpha Transparent
+            on = 0;
+          }
+        } else {
+          if (data[i] === 0) {
+            data[i] = 0;
+            data[i+1] = 0;
+            data[i+2] = 0;
+            data[i+3] = 255; // Solid opaque black digit
+            on = 1;
+          } else {
+            data[i] = 255;
+            data[i+1] = 255;
+            data[i+2] = 255;
+            data[i+3] = 0;   // 100% True Alpha Transparent for Multiply blend mode
+            on = 0;
+          }
+        }
+        hash = Math.imul(hash ^ on, 16777619);
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+      return hash >>> 0;
+    }
+
+    function selectCrop(key) {
+      activeCrop = key;
+      document.querySelectorAll('.config-tab').forEach(tab => {
+        const txt = tab.textContent.toLowerCase();
+        const isMatch = (key === 'clock' && txt.includes('clock') && !txt.includes('shot')) ||
+                        (key === 'home' && txt.includes('home')) ||
+                        (key === 'away' && txt.includes('away')) ||
+                        (key === 'period' && txt.includes('period')) ||
+                        (key === 'shot' && txt.includes('shot'));
+        tab.classList.toggle('active', isMatch);
+      });
+      const savedT = thresholds[key] || 120;
+      const displayVal = document.getElementById('threshold-val');
+      if (displayVal) displayVal.textContent = savedT;
+      const slider = document.getElementById('threshold-slider');
+      if (slider) slider.value = savedT;
+
+      const invCheckbox = document.getElementById('invert-toggle');
+      if (invCheckbox) invCheckbox.checked = !!invertStates[key];
+    }
+
+    // 7-Segment & LED Digit OCR Recognizer
+    function recognizeCanvasDigits(ctx, w, h, key) {
+      if (!w || !h) return null;
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      const colCounts = new Array(w).fill(0);
+      let totalDark = 0;
+      const digitTarget = (invertStates[key] ? 255 : 0);
+      for (let x = 0; x < w; x++) {
+        for (let y = 0; y < h; y++) {
+          const idx = (y * w + x) * 4;
+          if (data[idx] === digitTarget && data[idx+3] > 128) { colCounts[x]++; totalDark++; }
+        }
+      }
+      if (totalDark < 8) return null;
+
+      const digitBoxes = [];
+      let inDigit = false;
+      let startX = 0;
+      for (let x = 0; x < w; x++) {
+        if (colCounts[x] > 1) {
+          if (!inDigit) { inDigit = true; startX = x; }
+        } else {
+          if (inDigit) {
+            inDigit = false;
+            if ((x - startX) >= 2) digitBoxes.push({ x1: startX, x2: x - 1 });
+          }
+        }
+      }
+      if (inDigit && (w - startX) >= 2) digitBoxes.push({ x1: startX, x2: w - 1 });
+      if (digitBoxes.length === 0) return null;
+
+      let resultStr = '';
+      for (let b = 0; b < digitBoxes.length; b++) {
+        const box = digitBoxes[b];
+        const boxW = box.x2 - box.x1 + 1;
+
+        let yMin = h, yMax = 0;
+        for (let y = 0; y < h; y++) {
+          for (let x = box.x1; x <= box.x2; x++) {
+            const idx = (y * w + x) * 4;
+            if (data[idx] === 255 && data[idx+3] > 128) {
+              if (y < yMin) yMin = y;
+              if (y > yMax) yMax = y;
+            }
+          }
+        }
+        const boxH = yMax - yMin + 1;
+        if (boxH < 4) continue;
+
+        if (key === 'clock' && boxW <= Math.max(4, w * 0.1) && boxH < h * 0.8) {
+          let topDark = 0, botDark = 0;
+          const midY = (yMin + yMax) / 2;
+          for (let y = yMin; y <= yMax; y++) {
+            for (let x = box.x1; x <= box.x2; x++) {
+              const idx = (y * w + x) * 4;
+              if (data[idx] === 255 && data[idx+3] > 128) {
+                if (y < midY) topDark++; else botDark++;
+              }
+            }
+          }
+          if (topDark > 0 && botDark > 0) { resultStr += ':'; continue; }
+        }
+
+        const sampleRegion = (rx1, rx2, ry1, ry2) => {
+          const px1 = Math.floor(box.x1 + rx1 * boxW);
+          const px2 = Math.min(box.x2, Math.floor(box.x1 + rx2 * boxW));
+          const py1 = Math.floor(yMin + ry1 * boxH);
+          const py2 = Math.min(yMax, Math.floor(yMin + ry2 * boxH));
+          let count = 0, total = 0;
+          for (let y = py1; y <= py2; y++) {
+            for (let x = px1; x <= px2; x++) {
+              total++;
+              const idx = (y * w + x) * 4;
+              if (data[idx] === 255 && data[idx+3] > 128) count++;
+            }
+          }
+          return total > 0 ? (count / total) : 0;
+        };
+
+        const t = 0.30;
+        const s1 = sampleRegion(0.25, 0.75, 0.02, 0.18) > t; // Top
+        const s2 = sampleRegion(0.02, 0.30, 0.15, 0.40) > t; // Top-Left
+        const s3 = sampleRegion(0.70, 0.98, 0.15, 0.40) > t; // Top-Right
+        const s4 = sampleRegion(0.25, 0.75, 0.42, 0.58) > t; // Middle
+        const s5 = sampleRegion(0.02, 0.30, 0.60, 0.85) > t; // Bottom-Left
+        const s6 = sampleRegion(0.70, 0.98, 0.60, 0.85) > t; // Bottom-Right
+        const s7 = sampleRegion(0.25, 0.75, 0.82, 0.98) > t; // Bottom
+
+        let digit = '?';
+        if (!s1 && !s4 && !s7 && ((s3 && s6) || (s2 && s5))) digit = '1';
+        else if (s1 && !s2 && s3 && s4 && s5 && !s6 && s7) digit = '2';
+        else if (s1 && !s2 && s3 && s4 && !s5 && s6 && s7) digit = '3';
+        else if (!s1 && s2 && s3 && s4 && !s5 && s6 && !s7) digit = '4';
+        else if (s1 && s2 && !s3 && s4 && !s5 && s6 && s7) digit = '5';
+        else if (s1 && s2 && !s3 && s4 && s5 && s6 && s7) digit = '6';
+        else if (s1 && s3 && s6 && !s4 && !s5 && !s7) digit = '7';
+        else if (s1 && s2 && s3 && s4 && s5 && s6 && s7) digit = '8';
+        else if (s1 && s2 && s3 && s4 && !s5 && s6 && s7) digit = '9';
+        else if (s1 && s2 && s3 && !s4 && s5 && s6 && s7) digit = '0';
+        else {
+          if (s3 && s6 && !s1 && !s4 && !s7) digit = '1';
+          else if (s1 && s3 && s7) digit = s4 ? '2' : '7';
+          else if (s1 && s2 && s3 && s6) digit = '9';
+          else if (s2 && s3 && s5 && s6) digit = '0';
+        }
+
+        if (digit !== '?') resultStr += digit;
+      }
+      resultStr = resultStr.replace(/:+/g, ':');
+      return resultStr || null;
+    }
+
+    let streamTimer = null;
+    let _firebaseUploadInFlight = false;
+    let _firebaseUploadStartedAt = 0;
+    let _lastSentStreams = {};
+    let _lastHeartbeatByKey = {};
+    let _lastCropHashes = {};
+    let _lastSaverCanvasHashes = {};
+    let _tickCounter = 0;
+    let _lastAnyCropChangeTime = Date.now();
+    let _lastKeepaliveSent = 0;
+    const REMOTE_ALIGN_LEASE_MS = 180000; // Auto-expire remote alignment full-frame mode after 3 mins
+
+    // Optical Bridge Thermal-Optimized Stream Loop
+    function opticalStreamLoop() {
+      if (streamTimer) {
+        clearTimeout(streamTimer);
+        streamTimer = null;
+      }
+
+      if (document.hidden) {
+        streamTimer = setTimeout(opticalStreamLoop, 500);
+        return;
+      }
+
+      const video = document.getElementById('camera-view');
+      const canvas = document.getElementById('helper-canvas');
+      if (!video || !canvas) {
+        streamTimer = setTimeout(opticalStreamLoop, 180);
+        return;
+      }
+      if (video.paused && video.srcObject) {
+        video.play().catch(() => {});
+      }
+
+      const videoW = video.videoWidth;
+      const videoH = video.videoHeight;
+      const viewW = video.offsetWidth;
+      const viewH = video.offsetHeight;
+
+      if (!videoW || !videoH || !viewW || !viewH) {
+        streamTimer = setTimeout(opticalStreamLoop, 180);
+        return;
+      }
+
+      _tickCounter++;
+      const now = Date.now();
+      if (!window._camStartTime) window._camStartTime = now;
+      const isRemoteLeaseActive = window.remoteActive && (now - (window.remoteActivatedAt || 0) < REMOTE_ALIGN_LEASE_MS);
+      const controlsVisible = !document.body.classList.contains('controls-hidden') && !batterySaverActive;
+
+      const fieldMap = {
+        clock: 'gameClockStream',
+        shot: 'shotClockStream',
+        home: 'homeScoreStream',
+        away: 'awayScoreStream',
+        period: 'periodStream'
+      };
+
+      // Multi-Device Role Ownership:
+      // Cam 2 ('shot') ONLY processes and streams 'shot'!
+      // Cam 1 ('main') ONLY processes and streams 'clock', 'home', 'away', 'period'!
+      // All-In-One ('all') processes all 5.
+      const ownedKeys = getOwnedCropKeys(deviceRole);
+
+      const roleEnabledCrops = {};
+      const roleInvertStates = {};
+      ownedKeys.forEach(k => {
+        roleEnabledCrops[k] = enabledCrops[k] !== false;
+        roleInvertStates[k] = !!invertStates[k];
+      });
+
+      const camSlot = (deviceRole === 'shot') ? 'shot' : 'main';
+      const currentAspect = +(videoW / videoH).toFixed(3);
+
+      const payload = { 
+        streamActive: syncActive, 
+        sender: myClientId,
+        role: deviceRole,
+        enabledCrops: roleEnabledCrops,
+        invertStates: roleInvertStates,
+        aspectRatios: { [camSlot]: currentAspect },
+        timestamp: now
+      };
+
+      const streamRatio = videoW / videoH;
+      const viewRatio = viewW / viewH;
+
+      let scaledWidth, scaledHeight;
+      let offsetX = 0, offsetY = 0;
+
+      if (viewRatio > streamRatio) {
+        scaledWidth = viewW;
+        scaledHeight = viewW / streamRatio;
+        offsetY = (scaledHeight - viewH) / 2;
+      } else {
+        scaledWidth = viewH * streamRatio;
+        scaledHeight = viewH;
+        offsetX = (scaledWidth - viewW) / 2;
+      }
+
+      let changedStreamCount = 0;
+
+      for (const key of ownedKeys) {
+        const streamKey = fieldMap[key];
+        if (enabledCrops[key] === false) {
+          if (_lastSentStreams[streamKey] !== null) {
+            payload[streamKey] = null;
+            _lastSentStreams[streamKey] = null;
+            delete _lastCropHashes[key];
+            changedStreamCount++;
+          }
+          continue;
+        }
+
+        const frame = frames[key];
+        if (!frame) continue;
+
+        const boxX = frame.offsetLeft;
+        const boxY = frame.offsetTop;
+        const boxW = frame.offsetWidth;
+        const boxH = frame.offsetHeight;
+
+        const xInScaled = boxX + offsetX;
+        const yInScaled = boxY + offsetY;
+
+        const cropX = Math.max(0, Math.min(videoW - 1, (xInScaled / scaledWidth) * videoW));
+        const cropY = Math.max(0, Math.min(videoH - 1, (yInScaled / scaledHeight) * videoH));
+        const cropW = Math.max(1, Math.min(videoW - cropX, (boxW / scaledWidth) * videoW));
+        const cropH = Math.max(1, Math.min(videoH - cropY, (boxH / scaledHeight) * videoH));
+
+        const maxCropWidth = (key === 'period' || key === 'shot') ? 110 : 140;
+        const scale = Math.min(maxCropWidth / cropW, 1.0);
+        const targetW = Math.max(1, Math.round(cropW * scale));
+        const targetH = Math.max(1, Math.round(cropH * scale));
+
+        const { canvas: cropCanvas, ctx } = getCropCanvasAndCtx(key, targetW, targetH);
+        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+
+        const cropHash = preprocess(ctx, targetW, targetH, key);
+
+        // Always update in-box viewfinder previews whenever not in Saver Mode (even while dragging or controls auto-hidden)
+        if (!batterySaverActive) {
+          const cPreview = document.getElementById(`crop-preview-${key}`);
+          if (cPreview) {
+            if (cPreview.width !== targetW || cPreview.height !== targetH) {
+              cPreview.width = targetW;
+              cPreview.height = targetH;
+            }
+            const cCtx = cPreview.getContext('2d');
+            cCtx.clearRect(0, 0, targetW, targetH);
+            cCtx.drawImage(cropCanvas, 0, 0);
+          }
+
+          if (controlsVisible && key === activeCrop) {
+            const pCanvas = document.getElementById('ocr-preview-canvas');
+            if (pCanvas) {
+              if (pCanvas.width !== targetW || pCanvas.height !== targetH) {
+                pCanvas.width = targetW;
+                pCanvas.height = targetH;
+              }
+              pCanvas.style.background = invertStates[key] ? '#0a0604' : '#e2e8f0';
+              const pCtx = pCanvas.getContext('2d');
+              pCtx.clearRect(0, 0, targetW, targetH);
+              pCtx.drawImage(cropCanvas, 0, 0);
+            }
+            const recognized = recognizeCanvasDigits(ctx, targetW, targetH, key);
+            const ocrTextEl = document.getElementById('ocr-recognized-text');
+            if (ocrTextEl) {
+              ocrTextEl.textContent = recognized ? `OCR: ${recognized}` : 'Live Feed Stream';
+              ocrTextEl.style.color = recognized ? '#16c784' : '#f5c842';
+            }
+          }
+        } else {
+          // In Saver Mode, update every active monitor thumbnail on every tick with proper contrast background
+          const sCanvas = document.getElementById(`saver-canvas-${key}`);
+          if (sCanvas) {
+            if (sCanvas.width !== targetW || sCanvas.height !== targetH) {
+              sCanvas.width = targetW;
+              sCanvas.height = targetH;
+            }
+            sCanvas.style.background = invertStates[key] ? '#0a0604' : '#e2e8f0';
+            const sCtx = sCanvas.getContext('2d');
+            sCtx.clearRect(0, 0, targetW, targetH);
+            sCtx.drawImage(cropCanvas, 0, 0);
+          }
+        }
+
+        const dataUrl = cropCanvas.toDataURL('image/png');
+        const sinceHeartbeat = now - (_lastHeartbeatByKey[streamKey] || 0);
+        const streamChanged = dataUrl !== _lastSentStreams[streamKey];
+
+        if (streamChanged) {
+          _lastAnyCropChangeTime = now;
+        }
+        if (streamChanged || sinceHeartbeat > 2000) {
+          payload[streamKey] = dataUrl;
+          _lastSentStreams[streamKey] = dataUrl;
+          _lastCropHashes[key] = cropHash;
+          _lastHeartbeatByKey[streamKey] = now;
+          changedStreamCount++;
+        }
+      }
+
+      if (batterySaverActive) {
+        if (!window._lastSaverStatusTime || now - window._lastSaverStatusTime >= 1000) {
+          window._lastSaverStatusTime = now;
+          updateSaverStatusLine(now);
+        }
+      }
+
+      // Full-frame camera preview: fast (450ms) when Remote Alignment lease is active, or low-rate (8000ms) when viewfinder is visible
+      const fullFrameInterval = isRemoteLeaseActive ? 450 : 8000;
+      const needFullFrame = !window.lastFullFrameSent ||
+                            ((isRemoteLeaseActive || !batterySaverActive) && (now - window.lastFullFrameSent >= fullFrameInterval));
+
+      if (needFullFrame) {
+        window.lastFullFrameSent = now;
+        if (!window._fullCanvas) {
+          window._fullCanvas = document.createElement('canvas');
+        }
+        const fc = window._fullCanvas;
+        const targetW = 400;
+        const targetH = Math.round(400 * (videoH / videoW));
+        if (fc.width !== targetW || fc.height !== targetH) {
+          fc.width = targetW;
+          fc.height = targetH;
+        }
+        const fctx = fc.getContext('2d');
+        fctx.drawImage(video, 0, 0, targetW, targetH);
+        const fullFrameJpeg = fc.toDataURL('image/jpeg', 0.45);
+        payload.fullFrame = fullFrameJpeg;
+        payload.frames = { [camSlot]: fullFrameJpeg };
+        payload.crops = getNormalizedCrops(true);
+        payload.aspectRatio = currentAspect;
+        changedStreamCount++;
+
+        if (db && isRemoteLeaseActive) {
+          const user = (document.getElementById('session-input') && document.getElementById('session-input').value) || 'default';
+          const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+          db.ref(`ocr_cams/${fbUser}/${camSlot}`).set({
+            sender: myClientId,
+            role: deviceRole,
+            fullFrame: fullFrameJpeg,
+            aspectRatio: currentAspect,
+            crops: payload.crops,
+            invertStates: roleInvertStates,
+            enabledCrops: roleEnabledCrops,
+            timestamp: now
+          }).catch(() => {});
+        }
+      }
+
+      if (!window._lastPresenceCheck || (now - window._lastPresenceCheck > 10000)) {
+        window._lastPresenceCheck = now;
+        registerDevicePresence();
+      }
+
+      if ((syncActive || isRemoteLeaseActive) && changedStreamCount > 0) {
+        _lastKeepaliveSent = now;
+        sendUpdate(payload);
+      } else if (syncActive && changedStreamCount === 0 && (now - _lastKeepaliveSent > 4000)) {
+        _lastKeepaliveSent = now;
+        sendUpdate(payload);
+      }
+
+      // Zero-lag adaptive cadence: 100ms (10 FPS) during active clock/score changes or alignment, 200ms (5 FPS) when idle
+      const isGamePausedOrIdle = (now - _lastAnyCropChangeTime > 12000) && !controlsVisible && !isRemoteLeaseActive;
+      streamTimer = setTimeout(opticalStreamLoop, isGamePausedOrIdle ? 200 : 100);
+    }
+
+    let _pendingFirebasePayload = null;
+    let _pendingFirebaseUser = null;
+
+    function flushFirebasePayload() {
+      if (!db || !_pendingFirebasePayload || !_pendingFirebaseUser) return;
+      const now = Date.now();
+      if (_firebaseUploadInFlight && (now - _firebaseUploadStartedAt < 4000)) return;
+
+      const fbUser = _pendingFirebaseUser;
+      const nextPayload = _pendingFirebasePayload;
+      _pendingFirebasePayload = null;
+      _pendingFirebaseUser = null;
+
+      _firebaseUploadInFlight = true;
+      _firebaseUploadStartedAt = now;
+
+      db.ref(`ocr/${fbUser}`).update(nextPayload)
+        .then(() => {
+          _firebaseUploadInFlight = false;
+          const statusEl = document.getElementById('status-text');
+          if (statusEl && syncActive) {
+            statusEl.textContent = 'Optical Bridge (Streaming Live)';
+            statusEl.style.color = '#16c784';
+          }
+          if (_pendingFirebasePayload) {
+            flushFirebasePayload();
+          }
+        })
+        .catch((err) => {
+          _firebaseUploadInFlight = false;
+          console.error('Firebase OCR update error:', err);
+          const statusEl = document.getElementById('status-text');
+          if (statusEl) {
+            statusEl.textContent = 'Firebase Connection Error';
+            statusEl.style.color = '#ef4444';
+          }
+          if (_pendingFirebasePayload) {
+            setTimeout(flushFirebasePayload, 250);
+          }
+        });
+    }
+
+    // Transmit stream to Firebase / Server / BroadcastChannel
+    function sendUpdate(payload) {
+      const user = document.getElementById('session-input').value || 'default';
+
+      let target = syncTarget;
+      if (target === 'auto') {
+        const host = window.location.hostname;
+        const isLocalServer = host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.');
+        if (db && typeof isFirebaseConfigured !== 'undefined' && isFirebaseConfigured) {
+          target = 'firebase';
+        } else if (host.includes('onrender.com')) {
+          target = 'api-onrender';
+        } else {
+          target = 'api-local';
+        }
+      }
+
+      if (bc) {
+        bc.postMessage({ type: 'stream', data: payload });
+      }
+      if (bc2) {
+        const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+        bc2.postMessage({ type: 'stream', user: fbUser, data: payload });
+      }
+
+      if (target === 'firebase' && db) {
+        const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+        const ownedKeys = getOwnedCropKeys(deviceRole);
+        const camSlot = (deviceRole === 'shot') ? 'shot' : 'main';
+        const fbPayload = { ...payload };
+
+        // Strictly flatten ONLY owned keys for enabledCrops, invertStates, and crops
+        if (fbPayload.enabledCrops && typeof fbPayload.enabledCrops === 'object') {
+          ownedKeys.forEach(k => {
+            if (fbPayload.enabledCrops[k] !== undefined) {
+              fbPayload[`enabledCrops/${k}`] = fbPayload.enabledCrops[k];
+            }
+          });
+          delete fbPayload.enabledCrops;
+        }
+        if (fbPayload.invertStates && typeof fbPayload.invertStates === 'object') {
+          ownedKeys.forEach(k => {
+            if (fbPayload.invertStates[k] !== undefined) {
+              fbPayload[`invertStates/${k}`] = fbPayload.invertStates[k];
+            }
+          });
+          delete fbPayload.invertStates;
+        }
+        if (fbPayload.crops && typeof fbPayload.crops === 'object') {
+          ownedKeys.forEach(k => {
+            if (fbPayload.crops[k] && fbPayload.crops[k].w > 0.01 && fbPayload.crops[k].h > 0.01) {
+              fbPayload[`crops/${k}`] = fbPayload.crops[k];
+            }
+          });
+          delete fbPayload.crops;
+        }
+        if (fbPayload.aspectRatios && typeof fbPayload.aspectRatios === 'object') {
+          Object.keys(fbPayload.aspectRatios).forEach(s => {
+            fbPayload[`aspectRatios/${s}`] = fbPayload.aspectRatios[s];
+          });
+          delete fbPayload.aspectRatios;
+        }
+
+        // Write fullFrame strictly to isolated frames/main or frames/shot slot — NEVER overwrite shared root fullFrame or aspectRatio!
+        delete fbPayload.frames;
+        delete fbPayload.fullFrame;
+        delete fbPayload.aspectRatio;
+        if (payload.fullFrame) {
+          fbPayload[`frames/${camSlot}`] = payload.fullFrame;
+        }
+
+        // Coalescing Upload Queue: never drop changed score/clock updates while a previous Firebase write is in flight
+        _pendingFirebaseUser = fbUser;
+        _pendingFirebasePayload = Object.assign(_pendingFirebasePayload || {}, fbPayload);
+        flushFirebasePayload();
+        return;
+      }
+
+      let url = `/api/stream?user=${encodeURIComponent(user)}`;
+      if (target === 'api-onrender') {
+        url = `https://scoreboard.hoopculture.ca/api/stream?user=${encodeURIComponent(user)}`;
+      }
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(d => {
+        const statusEl = document.getElementById('status-text');
+        if (statusEl && syncActive) {
+          statusEl.textContent = `Optical Bridge (${target === 'api-onrender' ? 'OnRender' : 'Local'})`;
+          statusEl.style.color = '#16c784';
+        }
+      })
+      .catch(() => {
+        const statusEl = document.getElementById('status-text');
+        if (statusEl) {
+          statusEl.textContent = 'API Connection Error';
+          statusEl.style.color = '#ef4444';
+        }
+      });
+    }
+
+    function toggleSync() {
+      syncActive = !syncActive;
+      const btn = document.getElementById('sync-btn');
+      
+      if (syncActive) {
+        resetCropHashCache();
+        _lastKeepaliveSent = 0;
+        btn.textContent = '⏸️ Stop Sync';
+        btn.classList.add('active');
+        document.getElementById('status-text').textContent = 'Optical Bridge (Streaming Live)';
+        document.getElementById('status-text').style.color = '#16c784';
+      } else {
+        btn.textContent = '🛰️ Start Sync';
+        btn.classList.remove('active');
+        document.getElementById('status-text').textContent = 'Stopped';
+        document.getElementById('status-text').style.color = '#f5c842';
+        
+        const stopPayload = {
+          streamActive: false,
+          sender: myClientId,
+          role: deviceRole
+        };
+        if (deviceRole === 'shot') {
+          stopPayload.shotClockStream = null;
+        } else if (deviceRole === 'main') {
+          stopPayload.gameClockStream = null;
+          stopPayload.homeScoreStream = null;
+          stopPayload.awayScoreStream = null;
+          stopPayload.periodStream = null;
+          if (!window._hasDedicatedShotCam) {
+            stopPayload.shotClockStream = null;
+          }
+        } else {
+          stopPayload.gameClockStream = null;
+          stopPayload.shotClockStream = null;
+          stopPayload.homeScoreStream = null;
+          stopPayload.awayScoreStream = null;
+          stopPayload.periodStream = null;
+        }
+        sendUpdate(stopPayload);
+      }
+    }
+
+    function saveSession() {
+      const user = document.getElementById('session-input').value;
+      localStorage.setItem('hc_ocr_session', user);
+      alert(`Session saved as: ${user}`);
+    }
+
+    function updateSyncTarget() {
+      const select = document.getElementById('sync-target-select');
+      syncTarget = select.value;
+      localStorage.setItem('hc_ocr_sync_target', syncTarget);
+    }
+
+    function toggleHelp() {
+      const overlay = document.getElementById('help-overlay');
+      const isVisible = overlay.style.display === 'flex';
+      overlay.style.display = isVisible ? 'none' : 'flex';
+      if (!isVisible) {
+        localStorage.setItem('hc_ocr_help_shown', 'true');
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen()
+          .then(() => {
+            const btn = document.getElementById('fs-btn');
+            if (btn) btn.textContent = '📴 Exit Fullscreen';
+          })
+          .catch(err => {
+            console.warn("Fullscreen error:", err.message);
+          });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+          const btn = document.getElementById('fs-btn');
+          if (btn) btn.textContent = '🖥️ Fullscreen';
+        }
+      }
+    }
+
+    let batterySaverActive = false;
+    let lastUserInteractionAt = Date.now();
+    let wakeLockSentinel = null;
+
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator)) return;
+      if (wakeLockSentinel && !wakeLockSentinel.released) return;
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request('screen');
+        wakeLockSentinel.addEventListener('release', () => {
+          wakeLockSentinel = null;
+        });
+      } catch (e) {
+        // Ignore if battery low or restricted on older iOS versions
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    });
+
+    function updateSaverStatusLine(now = Date.now()) {
+      const statusLine = document.getElementById('saver-status-line');
+      if (!statusLine) return;
+      const totalSecs = Math.max(0, Math.floor((now - (window._camStartTime || now)) / 1000));
+      const hrs = Math.floor(totalSecs / 3600);
+      const mins = String(Math.floor((totalSecs % 3600) / 60)).padStart(2, '0');
+      const secs = String(totalSecs % 60).padStart(2, '0');
+      const roleLabel = deviceRole === 'shot' ? 'Shot Clock' : (deviceRole === 'main' ? 'Main Board' : 'All-In-One');
+      statusLine.textContent = `${syncActive ? '● Streaming Live' : '⏸ Paused'} • ${roleLabel} • ${hrs}h ${mins}m ${secs}s`;
+    }
+
+    function toggleBatterySaver(forceState) {
+      batterySaverActive = (typeof forceState === 'boolean') ? forceState : !batterySaverActive;
+      document.body.classList.toggle('saver-mode', batterySaverActive);
+
+      const overlay = document.getElementById('saver-overlay');
+      if (overlay) {
+        overlay.style.display = batterySaverActive ? 'flex' : 'none';
+      }
+      
+      const videoContainer = document.getElementById('video-container');
+      if (videoContainer) {
+        videoContainer.style.opacity = batterySaverActive ? '0.01' : '';
+      }
+
+      const video = document.getElementById('camera-view');
+      if (video && video.paused && video.srcObject) {
+        video.play().catch(() => {});
+      }
+      
+      Object.keys(frames).forEach(k => {
+        if (frames[k]) {
+          frames[k].style.opacity = batterySaverActive ? '0' : (enabledCrops[k] ? '1' : '0.2');
+          frames[k].style.pointerEvents = batterySaverActive ? 'none' : 'auto';
+        }
+      });
+
+      const saverBtn = document.getElementById('saver-btn');
+      if (saverBtn) {
+        if (batterySaverActive) {
+          saverBtn.classList.add('active');
+          saverBtn.style.background = 'rgba(22, 199, 132, 0.2)';
+        } else {
+          saverBtn.classList.remove('active');
+          saverBtn.style.background = '';
+        }
+      }
+
+      if (batterySaverActive) {
+        const ownedKeys = getOwnedCropKeys(deviceRole);
+        ['clock', 'home', 'away', 'period', 'shot'].forEach(k => {
+          const sCanvas = document.getElementById(`saver-canvas-${k}`);
+          if (sCanvas && sCanvas.parentElement) {
+            const isVisible = ownedKeys.includes(k) && enabledCrops[k] !== false;
+            sCanvas.parentElement.style.display = isVisible ? '' : 'none';
+            sCanvas.style.background = invertStates[k] ? '#0a0604' : '#e2e8f0';
+          }
+        });
+        const now = Date.now();
+        window._lastSaverStatusTime = now;
+        updateSaverStatusLine(now);
+      } else {
+        lastUserInteractionAt = Date.now();
+        if (typeof resetHideControlsTimer === 'function') {
+          resetHideControlsTimer();
+        }
+      }
+    }
+
+    function startMarathonWatchdogs() {
+      if (window._marathonWatchdogsStarted) return;
+      window._marathonWatchdogsStarted = true;
+
+      const markUserActive = () => {
+        lastUserInteractionAt = Date.now();
+        if (!wakeLockSentinel) requestWakeLock();
+      };
+      ['pointerdown', 'touchstart', 'input', 'change'].forEach(evt => {
+        document.addEventListener(evt, markUserActive, { passive: true });
+      });
+
+      // Keep Saver Mode manual via the top-bar button so the viewfinder never unexpectedly blacks out while aligning
+
+      // 10s camera track self-healing watchdog in case iOS background/thermal kills the video track
+      setInterval(() => {
+        if (document.hidden) return;
+        const video = document.getElementById('camera-view');
+        const stream = video && video.srcObject;
+        const track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+        const trackEnded = !stream || !track || track.readyState === 'ended';
+        if (trackEnded && !window._cameraRestartInFlight) {
+          window._cameraRestartInFlight = true;
+          Promise.resolve(startCamera(typeof currentDeviceId !== 'undefined' ? currentDeviceId : undefined))
+            .catch(() => {})
+            .finally(() => {
+              setTimeout(() => { window._cameraRestartInFlight = false; }, 3000);
+            });
+        }
+      }, 10000);
+    }
+
+    function getLoggedInUser() {
+      try {
+        const localUser = localStorage.getItem('hc_session_user');
+        if (localUser) return localUser;
+        const match = document.cookie.match(new RegExp('(^| )hc_session_user=([^;]+)'));
+        return match ? decodeURIComponent(match[2]) : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Initial setups
+    window.addEventListener('load', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryUser = urlParams.get('user');
+      const savedSession = localStorage.getItem('hc_ocr_session');
+      const loggedInUser = getLoggedInUser();
+
+      const activeUser = queryUser || savedSession || loggedInUser || 'default';
+      document.getElementById('session-input').value = activeUser;
+      
+      const savedTarget = localStorage.getItem('hc_ocr_sync_target');
+      if (savedTarget) {
+        syncTarget = savedTarget;
+        const select = document.getElementById('sync-target-select');
+        if (select) select.value = savedTarget;
+      }
+
+      const queryTarget = urlParams.get('target');
+      if (queryTarget) {
+        syncTarget = queryTarget;
+        const select = document.getElementById('sync-target-select');
+        if (select) select.value = queryTarget;
+      }
+
+      const savedThresholds = localStorage.getItem('hc_ocr_thresholds');
+      if (savedThresholds) {
+        try {
+          thresholds = JSON.parse(savedThresholds);
+        } catch(e) {}
+      }
+      updateThreshold(thresholds[activeCrop] || 120);
+
+      const savedDilation = localStorage.getItem('hc_ocr_dilation');
+      if (savedDilation !== null) {
+        dilationEnabled = savedDilation === 'true';
+        const checkbox = document.getElementById('dilation-toggle');
+        if (checkbox) checkbox.checked = dilationEnabled;
+      }
+
+      const savedInvert = localStorage.getItem('hc_ocr_invert_states');
+      if (savedInvert) {
+        try {
+          invertStates = JSON.parse(savedInvert);
+          const checkbox = document.getElementById('invert-toggle');
+          if (checkbox) checkbox.checked = !!invertStates[activeCrop];
+        } catch(e) {}
+      }
+
+      const helpShown = localStorage.getItem('hc_ocr_help_shown');
+      if (!helpShown) {
+        toggleHelp();
+      }
+
+      let hideControlsTimeout = null;
+
+      function resetHideControlsTimer() {
+        showControls();
+        clearTimeout(hideControlsTimeout);
+        hideControlsTimeout = setTimeout(hideControls, 4000);
+      }
+
+      function hideControls() {
+        const helpOverlay = document.getElementById('help-overlay');
+        if (helpOverlay && helpOverlay.style.display !== 'none') return;
+        if (activeDragFrame || activeResizeFrame) return;
+
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT')) {
+          clearTimeout(hideControlsTimeout);
+          hideControlsTimeout = setTimeout(hideControls, 4000);
+          return;
+        }
+
+        document.body.classList.add('controls-hidden');
+      }
+
+      function showControls() {
+        document.body.classList.remove('controls-hidden');
+      }
+
+      window.hideControls = hideControls;
+      window.showControls = showControls;
+      window.resetHideControlsTimer = resetHideControlsTimer;
+
+      window.addEventListener('click', (e) => {
+        const isOverlay = e.target.closest('.controls-overlay') || e.target.closest('.crop-frame') || e.target.closest('#help-overlay');
+        if (!isOverlay) {
+          if (document.body.classList.contains('controls-hidden')) {
+            resetHideControlsTimer();
+          } else {
+            hideControls();
+          }
+        }
+      });
+
+      document.querySelectorAll('.controls-overlay').forEach(el => {
+        ['mousedown', 'touchstart', 'click'].forEach(evt => {
+          el.addEventListener(evt, () => {
+            clearTimeout(hideControlsTimeout);
+            hideControlsTimeout = setTimeout(hideControls, 4000);
+          }, { passive: true });
+        });
+      });
+
+      function initRemoteCropListeners() {
+        const user = (document.getElementById('session-input') && document.getElementById('session-input').value) || 'default';
+        const fbUser = user.replace(/[\.\#\$\[\]]/g, '_');
+
+        if (db) {
+          bindRoleCropListeners();
+
+          db.ref(`ocr/${fbUser}/remoteActive`).on('value', snapshot => {
+            const val = snapshot.val();
+            if (val === true || (typeof val === 'number' && val > 0)) {
+              window.remoteActive = true;
+              window.remoteActivatedAt = Date.now();
+              window.lastRemoteActiveTime = Date.now();
+              window.lastFullFrameSent = 0;
+            } else {
+              window.remoteActive = false;
+            }
+          });
+
+          // Auto-yield shot role if another active camera is dedicated to shot
+          db.ref(`ocr_devices/${fbUser}`).on('value', snapshot => {
+            const devices = snapshot.val() || {};
+            const now = Date.now();
+            const hasDedicatedShotCam = Object.keys(devices).some(id => {
+              if (id === myClientId) return false;
+              const d = devices[id];
+              return d && d.role === 'shot' && (now - (d.lastSeen || 0) < 30000);
+            });
+            window._hasDedicatedShotCam = hasDedicatedShotCam;
+            if (hasDedicatedShotCam && deviceRole === 'all') {
+              console.log('[Multi-Cam] Dedicated Shot Clock detected, auto-yielding Cam 1 to Main Board role');
+              setDeviceRole('main', true);
+            }
+          });
+        }
+
+        if (bc2) {
+          bc2.addEventListener('message', (e) => {
+            if (!e || !e.data) return;
+            if (e.data.user && e.data.user !== fbUser) return;
+            if (e.data.type === 'crop_update' && e.data.sender !== myClientId) {
+              const targetSlot = (deviceRole === 'shot') ? 'shot' : 'main';
+              if (!e.data.targetRole || e.data.targetRole === deviceRole || e.data.targetRole === targetSlot || e.data.targetRole === 'all') {
+                applyRemoteCropPositions(e.data);
+              }
+            } else if (e.data.type === 'remote_active') {
+              window.remoteActive = !!e.data.active;
+              if (window.remoteActive) {
+                window.remoteActivatedAt = Date.now();
+                window.lastRemoteActiveTime = Date.now();
+                window.lastFullFrameSent = 0;
+              }
+            }
+          });
+        }
+      }
+
+      setDeviceRole(deviceRole, false);
+      restoreEnabledCrops();
+      restoreCropPositions();
+      startCamera();
+      initRemoteCropListeners();
+      registerDevicePresence();
+      setTimeout(() => {
+        const video = document.getElementById('camera-view');
+        if (video && video.videoWidth > 0) saveCropPositions(true);
+      }, 1500);
+      
+      toggleSync();
+      opticalStreamLoop();
+      resetHideControlsTimer();
+      requestWakeLock();
+      startMarathonWatchdogs();
+    });
+  </script>
+
+  <!-- Battery Saver Blackout Overlay -->
+  <div id="saver-overlay" onclick="if(!event.target.closest('#saver-crop-monitors')) toggleBatterySaver(false)" style="display:none; position:fixed; inset:0; background:#000; z-index:1500; flex-direction:column; align-items:center; justify-content:center; padding:20px; font-family:'Barlow Condensed',sans-serif;">
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:36px; margin-bottom:4px;">🔋</div>
+      <div style="font-size:16px; color:#16c784; font-weight:700; letter-spacing:1px; text-transform:uppercase;">Thermal Eco Mode Active</div>
+      <div style="font-size:11px; color:var(--grey); margin-top:2px; font-family:sans-serif;">Viewfinder & GPU preview paused to keep iPhone cool for 8+ hrs. Tap anywhere or Exit Saver Mode to wake viewfinder.</div>
+      <div id="saver-status-line" style="font-size:11px; color:#f5c842; margin-top:6px; font-family:monospace;">Optical Bridge: 0h 00m • Eco Cool Active</div>
+    </div>
+
+    <!-- Live Crop Monitors in Saver Mode -->
+    <div id="saver-crop-monitors" style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center; max-width:600px; width:100%; border:1px solid #1a1a1a; padding:14px; border-radius:8px; background:#050505; margin-bottom:24px;">
+      <div style="text-align:center;">
+        <span style="color:var(--orange2); font-size:10px; font-weight:700; text-transform:uppercase;">CLOCK</span>
+        <canvas id="saver-canvas-clock" style="display:block; width:110px; height:40px; border:1px solid #222; background:#000; border-radius:4px; margin-top:4px;"></canvas>
+      </div>
+      <div style="text-align:center;">
+        <span style="color:#f5c842; font-size:10px; font-weight:700; text-transform:uppercase;">HOME</span>
+        <canvas id="saver-canvas-home" style="display:block; width:80px; height:40px; border:1px solid #222; background:#000; border-radius:4px; margin-top:4px;"></canvas>
+      </div>
+      <div style="text-align:center;">
+        <span style="color:#ef4444; font-size:10px; font-weight:700; text-transform:uppercase;">AWAY</span>
+        <canvas id="saver-canvas-away" style="display:block; width:80px; height:40px; border:1px solid #222; background:#000; border-radius:4px; margin-top:4px;"></canvas>
+      </div>
+      <div style="text-align:center;">
+        <span style="color:#a855f7; font-size:10px; font-weight:700; text-transform:uppercase;">QTR</span>
+        <canvas id="saver-canvas-period" style="display:block; width:50px; height:40px; border:1px solid #222; background:#000; border-radius:4px; margin-top:4px;"></canvas>
+      </div>
+      <div style="text-align:center;">
+        <span style="color:#00d2ff; font-size:10px; font-weight:700; text-transform:uppercase;">SHOT</span>
+        <canvas id="saver-canvas-shot" style="display:block; width:60px; height:40px; border:1px solid #222; background:#000; border-radius:4px; margin-top:4px;"></canvas>
+      </div>
+    </div>
+
+    <button class="btn" onclick="event.stopPropagation(); toggleBatterySaver(false)" style="padding:10px 20px; border-color:var(--orange); color:var(--orange); border-radius:6px; font-size:13px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; cursor:pointer;">Exit Saver Mode</button>
+  </div>
+</body>
+</html>

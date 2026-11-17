@@ -702,9 +702,8 @@ export default function StudioPage() {
         const upgraded = SceneStorage.ensureLatestDefaultScenes(profile.savedScenes);
         setScenes(upgraded);
         setActiveSceneId(upgraded[0].id);
-      }
-      if (profile.scoreboardPreset) {
-        setScoreboard((prev) => ({ ...prev, ...profile.scoreboardPreset }));
+        setPreviewSceneId(upgraded[0].id);
+        compositorRef.current?.updateCurrentScene(upgraded[0]);
       }
       const cloudFb = profile.connectedAccounts?.facebook || profile.streamSettings?.fbSettings;
       const cloudYt = profile.connectedAccounts?.youtube || profile.streamSettings?.ytSettings;
@@ -761,43 +760,6 @@ export default function StudioPage() {
   // Active scene helper
   const activeScene = scenes.find((s) => s.id === activeSceneId) || scenes[0];
   const previewScene = scenes.find((s) => s.id === previewSceneId) || scenes[0];
-
-  // Live Basketball Game Clock & Shot Clock 1-Second Tick Engine
-  useEffect(() => {
-    if (!scoreboard.isClockRunning) return;
-    const timer = setInterval(() => {
-      setScoreboard((prev) => {
-        if (!prev.isClockRunning) return prev;
-        const parts = prev.gameClock.split(':');
-        let mins = parseInt(parts[0] || '0', 10);
-        let secs = parseInt(parts[1] || '0', 10);
-        if (mins === 0 && secs === 0) {
-          const stopped = { ...prev, isClockRunning: false };
-          compositorRef.current?.updateScoreboard(stopped);
-          return stopped;
-        }
-        if (secs === 0) {
-          mins = Math.max(0, mins - 1);
-          secs = 59;
-        } else {
-          secs -= 1;
-        }
-        const nextGameClock = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        const nextShotClock = prev.shotClock > 0 ? prev.shotClock - 1 : 0;
-        const nextState: ScoreboardState = {
-          ...prev,
-          gameClock: nextGameClock,
-          shotClock: nextShotClock,
-          shotSeconds: nextShotClock,
-          gameSeconds: mins * 60 + secs,
-        };
-        compositorRef.current?.updateScoreboard(nextState);
-        bridgeRef.current?.broadcast(nextState);
-        return nextState;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [scoreboard.isClockRunning]);
 
   const updateScenes = (newScenes: Scene[]) => {
     setScenes(newScenes);
@@ -2178,6 +2140,9 @@ export default function StudioPage() {
                     onTriggerInstantReplay={handleTriggerInstantReplay}
                     onOpenScoreboardControl={() => setIsSidebarOpen(true)}
                     isStreaming={isStreaming}
+                    isCanvasOverlayActive={
+                      isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer)
+                    }
                     cameraCapabilities={cameraCapabilities}
                     proCameraSettings={proCameraSettings}
                     onUpdateProCamera={handleUpdateProCamera}
@@ -2226,6 +2191,9 @@ export default function StudioPage() {
               onTriggerInstantReplay={handleTriggerInstantReplay}
               onOpenScoreboardControl={() => setIsSidebarOpen(true)}
               isStreaming={isStreaming}
+              isCanvasOverlayActive={
+                isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer)
+              }
               cameraCapabilities={cameraCapabilities}
               proCameraSettings={proCameraSettings}
               onUpdateProCamera={handleUpdateProCamera}
@@ -2248,13 +2216,13 @@ export default function StudioPage() {
 
         {/* Streamlabs Toolset Sidebar (Desktop XL Side Panel or Mobile/Tablet Slide-Over Drawer) */}
         {isSidebarOpen && (
-          <div className="fixed inset-y-0 right-0 z-40 xl:relative xl:inset-auto xl:w-80 h-full shadow-2xl flex">
+          <div className="fixed inset-y-0 right-0 z-40 xl:relative xl:inset-auto w-80 sm:w-96 xl:w-[400px] h-full shadow-2xl flex">
             {/* Mobile / Tablet Backdrop click to close */}
             <div
               className="fixed inset-0 bg-black/60 xl:hidden z-30"
               onClick={() => setIsSidebarOpen(false)}
             />
-            <div className="relative z-40 w-80 max-w-[88vw] h-full flex flex-col bg-[#100d0a] border-l border-[#2a1e14]">
+            <div className="relative z-40 w-80 sm:w-96 xl:w-[400px] max-w-[92vw] h-full flex flex-col bg-[#100d0a] border-l border-[#2a1e14]">
               <SidebarTabs
                 chatMessages={chatMessages}
                 highlightedChat={highlightedChat}
@@ -2281,6 +2249,12 @@ export default function StudioPage() {
                 onOpenSourceProperties={handleOpenSourceProperties}
                 scoreboard={scoreboard}
                 onChangeScoreboard={handleScoreboardChange}
+                sessionUser={
+                  user?.email ||
+                  settings.scoreboardSessionUser ||
+                  profile?.assignedCourt ||
+                  'isidro.pascua@gmail.com'
+                }
                 onTriggerInstantReplay={handleTriggerInstantReplay}
                 micVolume={micVolume}
                 micMuted={micMuted}

@@ -407,6 +407,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="font-bold text-purple-400">4. Compact Neon Bug</div>
                     <div className="text-[10px] font-mono text-slate-400">/nbaoverlay2</div>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/frontcam?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="p-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-left"
+                  >
+                    <div className="font-bold text-cyan-400">5. Front Cam Frame</div>
+                    <div className="text-[10px] font-mono text-slate-400">/frontcam</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const u = `https://scoreboard.hoopculture.ca/cam1?user=${encodeURIComponent(localSettings.scoreboardSessionUser || 'default')}`;
+                      setLocalSettings({ ...localSettings, overlayUrl: u });
+                    }}
+                    className="p-2 bg-slate-900 hover:bg-slate-850 rounded-xl border border-slate-800 text-left"
+                  >
+                    <div className="font-bold text-emerald-400">6. OBS Camera Frames</div>
+                    <div className="text-[10px] font-mono text-slate-400">/cam1 through /cam5</div>
+                  </button>
                 </div>
               </div>
             </div>

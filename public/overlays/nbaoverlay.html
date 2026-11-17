@@ -498,37 +498,22 @@ function applyStateMessage(msgData) {
 }
 
 const bc = new BroadcastChannel('hc_scoreboard_sync');
-bc.onmessage = (e) => {
-  const msg = e.data;
-  if (!msg) return;
-  _lastLocalMsgTime = Date.now();
-  if (msg.type === 'state') {
-    applyStateMessage(msg.data);
-  } else if (msg.type === 'stream') {
-    applyStreamData(msg.data);
-  } else if (msg.type === 'buzz') {
-    if (msg.timestamp > _lastBuzzTime) {
-      _lastBuzzTime = msg.timestamp;
-      if (msg.kind === 'game') playGameBuzzer(); else playShotBuzzer();
-    }
-  }
-};
-
-window.addEventListener('message', (e) => {
-  const msg = e.data;
-  if (!msg) return;
+function handlePostOrBcMessage(msg) {
+  if (!msg || typeof msg !== 'object') return;
   _lastLocalMsgTime = Date.now();
   if (msg.type === 'state') {
     applyStateMessage(msg.data);
   } else if (msg.type === 'stream' || msg.type === 'ocr') {
     applyStreamData(msg.data || msg);
   } else if (msg.type === 'buzz') {
-    if (msg.timestamp > _lastBuzzTime) {
-      _lastBuzzTime = msg.timestamp;
+    if ((msg.timestamp || 0) > _lastBuzzTime) {
+      _lastBuzzTime = msg.timestamp || Date.now();
       if (msg.kind === 'game') playGameBuzzer(); else playShotBuzzer();
     }
   }
-});
+}
+bc.onmessage = (e) => handlePostOrBcMessage(e.data);
+window.addEventListener('message', (e) => handlePostOrBcMessage(e.data));
 
 const DEF = {
   homeScore:0, awayScore:0,

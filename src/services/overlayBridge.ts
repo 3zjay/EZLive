@@ -163,25 +163,10 @@ export class OverlayBridge {
   private setupListeners() {
     if (typeof window === 'undefined') return;
 
-    // Connect to the unified ScoreboardSyncManager
+    // Connect to the unified ScoreboardSyncManager (HTML overlays read RTDB/BroadcastChannel directly)
     this.unsubscribeSync = scoreboardSync.subscribe((liveState) => {
       this.lastKnownState = { ...this.lastKnownState, ...liveState };
       this.notify(liveState);
-
-      // Also push liveState to any active overlay iframes so they stay 100% synced
-      const hcData = this.toHoopCulturePayload(liveState);
-      try {
-        const iframes = document.querySelectorAll('iframe');
-        iframes.forEach((iframe) => {
-          iframe.contentWindow?.postMessage(
-            {
-              type: 'state',
-              data: hcData,
-            },
-            '*'
-          );
-        });
-      } catch {}
     });
 
     // Forward live optical scanner stream crops directly to embedded overlay iframes
