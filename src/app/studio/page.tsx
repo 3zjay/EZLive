@@ -695,65 +695,75 @@ export default function StudioPage() {
     }
   }, [user?.email, profile?.assignedCourt, settings.scoreboardSessionUser]);
 
-  // Sync with Firebase profile on login
+  const hydratedProfileKeyRef = useRef<string | null>(null);
+
+  // Sync with Firebase profile on login (once per active operator session)
   useEffect(() => {
-    if (profile) {
-      if (profile.savedScenes && profile.savedScenes.length > 0) {
-        const upgraded = SceneStorage.ensureLatestDefaultScenes(profile.savedScenes);
-        setScenes(upgraded);
-        setActiveSceneId(upgraded[0].id);
-        setPreviewSceneId(upgraded[0].id);
-        compositorRef.current?.updateCurrentScene(upgraded[0]);
-      }
-      const cloudFb = profile.connectedAccounts?.facebook || profile.streamSettings?.fbSettings;
-      const cloudYt = profile.connectedAccounts?.youtube || profile.streamSettings?.ytSettings;
-      const cloudCustom = profile.connectedAccounts?.customRtmp || profile.streamSettings?.customRtmpSettings;
+    if (!profile) {
+      hydratedProfileKeyRef.current = null;
+      return;
+    }
+    const profileKey = profile.uid || profile.email || 'default';
+    if (hydratedProfileKeyRef.current === profileKey) {
+      return;
+    }
+    hydratedProfileKeyRef.current = profileKey;
 
-      setSettings((prev) => {
-        const merged = { ...prev, ...(profile.streamSettings || {}) };
-        if (cloudFb) {
-          merged.fbSettings = {
-            ...merged.fbSettings,
-            userToken: cloudFb.userToken || merged.fbSettings?.userToken || '',
-            userName: cloudFb.userName || merged.fbSettings?.userName || '',
-            userPicture: cloudFb.userPicture || merged.fbSettings?.userPicture || '',
-            selectedPageId: cloudFb.selectedPageId || merged.fbSettings?.selectedPageId || '',
-            selectedPageName: cloudFb.selectedPageName || merged.fbSettings?.selectedPageName || '',
-            selectedPageToken: cloudFb.selectedPageToken || merged.fbSettings?.selectedPageToken || '',
-            selectedGroupId: cloudFb.selectedGroupId || merged.fbSettings?.selectedGroupId || '',
-            selectedGroupName: cloudFb.selectedGroupName || merged.fbSettings?.selectedGroupName || '',
-            groupStreamKey: cloudFb.groupStreamKey || merged.fbSettings?.groupStreamKey || '',
-            destinationType: (cloudFb.destinationType as 'page' | 'group' | 'timeline' | 'stream_key') || merged.fbSettings?.destinationType || 'page',
-            connected: Boolean(cloudFb.connected || cloudFb.userToken || cloudFb.selectedPageId),
-          };
-        }
-        if (cloudYt) {
-          merged.ytSettings = {
-            ...merged.ytSettings,
-            enabled: Boolean(cloudYt.streamKey || merged.ytSettings?.enabled),
-            streamKey: cloudYt.streamKey || merged.ytSettings?.streamKey || '',
-            channelTitle: cloudYt.channelTitle || merged.ytSettings?.channelTitle || '',
-            channelId: cloudYt.channelId || merged.ytSettings?.channelId || '',
-            channelAvatar: cloudYt.channelAvatar || merged.ytSettings?.channelAvatar || '',
-            rtmpUrl: cloudYt.rtmpUrl || merged.ytSettings?.rtmpUrl || 'rtmp://a.rtmp.youtube.com/live2/',
-            accessToken: cloudYt.accessToken || merged.ytSettings?.accessToken || '',
-            connected: Boolean(cloudYt.connected || cloudYt.streamKey),
-          };
-        }
-        if (cloudCustom) {
-          merged.customRtmpSettings = {
-            ...merged.customRtmpSettings,
-            enabled: Boolean(cloudCustom.enabled || merged.customRtmpSettings?.enabled),
-            serverUrl: cloudCustom.serverUrl || merged.customRtmpSettings?.serverUrl || '',
-            streamKey: cloudCustom.streamKey || merged.customRtmpSettings?.streamKey || '',
-          };
-        }
-        return merged;
-      });
+    if (profile.savedScenes && profile.savedScenes.length > 0) {
+      const upgraded = SceneStorage.ensureLatestDefaultScenes(profile.savedScenes);
+      setScenes(upgraded);
+      setActiveSceneId(upgraded[0].id);
+      setPreviewSceneId(upgraded[0].id);
+      compositorRef.current?.updateCurrentScene(upgraded[0]);
+    }
+    const cloudFb = profile.connectedAccounts?.facebook || profile.streamSettings?.fbSettings;
+    const cloudYt = profile.connectedAccounts?.youtube || profile.streamSettings?.ytSettings;
+    const cloudCustom = profile.connectedAccounts?.customRtmp || profile.streamSettings?.customRtmpSettings;
 
-      if (profile.brandKit) {
-        setBrandKit((prev) => ({ ...prev, ...profile.brandKit }));
+    setSettings((prev) => {
+      const merged = { ...prev, ...(profile.streamSettings || {}) };
+      if (cloudFb) {
+        merged.fbSettings = {
+          ...merged.fbSettings,
+          userToken: cloudFb.userToken || merged.fbSettings?.userToken || '',
+          userName: cloudFb.userName || merged.fbSettings?.userName || '',
+          userPicture: cloudFb.userPicture || merged.fbSettings?.userPicture || '',
+          selectedPageId: cloudFb.selectedPageId || merged.fbSettings?.selectedPageId || '',
+          selectedPageName: cloudFb.selectedPageName || merged.fbSettings?.selectedPageName || '',
+          selectedPageToken: cloudFb.selectedPageToken || merged.fbSettings?.selectedPageToken || '',
+          selectedGroupId: cloudFb.selectedGroupId || merged.fbSettings?.selectedGroupId || '',
+          selectedGroupName: cloudFb.selectedGroupName || merged.fbSettings?.selectedGroupName || '',
+          groupStreamKey: cloudFb.groupStreamKey || merged.fbSettings?.groupStreamKey || '',
+          destinationType: (cloudFb.destinationType as 'page' | 'group' | 'timeline' | 'stream_key') || merged.fbSettings?.destinationType || 'page',
+          connected: Boolean(cloudFb.connected || cloudFb.userToken || cloudFb.selectedPageId),
+        };
       }
+      if (cloudYt) {
+        merged.ytSettings = {
+          ...merged.ytSettings,
+          enabled: Boolean(cloudYt.streamKey || merged.ytSettings?.enabled),
+          streamKey: cloudYt.streamKey || merged.ytSettings?.streamKey || '',
+          channelTitle: cloudYt.channelTitle || merged.ytSettings?.channelTitle || '',
+          channelId: cloudYt.channelId || merged.ytSettings?.channelId || '',
+          channelAvatar: cloudYt.channelAvatar || merged.ytSettings?.channelAvatar || '',
+          rtmpUrl: cloudYt.rtmpUrl || merged.ytSettings?.rtmpUrl || 'rtmp://a.rtmp.youtube.com/live2/',
+          accessToken: cloudYt.accessToken || merged.ytSettings?.accessToken || '',
+          connected: Boolean(cloudYt.connected || cloudYt.streamKey),
+        };
+      }
+      if (cloudCustom) {
+        merged.customRtmpSettings = {
+          ...merged.customRtmpSettings,
+          enabled: Boolean(cloudCustom.enabled || merged.customRtmpSettings?.enabled),
+          serverUrl: cloudCustom.serverUrl || merged.customRtmpSettings?.serverUrl || '',
+          streamKey: cloudCustom.streamKey || merged.customRtmpSettings?.streamKey || '',
+        };
+      }
+      return merged;
+    });
+
+    if (profile.brandKit) {
+      setBrandKit((prev) => ({ ...prev, ...profile.brandKit }));
     }
   }, [profile]);
 
@@ -884,8 +894,7 @@ export default function StudioPage() {
       compositorRef.current.highlightedChat = highlightedChat;
       compositorRef.current.activeBanner = activeBanner;
       compositorRef.current.brandKit = brandKit;
-      compositorRef.current.isBroadcastingOrRecording =
-        isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer);
+      compositorRef.current.isBroadcastingOrRecording = isStreaming || recordingState.isRecording;
       compositorRef.current.cameraBrightness = proCameraSettings.brightness;
       compositorRef.current.cameraContrast = proCameraSettings.contrast;
       compositorRef.current.cameraSaturation = proCameraSettings.saturation;
@@ -908,7 +917,6 @@ export default function StudioPage() {
     brandKit,
     isStreaming,
     recordingState.isRecording,
-    settings.enableReplayBuffer,
     proCameraSettings,
     cameraCapabilities,
   ]);
@@ -2201,9 +2209,7 @@ export default function StudioPage() {
                     onTriggerInstantReplay={handleTriggerInstantReplay}
                     onOpenScoreboardControl={handleOpenScoreboardControl}
                     isStreaming={isStreaming}
-                    isCanvasOverlayActive={
-                      isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer)
-                    }
+                    isCanvasOverlayActive={isStreaming || recordingState.isRecording}
                     cameraCapabilities={cameraCapabilities}
                     proCameraSettings={proCameraSettings}
                     onUpdateProCamera={handleUpdateProCamera}
@@ -2232,9 +2238,7 @@ export default function StudioPage() {
               onTriggerInstantReplay={handleTriggerInstantReplay}
               onOpenScoreboardControl={handleOpenScoreboardControl}
               isStreaming={isStreaming}
-              isCanvasOverlayActive={
-                isStreaming || recordingState.isRecording || Boolean(settings.enableReplayBuffer)
-              }
+              isCanvasOverlayActive={isStreaming || recordingState.isRecording}
               cameraCapabilities={cameraCapabilities}
               proCameraSettings={proCameraSettings}
               onUpdateProCamera={handleUpdateProCamera}

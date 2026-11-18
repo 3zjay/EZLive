@@ -321,6 +321,7 @@ const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_us
 const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
 
 let aiSyncActive = false;
+let hasActiveStream = false;
 let aiState = { gameSeconds: null, clockStr: null, homeScore: null, awayScore: null, quarter: null, shotSeconds: null };
 
 const explicitInvert = urlParams.get('invert') || urlParams.get('feedInvert');
@@ -406,17 +407,20 @@ function applyStreamData(data) {
       S.awayScoreStream = null;
       S.periodStream = null;
     } else {
-      aiSyncActive = false;
       S.gameClockStream = null;
       S.homeScoreStream = null;
       S.awayScoreStream = null;
       S.periodStream = null;
       S.shotClockStream = null;
     }
+    const anyStreamLeft = Boolean(S.gameClockStream || S.shotClockStream || S.homeScoreStream || S.awayScoreStream || S.periodStream);
+    hasActiveStream = role === 'all' ? false : anyStreamLeft;
+    aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
     render();
     return;
   }
-  aiSyncActive = true;
+  hasActiveStream = true;
+  aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
 
   const isLocalShotOnly = (role === 'shot' && data.homeScoreStream === undefined && data.awayScoreStream === undefined && data.gameClockStream === undefined && data.periodStream === undefined);
 
@@ -464,7 +468,8 @@ function hasStateNonClockChanged(oldS, newD) {
   for (const k of [
     'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeRecord', 'awayRecord',
     'homeColor', 'awayColor', 'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
-    'quarter', 'possession', 'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value'
+    'quarter', 'possession', 'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value',
+    'aiSyncEnabled', 'aiSyncActive'
   ]) {
     if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
   }
@@ -478,8 +483,6 @@ function applyStateMessage(msgData) {
     cropInvertStates = Object.assign(cropInvertStates, msgData.invertStates);
     updateAllStreamImagesStyle();
   }
-  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
-  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
   if (msgData.enabledCrops) {
     if (msgData.enabledCrops.clock === false) S.gameClockStream = null;
     if (msgData.enabledCrops.home === false) S.homeScoreStream = null;
@@ -489,6 +492,8 @@ function applyStateMessage(msgData) {
   }
   const nonClockChanged = hasStateNonClockChanged(S, msgData);
   S = { ...S, ...msgData };
+  S.aiSyncEnabled = msgData.aiSyncEnabled !== undefined ? !!msgData.aiSyncEnabled : !!S.aiSyncEnabled;
+  aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
   if (nonClockChanged) {
     render();
   } else {
@@ -521,6 +526,7 @@ const DEF = {
   awayAbbr:'AWAY', awayRecord:'0-0', awayColor:'#c8102e', awayLogo:null,
   quarter:1, gameSeconds:600, shotSeconds:24,
   gameRunning:false, shotRunning:false, possession:null,
+  aiSyncEnabled:false,
 };
 const PERIODS = ['1ST','2ND','3RD','4TH','OT','2OT'];
 let S = {...DEF};
@@ -767,9 +773,14 @@ function connectSSE(){
       if (!d) return;
       applyStateMessage(d);
     });
+    let isFirstOcrSnap = true;
     db.ref(`ocr/${fbUser}`).on('value', snapshot => {
       const d = snapshot.val();
-      if (d) applyStreamData(d);
+      const wasFirst = isFirstOcrSnap;
+      isFirstOcrSnap = false;
+      if (!d) return;
+      if (wasFirst && (!d.timestamp || Date.now() - Number(d.timestamp) > 15000)) return;
+      applyStreamData(d);
     });
     db.ref(`buzz/${fbUser}`).on('value', snapshot => {
       if (Date.now() - _lastLocalMsgTime < 2000) return;
@@ -803,11 +814,11 @@ function connectSSE(){
 if (useFirebase && db) {
   db.ref(`states/${fbUser}`).once('value').then(snapshot => {
     const data = snapshot.val();
-    if (data) { S={...DEF,...data}; render(); syncLocalTick(); }
+    if (data) { S={...DEF,...data}; S.aiSyncEnabled = !!S.aiSyncEnabled; aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream); render(); syncLocalTick(); }
   }).catch(()=>{}).finally(()=>{ connectSSE(); });
 } else {
   fetch(`${SERVER_URL}/state?user=${encodeURIComponent(currentUser)}`).then(r=>r.json()).then(d=>{
-    if(Object.keys(d).length){ S={...DEF,...d}; render(); syncLocalTick(); }
+    if(Object.keys(d).length){ S={...DEF,...d}; S.aiSyncEnabled = !!S.aiSyncEnabled; aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream); render(); syncLocalTick(); }
   }).catch(()=>{}).finally(()=>{ connectSSE(); });
 }
 </script>

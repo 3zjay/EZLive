@@ -951,11 +951,12 @@ const DEFAULT_STATE = {
   rp1Value: 'Facebook',
   rp2Title: 'VENUE',
   rp2Value: 'Audley',
-  aiSyncEnabled: true
+  aiSyncEnabled: false
 };
 
 let S = { ...DEFAULT_STATE };
 let aiSyncActive = false;
+let hasActiveStream = false;
 let lastHomeScore = -1;
 let lastAwayScore = -1;
 
@@ -1000,6 +1001,7 @@ fetch(`https://hoop-culture-scoreboard-default-rtdb.firebaseio.com/ocr/${targetI
   .then(r => r.json())
   .then(data => {
     if (data && typeof data === 'object') {
+      if (!data.timestamp || (Date.now() - Number(data.timestamp) > 15000)) return;
       applyStreamData(data);
     }
   }).catch(() => {});
@@ -1454,8 +1456,6 @@ function applyStateMessage(msgData) {
     cropInvertStates = Object.assign(cropInvertStates, msgData.invertStates);
     updateAllStreamImagesStyle();
   }
-  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
-  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
   if (msgData.enabledCrops) {
     if (msgData.enabledCrops.clock === false) S.gameClockStream = null;
     if (msgData.enabledCrops.shot === false) S.shotClockStream = null;
@@ -1481,6 +1481,8 @@ function applyStateMessage(msgData) {
 
   const nonClockChanged = hasStateNonClockChanged(S, msgData);
   S = { ...S, ...msgData };
+  S.aiSyncEnabled = msgData.aiSyncEnabled !== undefined ? !!msgData.aiSyncEnabled : !!S.aiSyncEnabled;
+  aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
 
   if (nonClockChanged) {
     renderAll();
@@ -1505,18 +1507,21 @@ function applyStreamData(streamData) {
       S.awayScoreStream = null;
       S.periodStream = null;
     } else {
-      aiSyncActive = false;
       S.gameClockStream = null;
       S.shotClockStream = null;
       S.homeScoreStream = null;
       S.awayScoreStream = null;
       S.periodStream = null;
     }
+    const anyStreamLeft = Boolean(S.gameClockStream || S.shotClockStream || S.homeScoreStream || S.awayScoreStream || S.periodStream);
+    hasActiveStream = role === 'all' ? false : anyStreamLeft;
+    aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
     renderAll();
     syncLocalTick();
     return;
   }
-  aiSyncActive = true;
+  hasActiveStream = true;
+  aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
 
   let streamImagesChanged = false;
 
@@ -1663,15 +1668,20 @@ if (useFirebase && db) {
       if (val) applyStateMessage(val);
     });
 
-    // Live optical scanner stream (listen strictly to user's active room)
+    // Live optical scanner stream (listen strictly to user's active room; ignore stale initial snapshots > 15s)
     db.ref(`ocr/${roomKey}`).once('value').then(snap => {
       const d = snap.val();
-      if (d) applyStreamData(d);
+      if (d && d.timestamp && Date.now() - Number(d.timestamp) <= 15000) applyStreamData(d);
     }).catch(() => {});
 
+    let isFirstOcrSnap = true;
     db.ref(`ocr/${roomKey}`).on('value', snap => {
       const d = snap.val();
-      if (d) applyStreamData(d);
+      const wasFirst = isFirstOcrSnap;
+      isFirstOcrSnap = false;
+      if (!d) return;
+      if (wasFirst && (!d.timestamp || Date.now() - Number(d.timestamp) > 15000)) return;
+      applyStreamData(d);
     });
 
     // Live buzzer / horn listener

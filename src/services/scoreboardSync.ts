@@ -174,7 +174,7 @@ export function normalizeScoreboardState(raw: any, syncSource: ScoreboardState['
     awayRecord: raw.awayRecord || '0-0',
     periodDisabled: Boolean(raw.periodDisabled),
     shotClockDisabled: Boolean(raw.shotClockDisabled),
-    aiSyncEnabled: raw.aiSyncEnabled !== undefined ? Boolean(raw.aiSyncEnabled) : undefined,
+    aiSyncEnabled: Boolean(raw.aiSyncEnabled),
     aiSyncActive: raw.aiSyncActive !== undefined ? Boolean(raw.aiSyncActive) : (raw.streamActive !== undefined ? Boolean(raw.streamActive) : undefined),
     gameClockStream: raw.gameClockStream !== undefined ? raw.gameClockStream : undefined,
     shotClockStream: raw.shotClockStream !== undefined ? raw.shotClockStream : undefined,
@@ -213,6 +213,7 @@ class ScoreboardSyncManager {
     periodStream: null,
   };
   private lastDedicatedShotCamTime = 0;
+  private aiSyncEnabled: boolean = false;
   private currentSessionUser: string = 'default';
   private currentSafeKey: string = 'default';
 
@@ -285,6 +286,9 @@ class ScoreboardSyncManager {
 
   private handleOcrStreamUpdate(streamData: Record<string, any>) {
     if (!streamData || typeof streamData !== 'object') return;
+    if (streamData._fromRtdbInit && (!streamData.timestamp || Date.now() - Number(streamData.timestamp) > 15000)) {
+      return;
+    }
     const role = streamData.role || 'all';
 
     if (streamData.streamActive === false) {
@@ -347,7 +351,8 @@ class ScoreboardSyncManager {
 
     // Update optical crop fields in-place for compositor consumers without re-triggering React state updates at 10 FPS
     const targetState: ScoreboardState = this.currentState || { ...DEFAULT_SCOREBOARD_STATE };
-    targetState.aiSyncActive = this.latestOcrState.aiSyncActive;
+    targetState.aiSyncEnabled = this.aiSyncEnabled;
+    targetState.aiSyncActive = Boolean(this.aiSyncEnabled && this.latestOcrState.aiSyncActive);
     targetState.gameClockStream = this.latestOcrState.gameClockStream;
     targetState.shotClockStream = this.latestOcrState.shotClockStream;
     targetState.homeScoreStream = this.latestOcrState.homeScoreStream;
@@ -534,11 +539,20 @@ class ScoreboardSyncManager {
       );
 
       const ocrRef = ref(this.scoreboardDb, `ocr/${safeKey}`);
+      let isFirstOcrSnapshot = true;
       this.rtdbOcrUnsubscribe = onValue(
         ocrRef,
         (snapshot) => {
           if (snapshot.exists()) {
-            this.handleOcrStreamUpdate(snapshot.val());
+            const rawVal = snapshot.val();
+            const payload =
+              isFirstOcrSnapshot && rawVal && typeof rawVal === 'object'
+                ? { ...rawVal, _fromRtdbInit: true }
+                : rawVal;
+            isFirstOcrSnapshot = false;
+            this.handleOcrStreamUpdate(payload);
+          } else {
+            isFirstOcrSnapshot = false;
           }
         },
         () => {}
@@ -587,10 +601,13 @@ class ScoreboardSyncManager {
   }
 
   private handleStateUpdate(state: ScoreboardState, source: 'firebase_rtdb' | 'broadcast_channel' | 'local_sse') {
-    // Preserve active optical stream crops unless explicitly disabled
+    this.aiSyncEnabled = Boolean(state.aiSyncEnabled);
+
+    // Preserve active optical stream crops only while AI Sync is explicitly enabled
     const merged: ScoreboardState = {
       ...state,
-      aiSyncActive: state.aiSyncActive ?? (this.latestOcrState.aiSyncActive || Boolean(state.aiSyncEnabled)),
+      aiSyncEnabled: this.aiSyncEnabled,
+      aiSyncActive: Boolean(this.aiSyncEnabled && this.latestOcrState.aiSyncActive),
       gameClockStream: state.enabledCrops?.clock === false ? null : (state.gameClockStream !== undefined ? state.gameClockStream : this.latestOcrState.gameClockStream),
       shotClockStream: state.enabledCrops?.shot === false ? null : (state.shotClockStream !== undefined ? state.shotClockStream : this.latestOcrState.shotClockStream),
       homeScoreStream: state.enabledCrops?.home === false ? null : (state.homeScoreStream !== undefined ? state.homeScoreStream : this.latestOcrState.homeScoreStream),

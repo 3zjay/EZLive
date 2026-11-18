@@ -209,7 +209,29 @@ export const DEFAULT_OBS_SCENES: Scene[] = [
 export class SceneStorage {
   public static ensureLatestDefaultScenes(scenes: Scene[]): Scene[] {
     if (!Array.isArray(scenes) || scenes.length === 0) return DEFAULT_OBS_SCENES;
-    const hasScripps = scenes.some(
+    let changed = false;
+    const deduplicated = scenes.map((scene) => {
+      if (!Array.isArray(scene.sources)) return scene;
+      const seenBrowserUrls = new Set<string>();
+      const filteredSources = scene.sources.filter((src) => {
+        if (src.type !== 'browser_url' || !src.url) return true;
+        let urlKey = src.url.trim().toLowerCase();
+        try {
+          const parsed = new URL(urlKey, 'https://ezlive.vercel.app');
+          parsed.searchParams.delete('user');
+          urlKey = `${parsed.origin}${parsed.pathname}${parsed.search}`;
+        } catch {}
+        if (seenBrowserUrls.has(urlKey)) {
+          changed = true;
+          return false;
+        }
+        seenBrowserUrls.add(urlKey);
+        return true;
+      });
+      return filteredSources.length === scene.sources.length ? scene : { ...scene, sources: filteredSources };
+    });
+
+    const hasScripps = deduplicated.some(
       (s) =>
         s.id === 'scene-game-scripps' ||
         s.id === 'scene_scripps' ||
@@ -222,10 +244,10 @@ export class SceneStorage {
     if (!hasScripps) {
       const scrippsDefault = DEFAULT_OBS_SCENES.find((s) => s.id === 'scene-game-scripps');
       if (scrippsDefault) {
-        return [scrippsDefault, ...scenes];
+        return [scrippsDefault, ...deduplicated];
       }
     }
-    return scenes;
+    return changed ? deduplicated : scenes;
   }
 
   public static loadScenes(): Scene[] {

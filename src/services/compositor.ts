@@ -79,6 +79,8 @@ export class VideoCompositor {
 
   // Image cache
   private imageCache: Map<string, HTMLImageElement> = new Map();
+  private lastStreamSlotImage: Map<string, HTMLImageElement> = new Map();
+  private pendingStreamSlotSrc: Map<string, string> = new Map();
 
   // Metrics
   private frameCount: number = 0;
@@ -781,16 +783,42 @@ export class VideoCompositor {
     return sb.gameClock || '10:00';
   }
 
+  private getOrLoadStreamSlotImage(slotKey: string, url: string): HTMLImageElement | null {
+    const currentImg = this.lastStreamSlotImage.get(slotKey) || null;
+    if (currentImg && currentImg.src === url && currentImg.complete && currentImg.naturalWidth > 0) {
+      return currentImg;
+    }
+
+    if (this.pendingStreamSlotSrc.get(slotKey) !== url) {
+      this.pendingStreamSlotSrc.set(slotKey, url);
+      const staging = new Image();
+      staging.crossOrigin = 'anonymous';
+      staging.onload = () => {
+        if (this.pendingStreamSlotSrc.get(slotKey) === url && staging.naturalWidth > 0) {
+          this.lastStreamSlotImage.set(slotKey, staging);
+        }
+      };
+      staging.src = url;
+      if (staging.complete && staging.naturalWidth > 0) {
+        this.lastStreamSlotImage.set(slotKey, staging);
+        return staging;
+      }
+    }
+
+    return currentImg && currentImg.complete && currentImg.naturalWidth > 0 ? currentImg : null;
+  }
+
   private drawOpticalStreamImg(
     url: string | null | undefined,
     cx: number,
     cy: number,
     maxW: number,
     maxH: number,
-    invert?: boolean
+    invert?: boolean,
+    slotKey: string = 'default'
   ): boolean {
-    if (!this.scoreboard.aiSyncActive || !url) return false;
-    const img = this.getOrLoadImage(url);
+    if (!this.scoreboard.aiSyncEnabled || !this.scoreboard.aiSyncActive || !url) return false;
+    const img = this.getOrLoadStreamSlotImage(slotKey, url);
     if (!img) return false;
     const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
     let drawW = maxW;
@@ -1026,7 +1054,7 @@ export class VideoCompositor {
 
     // Away Score inside capsule (optical crop or numeric)
     const awayScoreCx = curX + Math.round(62 * scale);
-    if (!this.drawOpticalStreamImg(sb.awayScoreStream, awayScoreCx, logoCy, 84 * scale, capH - 12 * scale, sb.invertStates?.away)) {
+    if (!this.drawOpticalStreamImg(sb.awayScoreStream, awayScoreCx, logoCy, 84 * scale, capH - 12 * scale, sb.invertStates?.away, 'away')) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 ${Math.round(56 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
       ctx.textAlign = 'center';
@@ -1036,7 +1064,7 @@ export class VideoCompositor {
 
     // Home Score inside capsule (optical crop or numeric)
     const homeScoreCx = curX + capsuleW - Math.round(62 * scale);
-    if (!this.drawOpticalStreamImg(sb.homeScoreStream, homeScoreCx, logoCy, 84 * scale, capH - 12 * scale, sb.invertStates?.home)) {
+    if (!this.drawOpticalStreamImg(sb.homeScoreStream, homeScoreCx, logoCy, 84 * scale, capH - 12 * scale, sb.invertStates?.home, 'home')) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 ${Math.round(56 * scale)}px 'Teko', 'Barlow Condensed', sans-serif`;
       ctx.textAlign = 'center';
@@ -1121,20 +1149,12 @@ export class VideoCompositor {
     ctx.fillStyle = 'rgba(255,255,255,0.14)';
     ctx.fillRect(curX, pillY + 14 * scale, 1.5, pillH - 28 * scale);
 
-    // Period white pod card
+    // Period text directly on dark clock capsule (matching scripps.html)
     if (!sb.periodDisabled) {
-      const podW = Math.round(52 * scale);
-      const podH = Math.round(38 * scale);
-      const podX = curX + 18 * scale;
-      const podY = logoCy - podH / 2;
-      ctx.fillStyle = '#ffffff';
-      this.roundRect(ctx, podX, podY, podW, podH, 7 * scale);
-      ctx.fill();
-
-      const perCx = podX + podW / 2;
-      if (!this.drawOpticalStreamImg(sb.periodStream, perCx, logoCy, podW - 8 * scale, podH - 8 * scale, sb.invertStates?.period)) {
-        ctx.fillStyle = '#090d16';
-        ctx.font = `900 ${Math.round(24 * scale)}px 'Barlow Condensed', sans-serif`;
+      const perCx = curX + 44 * scale;
+      if (!this.drawOpticalStreamImg(sb.periodStream, perCx, logoCy, 46 * scale, 29 * scale, sb.invertStates?.period, 'period')) {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `900 ${Math.round(28 * scale)}px 'Barlow Condensed', sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(this.formatOverlayPeriod(sb.quarter ?? sb.period), perCx, logoCy + 1 * scale);
@@ -1143,7 +1163,7 @@ export class VideoCompositor {
 
     // Game Clock
     const clkCx = curX + (sb.shotClockDisabled ? 174 * scale : 138 * scale);
-    if (!this.drawOpticalStreamImg(sb.gameClockStream, clkCx, logoCy, 108 * scale, 48 * scale, sb.invertStates?.clock)) {
+    if (!this.drawOpticalStreamImg(sb.gameClockStream, clkCx, logoCy, 108 * scale, 48 * scale, sb.invertStates?.clock, 'clock')) {
       const clkWarn = sb.gameSeconds !== undefined && sb.gameSeconds <= 30;
       ctx.fillStyle = clkWarn ? '#ff5f5f' : '#ffffff';
       ctx.font = `700 ${Math.round(46 * scale)}px 'Teko', 'Barlow Condensed', monospace`;
@@ -1155,7 +1175,7 @@ export class VideoCompositor {
     // Shot Clock
     if (!sb.shotClockDisabled) {
       const scCx = curX + clockW - 50 * scale;
-      if (!this.drawOpticalStreamImg(sb.shotClockStream, scCx, logoCy, 64 * scale, 48 * scale, sb.invertStates?.shot)) {
+      if (!this.drawOpticalStreamImg(sb.shotClockStream, scCx, logoCy, 64 * scale, 48 * scale, sb.invertStates?.shot, 'shot')) {
         const scNum = sb.shotSeconds ?? sb.shotClock ?? 24;
         ctx.fillStyle = scNum <= 5 ? '#ff3b30' : '#ffffff';
         ctx.font = `700 ${Math.round(46 * scale)}px 'Teko', 'Barlow Condensed', monospace`;
@@ -1313,7 +1333,7 @@ export class VideoCompositor {
 
     // Home Score
     const hScoreCx = barX + sideW - scoreZoneW / 2 - 20 * scale;
-    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreCx, rowCy, 96 * scale, 64 * scale, sb.invertStates?.home)) {
+    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreCx, rowCy, 96 * scale, 64 * scale, sb.invertStates?.home, 'home')) {
       ctx.fillStyle = hTextColor;
       ctx.font = `italic 900 ${Math.round(52 * scale)}px 'Barlow Condensed', sans-serif`;
       ctx.textAlign = 'center';
@@ -1333,7 +1353,7 @@ export class VideoCompositor {
       ctx.drawImage(hcLogoImg, centerBlockX + (centerW - Math.min(130 * scale, imgW)) / 2, barY + 8 * scale, Math.min(130 * scale, imgW), imgH);
     }
 
-    if (!this.drawOpticalStreamImg(sb.gameClockStream, centerBlockX + centerW / 2, barY + 46 * scale, 120 * scale, 28 * scale, sb.invertStates?.clock)) {
+    if (!this.drawOpticalStreamImg(sb.gameClockStream, centerBlockX + centerW / 2, barY + 46 * scale, 120 * scale, 28 * scale, sb.invertStates?.clock, 'clock')) {
       ctx.fillStyle = '#ff3344';
       ctx.font = `900 ${Math.round(30 * scale)}px 'Barlow Condensed', monospace`;
       ctx.textAlign = 'center';
@@ -1362,7 +1382,7 @@ export class VideoCompositor {
     ctx.fillRect(barX + barWidth - logoZoneW, barY, logoZoneW, mainH);
 
     const aScoreCx = awayStartX + scoreZoneW / 2 + 20 * scale;
-    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreCx, rowCy, 96 * scale, 64 * scale, sb.invertStates?.away)) {
+    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreCx, rowCy, 96 * scale, 64 * scale, sb.invertStates?.away, 'away')) {
       ctx.fillStyle = aTextColor;
       ctx.font = `italic 900 ${Math.round(52 * scale)}px 'Barlow Condensed', sans-serif`;
       ctx.textAlign = 'center';
@@ -1557,7 +1577,7 @@ export class VideoCompositor {
     const hScoreX = barX + teamW;
     ctx.fillStyle = '#161b26';
     ctx.fillRect(hScoreX, mainY, scoreW, mainH);
-    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreX + scoreW / 2, cy, scoreW - 16 * scale, mainH - 20 * scale, sb.invertStates?.home)) {
+    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreX + scoreW / 2, cy, scoreW - 16 * scale, mainH - 20 * scale, sb.invertStates?.home, 'home')) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 ${Math.round(68 * scale)}px 'Teko', monospace`;
       ctx.textAlign = 'center';
@@ -1573,7 +1593,7 @@ export class VideoCompositor {
     ctx.fillRect(cX + centerW - 1, mainY, 1, mainH);
 
     if (!sb.periodDisabled) {
-      if (!this.drawOpticalStreamImg(sb.periodStream, cX + centerW / 2, mainY + 22 * scale, 60 * scale, 22 * scale, sb.invertStates?.period)) {
+      if (!this.drawOpticalStreamImg(sb.periodStream, cX + centerW / 2, mainY + 22 * scale, 60 * scale, 22 * scale, sb.invertStates?.period, 'period')) {
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
         ctx.font = `800 ${Math.round(13 * scale)}px sans-serif`;
         ctx.textAlign = 'center';
@@ -1581,7 +1601,7 @@ export class VideoCompositor {
       }
     }
 
-    if (!this.drawOpticalStreamImg(sb.gameClockStream, cX + centerW / 2, mainY + 56 * scale, centerW - 18 * scale, 40 * scale, sb.invertStates?.clock)) {
+    if (!this.drawOpticalStreamImg(sb.gameClockStream, cX + centerW / 2, mainY + 56 * scale, centerW - 18 * scale, 40 * scale, sb.invertStates?.clock, 'clock')) {
       ctx.fillStyle = sb.gameSeconds !== undefined && sb.gameSeconds <= 30 ? '#ff5f5f' : '#ffffff';
       ctx.font = `700 ${Math.round(46 * scale)}px 'Teko', monospace`;
       ctx.textAlign = 'center';
@@ -1590,7 +1610,7 @@ export class VideoCompositor {
 
     if (!sb.shotClockDisabled) {
       const scNum = sb.shotSeconds ?? sb.shotClock ?? 24;
-      if (!this.drawOpticalStreamImg(sb.shotClockStream, cX + centerW / 2, mainY + 89 * scale, 54 * scale, 22 * scale, sb.invertStates?.shot)) {
+      if (!this.drawOpticalStreamImg(sb.shotClockStream, cX + centerW / 2, mainY + 89 * scale, 54 * scale, 22 * scale, sb.invertStates?.shot, 'shot')) {
         ctx.fillStyle = scNum <= 5 ? '#e84040' : '#f5c842';
         ctx.font = `700 ${Math.round(22 * scale)}px 'Teko', monospace`;
         ctx.textAlign = 'center';
@@ -1602,7 +1622,7 @@ export class VideoCompositor {
     const aScoreX = cX + centerW;
     ctx.fillStyle = '#161b26';
     ctx.fillRect(aScoreX, mainY, scoreW, mainH);
-    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreX + scoreW / 2, cy, scoreW - 16 * scale, mainH - 20 * scale, sb.invertStates?.away)) {
+    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreX + scoreW / 2, cy, scoreW - 16 * scale, mainH - 20 * scale, sb.invertStates?.away, 'away')) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 ${Math.round(68 * scale)}px 'Teko', monospace`;
       ctx.textAlign = 'center';
@@ -1955,7 +1975,7 @@ export class VideoCompositor {
     const hScoreX = centerX - scoreW;
     ctx.fillStyle = '#161b26';
     ctx.fillRect(hScoreX, barY + 4 * scale, scoreW, barHeight - 8 * scale);
-    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreX + scoreW / 2, cy, scoreW - 18 * scale, barHeight - 24 * scale, sb.invertStates?.home)) {
+    if (!this.drawOpticalStreamImg(sb.homeScoreStream, hScoreX + scoreW / 2, cy, scoreW - 18 * scale, barHeight - 24 * scale, sb.invertStates?.home, 'home')) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 ${Math.round(78 * scale)}px 'Teko', monospace`;
       ctx.textAlign = 'center';
@@ -1970,7 +1990,7 @@ export class VideoCompositor {
     ctx.fillRect(centerX + centerW, barY, 1, barHeight);
 
     if (!sb.periodDisabled) {
-      if (!this.drawOpticalStreamImg(sb.periodStream, midX, barY + 24 * scale, 70 * scale, 24 * scale, sb.invertStates?.period)) {
+      if (!this.drawOpticalStreamImg(sb.periodStream, midX, barY + 24 * scale, 70 * scale, 24 * scale, sb.invertStates?.period, 'period')) {
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
         ctx.font = `800 ${Math.round(13 * scale)}px 'Barlow Condensed', sans-serif`;
         ctx.textAlign = 'center';
@@ -1978,7 +1998,7 @@ export class VideoCompositor {
       }
     }
 
-    if (!this.drawOpticalStreamImg(sb.gameClockStream, midX, cy + 2 * scale, centerW - 24 * scale, 48 * scale, sb.invertStates?.clock)) {
+    if (!this.drawOpticalStreamImg(sb.gameClockStream, midX, cy + 2 * scale, centerW - 24 * scale, 48 * scale, sb.invertStates?.clock, 'clock')) {
       ctx.fillStyle = sb.gameSeconds !== undefined && sb.gameSeconds <= 30 ? '#ff5f5f' : '#ffffff';
       ctx.font = `700 ${Math.round(54 * scale)}px 'Teko', monospace`;
       ctx.textAlign = 'center';
@@ -1987,7 +2007,7 @@ export class VideoCompositor {
 
     if (!sb.shotClockDisabled) {
       const scNum = sb.shotSeconds ?? sb.shotClock ?? 24;
-      if (!this.drawOpticalStreamImg(sb.shotClockStream, midX, barY + barHeight - 20 * scale, 64 * scale, 24 * scale, sb.invertStates?.shot)) {
+      if (!this.drawOpticalStreamImg(sb.shotClockStream, midX, barY + barHeight - 20 * scale, 64 * scale, 24 * scale, sb.invertStates?.shot, 'shot')) {
         ctx.fillStyle = scNum <= 5 ? '#e84040' : '#f5c842';
         ctx.font = `700 ${Math.round(24 * scale)}px 'Teko', monospace`;
         ctx.textAlign = 'center';
@@ -1999,7 +2019,7 @@ export class VideoCompositor {
     const aScoreX = centerX + centerW;
     ctx.fillStyle = '#161b26';
     ctx.fillRect(aScoreX, barY + 4 * scale, scoreW, barHeight - 8 * scale);
-    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreX + scoreW / 2, cy, scoreW - 18 * scale, barHeight - 24 * scale, sb.invertStates?.away)) {
+    if (!this.drawOpticalStreamImg(sb.awayScoreStream, aScoreX + scoreW / 2, cy, scoreW - 18 * scale, barHeight - 24 * scale, sb.invertStates?.away, 'away')) {
       ctx.fillStyle = '#ffffff';
       ctx.font = `700 ${Math.round(78 * scale)}px 'Teko', monospace`;
       ctx.textAlign = 'center';

@@ -433,11 +433,12 @@ const DEF={
   quarter:1,
   rp1Title:'BROADCAST',rp1Value:'',
   rp2Title:'VENUE',rp2Value:'',
-  aiSyncEnabled:true
+  aiSyncEnabled:false
 };
 
 let S={...DEF};
 let aiSyncActive = false;
+let hasActiveStream = false;
 let aiState = { gameSeconds: null, clockStr: null, homeScore: null, awayScore: null, quarter: null, shotSeconds: null };
 let lH=-1,lA=-1,_lb=0;
 let _lastLocalMsgTime=0;
@@ -528,18 +529,21 @@ function applyStreamData(data) {
       S.awayScoreStream = null;
       S.periodStream = null;
     } else {
-      aiSyncActive = false;
       S.gameClockStream = null;
       S.homeScoreStream = null;
       S.awayScoreStream = null;
       S.periodStream = null;
       S.shotClockStream = null;
     }
+    const anyStreamLeft = Boolean(S.gameClockStream || S.shotClockStream || S.homeScoreStream || S.awayScoreStream || S.periodStream);
+    hasActiveStream = role === 'all' ? false : anyStreamLeft;
+    aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
     draw();
     return;
   }
   
-  aiSyncActive = true;
+  hasActiveStream = true;
+  aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
 
   const isLocalShotOnly = (role === 'shot' && data.homeScoreStream === undefined && data.awayScoreStream === undefined && data.gameClockStream === undefined && data.periodStream === undefined);
 
@@ -587,7 +591,7 @@ function hasStateNonClockChanged(oldS, newD) {
     'homeScore', 'awayScore', 'homeAbbr', 'awayAbbr', 'homeRecord', 'awayRecord',
     'homeColor', 'awayColor', 'homeLogo', 'awayLogo', 'homeLogoThumb', 'awayLogoThumb',
     'quarter', 'possession', 'rp1Title', 'rp1Value', 'rp2Title', 'rp2Value',
-    'homeFouls', 'awayFouls'
+    'homeFouls', 'awayFouls', 'aiSyncEnabled', 'aiSyncActive'
   ]) {
     if (newD[k] !== undefined && newD[k] !== oldS[k]) return true;
   }
@@ -603,8 +607,6 @@ function applyStateMessage(msgData) {
     cropInvertStates = Object.assign(cropInvertStates, msgData.invertStates);
     updateAllStreamImagesStyle();
   }
-  if (msgData.aiSyncActive !== undefined) aiSyncActive = !!msgData.aiSyncActive;
-  if (msgData.aiSyncEnabled !== undefined) aiSyncActive = !!msgData.aiSyncEnabled;
   if (msgData.enabledCrops) {
     if (msgData.enabledCrops.clock === false) S.gameClockStream = null;
     if (msgData.enabledCrops.home === false) S.homeScoreStream = null;
@@ -614,6 +616,8 @@ function applyStateMessage(msgData) {
   }
   const nonClockChanged = hasStateNonClockChanged(S, msgData);
   S = { ...S, ...msgData };
+  S.aiSyncEnabled = msgData.aiSyncEnabled !== undefined ? !!msgData.aiSyncEnabled : !!S.aiSyncEnabled;
+  aiSyncActive = Boolean(S.aiSyncEnabled && hasActiveStream);
   if (nonClockChanged) {
     draw();
   } else {
@@ -949,7 +953,15 @@ function conn(){
       if(!d)return;
       applyStateMessage(d);
     });
-    db.ref(`ocr/${FU}`).on('value',sn=>{const d=sn.val();if(d)applyStreamData(d);});
+    let isFirstOcrSnap = true;
+    db.ref(`ocr/${FU}`).on('value',sn=>{
+      const d=sn.val();
+      const wasFirst = isFirstOcrSnap;
+      isFirstOcrSnap = false;
+      if(!d) return;
+      if(wasFirst && (!d.timestamp || Date.now() - Number(d.timestamp) > 15000)) return;
+      applyStreamData(d);
+    });
     db.ref(`buzz/${FU}`).on('value',sn=>{if(Date.now()-_ll<2000)return;const m=sn.val();if(!m||m.timestamp<=_lb)return;_lb=m.timestamp;m.kind==='game'?gbuzz():sbuzz();});
     return;
   }
@@ -969,9 +981,9 @@ function conn(){
   es.onerror=()=>{es.close();setTimeout(conn,2000);};
 }
 if(useFB&&db){
-  db.ref(`states/${FU}`).once('value').then(sn=>{const d=sn.val();if(d){S={...DEF,...d};draw();sync();}}).catch(()=>{}).finally(()=>conn());
+  db.ref(`states/${FU}`).once('value').then(sn=>{const d=sn.val();if(d){S={...DEF,...d};S.aiSyncEnabled=!!S.aiSyncEnabled;aiSyncActive=Boolean(S.aiSyncEnabled&&hasActiveStream);draw();sync();}}).catch(()=>{}).finally(()=>conn());
 }
-else{fetch(`${SRV}/state?user=${encodeURIComponent(CU)}`).then(r=>r.json()).then(d=>{if(Object.keys(d).length){S={...DEF,...d};draw();sync();}}).catch(()=>{}).finally(()=>conn());}
+else{fetch(`${SRV}/state?user=${encodeURIComponent(CU)}`).then(r=>r.json()).then(d=>{if(Object.keys(d).length){S={...DEF,...d};S.aiSyncEnabled=!!S.aiSyncEnabled;aiSyncActive=Boolean(S.aiSyncEnabled&&hasActiveStream);draw();sync();}}).catch(()=>{}).finally(()=>conn());}
 </script>
 </body>
 </html>
