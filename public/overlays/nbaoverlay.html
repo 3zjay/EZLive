@@ -59,7 +59,6 @@ html, body {
   margin-right:0.4vw;
   flex-shrink:0;
   box-shadow:0 0 0.2vw #ff3b30;
-  animation:pulse-live 1.0s infinite alternate;
 }
 @keyframes pulse-live{
   0%{opacity:0.35;transform:scale(0.85)}
@@ -104,7 +103,6 @@ html, body {
 .live-dot {
   width:0.31vw; height:0.31vw; border-radius:50%;
   background:#e84040; box-shadow:0 0 0.36vw #e84040;
-  animation:livePulse 1.2s ease infinite;
 }
 @keyframes livePulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.6)} }
 .live-text {
@@ -317,7 +315,8 @@ if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
 }
 
 const urlParams = new URLSearchParams(window.location.search);
-const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+let currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+if (currentUser.toLowerCase().includes('@pages.plusgoogle.com')) currentUser = 'isidro.pascua@gmail.com';
 const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
 
 let aiSyncActive = false;
@@ -505,6 +504,7 @@ function applyStateMessage(msgData) {
 const bc = new BroadcastChannel('hc_scoreboard_sync');
 function handlePostOrBcMessage(msg) {
   if (!msg || typeof msg !== 'object') return;
+  if (msg.user && fbUser && fbUser !== 'default' && msg.user !== fbUser) return;
   _lastLocalMsgTime = Date.now();
   if (msg.type === 'state') {
     applyStateMessage(msg.data);

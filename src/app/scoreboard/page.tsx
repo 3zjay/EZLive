@@ -1,17 +1,16 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { scoreboardSync } from '@/services/scoreboardSync';
+import { scoreboardSync, resolveScoreboardSessionUser } from '@/services/scoreboardSync';
 
 export default function ScoreboardOverlayPage() {
   const activeUser = useMemo(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      return (
-        params.get('user') ||
-        localStorage.getItem('hc_session_user') ||
-        scoreboardSync.getSessionInfo().sessionUser ||
-        'isidro.pascua@gmail.com'
+      return resolveScoreboardSessionUser(
+        params.get('user'),
+        localStorage.getItem('hc_session_user'),
+        scoreboardSync.getSessionInfo().sessionUser
       );
     }
     return 'isidro.pascua@gmail.com';

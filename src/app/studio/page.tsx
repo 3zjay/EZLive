@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { VideoCompositor } from '@/services/compositor';
 import { BroadcastRecorder, RecordingState } from '@/services/recorder';
 import { OverlayBridge } from '@/services/overlayBridge';
-import { scoreboardSync } from '@/services/scoreboardSync';
+import { scoreboardSync, resolveScoreboardSessionUser } from '@/services/scoreboardSync';
 import { SceneStorage, DEFAULT_OBS_SCENES } from '@/services/sceneStorage';
 import { Scene, ScoreboardState, Source, SourceType, StreamSettings } from '@/types/broadcast';
 import {
@@ -644,9 +644,9 @@ export default function StudioPage() {
   const [isCourtDropdownOpen, setIsCourtDropdownOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-  // Auto-open right sidebar only on large desktop monitors (>= 1280px); keep closed on phones/iPads for full camera view
+  // Auto-open right sidebar on tablet landscape & desktop monitors (>= 1024px); keep closed on phones for full camera view
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth >= 1280) {
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
       setIsSidebarOpen(true);
     }
   }, []);
@@ -682,19 +682,30 @@ export default function StudioPage() {
     });
   }, []);
 
-  // Auto-pair Scoreboard & Overlays with logged-in user email or assigned court
+  // Auto-pair Scoreboard & Overlays with logged-in non-synthetic user email
   useEffect(() => {
     let savedEmail = '';
     try {
       savedEmail = localStorage.getItem('hc_session_user') || '';
     } catch {}
-    const emailOrCourt = user?.email || savedEmail || settings.scoreboardSessionUser || profile?.assignedCourt || 'isidro.pascua@gmail.com';
+    const emailOrCourt = resolveScoreboardSessionUser(
+      settings.scoreboardSessionUser,
+      user?.email,
+      savedEmail
+    );
     if (emailOrCourt) {
       scoreboardSync.setSessionUser(emailOrCourt);
-      setSettings((prev) => ({
-        ...prev,
-        scoreboardSessionUser: prev.scoreboardSessionUser || emailOrCourt,
-      }));
+      try {
+        localStorage.setItem('hc_session_user', emailOrCourt);
+      } catch {}
+      setSettings((prev) => {
+        const nextSession = resolveScoreboardSessionUser(prev.scoreboardSessionUser, emailOrCourt);
+        if (prev.scoreboardSessionUser === nextSession) return prev;
+        return {
+          ...prev,
+          scoreboardSessionUser: nextSession,
+        };
+      });
 
       // Automatically sync any Hoop Culture browser overlay sources with the active login email!
       setScenes((prevScenes) => {
@@ -914,7 +925,9 @@ export default function StudioPage() {
     const fpsInterval = setInterval(() => {
       if (compositorRef.current) {
         const nextFps = compositorRef.current.currentFps;
-        setFps((prev) => (prev !== nextFps ? nextFps : prev));
+        setFps((prev) =>
+          Math.abs(prev - nextFps) >= 3 || (nextFps === 0 && prev !== 0) ? nextFps : prev
+        );
       }
     }, 1000);
 
@@ -1566,7 +1579,7 @@ export default function StudioPage() {
         };
         break;
       case 'browser_url':
-        const activeEmail = user?.email || settings.scoreboardSessionUser || 'isidro.pascua@gmail.com';
+        const activeEmail = resolveScoreboardSessionUser(settings.scoreboardSessionUser, user?.email);
         newSource = {
           id,
           name: 'Hoop Culture Overlay',
@@ -2157,7 +2170,7 @@ export default function StudioPage() {
         onFlipCamera={handleFlipCamera}
         isSidebarOpen={isSidebarOpen}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        scoreboardSyncUser={settings.scoreboardSessionUser || user?.email || profile?.assignedCourt}
+        scoreboardSyncUser={resolveScoreboardSessionUser(settings.scoreboardSessionUser, user?.email)}
         isScoreboardConnected={scoreboard.syncSource !== undefined && scoreboard.syncSource !== 'manual'}
         user={user}
         profile={profile}
@@ -2174,7 +2187,7 @@ export default function StudioPage() {
       />
 
       {/* Main Studio Middle Zone: Program Preview Stage + Streamlabs Right Sidebar */}
-      <div className="flex-1 min-h-0 flex flex-col xl:flex-row overflow-hidden relative">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden relative">
         {/* Main 16:9 Broadcast Stage Canvas with Bounding Box & Interactive Layers (or Dual Studio Mode) */}
         <div className="flex-1 min-h-0 min-w-0 relative flex items-center justify-center bg-black overflow-hidden">
           {isStudioMode ? (
@@ -2289,15 +2302,15 @@ export default function StudioPage() {
           )}
         </div>
 
-        {/* Streamlabs Toolset Sidebar (Desktop XL Side Panel or Mobile/Tablet Slide-Over Drawer) */}
+        {/* Streamlabs Toolset Sidebar (iPad Landscape & Desktop Side Panel or Mobile Slide-Over Drawer) */}
         {isSidebarOpen && (
-          <div className="fixed inset-y-0 right-0 z-40 xl:relative xl:inset-auto w-80 sm:w-96 xl:w-[400px] h-full shadow-2xl flex">
-            {/* Mobile / Tablet Backdrop click to close */}
+          <div className="fixed top-12 bottom-0 right-0 z-40 lg:relative lg:inset-auto w-80 sm:w-96 lg:w-[360px] xl:w-[400px] h-full shadow-2xl flex">
+            {/* Mobile Backdrop click to close */}
             <div
-              className="fixed inset-0 bg-black/60 xl:hidden z-30"
+              className="fixed inset-0 top-12 bg-black/60 lg:hidden z-30"
               onClick={() => setIsSidebarOpen(false)}
             />
-            <div className="relative z-40 w-80 sm:w-96 xl:w-[400px] max-w-[92vw] h-full flex flex-col bg-[#100d0a] border-l border-[#2a1e14]">
+            <div className="relative z-40 w-80 sm:w-96 lg:w-[360px] xl:w-[400px] max-w-[92vw] h-full flex flex-col bg-[#100d0a] border-l border-[#2a1e14]">
               <SidebarTabs
                 chatMessages={chatMessages}
                 highlightedChat={highlightedChat}
@@ -2324,12 +2337,10 @@ export default function StudioPage() {
                 onOpenSourceProperties={handleOpenSourceProperties}
                 scoreboard={scoreboard}
                 onChangeScoreboard={handleScoreboardChange}
-                sessionUser={
-                  user?.email ||
-                  settings.scoreboardSessionUser ||
-                  profile?.assignedCourt ||
-                  'isidro.pascua@gmail.com'
-                }
+                sessionUser={resolveScoreboardSessionUser(
+                  settings.scoreboardSessionUser,
+                  user?.email
+                )}
                 onTriggerInstantReplay={handleTriggerInstantReplay}
                 micVolume={micVolume}
                 micMuted={micMuted}

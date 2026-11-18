@@ -16,7 +16,19 @@ import {
 } from '@/services/firebase';
 import { Scene, ScoreboardState, StreamSettings } from '@/types/broadcast';
 import { BrandKit } from '@/types/streamlabs';
-import { scoreboardSync } from '@/services/scoreboardSync';
+import { scoreboardSync, resolveScoreboardSessionUser } from '@/services/scoreboardSync';
+
+function syncNonSyntheticSessionUser(email?: string | null): void {
+  let existing = '';
+  try {
+    existing = localStorage.getItem('hc_session_user') || '';
+  } catch {}
+  const resolved = resolveScoreboardSessionUser(email, existing);
+  try {
+    localStorage.setItem('hc_session_user', resolved);
+  } catch {}
+  scoreboardSync.setSessionUser(resolved);
+}
 
 interface AuthContextType {
   user: User | null;
@@ -113,7 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const savedUser = localStorage.getItem('hc_session_user');
       if (savedUser) {
-        scoreboardSync.setSessionUser(savedUser);
+        syncNonSyntheticSessionUser(savedUser);
       }
     } catch {}
 
@@ -125,12 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Always sync against Firebase RTDB Cloud Profile so new devices pull Facebook/YouTube/keys!
           const synced = await syncUserRecord(firebaseUser);
           setProfile(synced);
-          if (firebaseUser.email) {
-            try {
-              localStorage.setItem('hc_session_user', firebaseUser.email);
-            } catch {}
-            scoreboardSync.setSessionUser(firebaseUser.email);
-          }
+          syncNonSyntheticSessionUser(synced?.streamSettings?.scoreboardSessionUser || firebaseUser.email);
         } catch (err) {
           console.warn('Error syncing operator session:', err);
         }
@@ -149,10 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const synced = await syncUserRecord(customUser);
             setProfile(synced);
-            if (customUser.email) {
-              localStorage.setItem('hc_session_user', customUser.email);
-              scoreboardSync.setSessionUser(customUser.email);
-            }
+            syncNonSyntheticSessionUser(synced?.streamSettings?.scoreboardSessionUser || customUser.email);
           } catch {}
         } else {
           setUser(null);
@@ -180,12 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(u);
         const prof = await syncUserRecord(u);
         setProfile(prof);
-        if (u.email) {
-          try {
-            localStorage.setItem('hc_session_user', u.email);
-          } catch {}
-          scoreboardSync.setSessionUser(u.email);
-        }
+        syncNonSyntheticSessionUser(prof?.streamSettings?.scoreboardSessionUser || u.email);
         return u;
       }
       return null;
@@ -219,12 +218,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(u);
         const prof = await syncUserRecord(u);
         setProfile(prof);
-        if (u.email) {
-          try {
-            localStorage.setItem('hc_session_user', u.email);
-          } catch {}
-          scoreboardSync.setSessionUser(u.email);
-        }
+        syncNonSyntheticSessionUser(prof?.streamSettings?.scoreboardSessionUser || u.email);
         return u;
       }
       return null;
@@ -247,12 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(u);
         const prof = await syncUserRecord(u);
         setProfile(prof);
-        if (u.email) {
-          try {
-            localStorage.setItem('hc_session_user', u.email);
-          } catch {}
-          scoreboardSync.setSessionUser(u.email);
-        }
+        syncNonSyntheticSessionUser(prof?.streamSettings?.scoreboardSessionUser || u.email);
         return u;
       }
       return null;

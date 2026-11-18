@@ -13,6 +13,24 @@ export const SCOREBOARD_RTDB_CONFIG = {
   appId: "1:953830619002:web:e154a9c5118e7a0105c8c3",
 };
 
+export function isSyntheticBrandEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return email.toLowerCase().includes('@pages.plusgoogle.com');
+}
+
+export function resolveScoreboardSessionUser(
+  ...candidates: Array<string | null | undefined>
+): string {
+  for (const candidate of candidates) {
+    const trimmed = (candidate || '').trim();
+    if (!trimmed || trimmed.toLowerCase() === 'default' || isSyntheticBrandEmail(trimmed)) {
+      continue;
+    }
+    return trimmed;
+  }
+  return 'isidro.pascua@gmail.com';
+}
+
 /**
  * Sanitizes an email address or session name into a Firebase Realtime Database safe path.
  * In Firebase RTDB, keys cannot contain '.', '#', '$', '[', or ']'.
@@ -446,12 +464,23 @@ class ScoreboardSyncManager {
    */
   public setSessionUser(userEmailOrSession: string) {
     this.ensureInitialized();
-    const safeKey = sanitizeSessionKey(userEmailOrSession);
+    let effectiveUser = userEmailOrSession;
+    if (isSyntheticBrandEmail(effectiveUser)) {
+      let savedUser = '';
+      if (typeof window !== 'undefined') {
+        try {
+          savedUser = localStorage.getItem('hc_session_user') || '';
+        } catch {}
+      }
+      effectiveUser = resolveScoreboardSessionUser(savedUser);
+    }
+
+    const safeKey = sanitizeSessionKey(effectiveUser);
     if (this.currentSafeKey === safeKey && this.isConnected && this.rtdbUnsubscribe) {
       return;
     }
 
-    this.currentSessionUser = userEmailOrSession || 'default';
+    this.currentSessionUser = effectiveUser || 'default';
     this.currentSafeKey = safeKey;
 
     if (!safeKey || safeKey === 'default') {

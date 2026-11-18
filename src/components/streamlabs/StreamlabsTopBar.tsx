@@ -141,7 +141,7 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
   };
 
   return (
-    <header className="h-11 sm:h-12 bg-[#080605] border-b border-[#2a1e14] px-2 sm:px-3 flex items-center justify-between gap-1.5 text-white select-none z-30 shrink-0 overflow-x-auto no-scrollbar">
+    <header className="min-h-11 sm:min-h-12 pt-[env(safe-area-inset-top)] bg-[#080605] border-b border-[#2a1e14] px-2 sm:px-3 py-1 flex items-center justify-between gap-1.5 text-white select-none z-50 relative shrink-0 overflow-x-auto no-scrollbar">
       {/* LEFT: Brand Identity & Active Court Switcher */}
       <div className="flex items-center gap-2 shrink-0">
         <Link href="/" className="flex items-center gap-1.5 group shrink-0">

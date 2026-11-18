@@ -101,7 +101,7 @@ export class VideoCompositor {
     profile: PerformanceProfile = 'auto'
   ) {
     this.canvas = canvas;
-    const context = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    const context = canvas.getContext('2d', { alpha: false });
     if (!context) {
       throw new Error('Failed to obtain 2D rendering context from canvas');
     }
@@ -2433,7 +2433,7 @@ export class VideoCompositor {
 
     if (this.brandKit.logoPosition === 'top-right') {
       x = width - drawW - 40;
-      y = 52;
+      y = 40;
     } else if (this.brandKit.logoPosition === 'bottom-left') {
       x = 40;
       y = height - drawH - 70;

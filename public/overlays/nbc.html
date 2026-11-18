@@ -87,6 +87,8 @@
       border: 2px solid rgba(255, 255, 255, 0.2);
       box-shadow: 0 15px 40px rgba(0, 0, 0, 0.85);
       transform-origin: bottom center;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
     }
 
     /* ── TOP DECORATIVE STRIP (hidden in stadium pill style) ── */
@@ -416,7 +418,8 @@ if(useFB&&typeof isFirebaseConfigured!=='undefined'&&isFirebaseConfigured){
 }
 
 function gP(n){return new URLSearchParams(window.location.search).get(n);}
-const CU=gP('user')||'default';
+let CU=gP('user')||'default';
+if(CU.toLowerCase().includes('@pages.plusgoogle.com')) CU='isidro.pascua@gmail.com';
 const FU=CU.replace(/[\.\#\$\[\]]/g,'_');
 
 const PER=['1ST','2ND','3RD','4TH','OT','2OT','3OT'];
@@ -629,6 +632,7 @@ function applyStateMessage(msgData) {
 function handleBCMessage(e) {
   const msg = e && e.data ? e.data : null;
   if (!msg || typeof msg !== 'object') return;
+  if (msg.user && FU && FU !== 'default' && msg.user !== FU) return;
   if (msg.type === 'state') {
     applyStateMessage(msg.data);
   } else if (msg.type === 'stream' || msg.type === 'ocr') {

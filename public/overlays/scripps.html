@@ -86,6 +86,8 @@
       align-items: center;
       justify-content: center;
       pointer-events: auto;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
       transition: transform 0.3s ease, bottom 0.3s ease, top 0.3s ease;
     }
 
@@ -99,6 +101,8 @@
       border: 1.5px solid rgba(255, 255, 255, 0.28);
       box-shadow: 0 0.8vw 2.5vw rgba(0, 0, 0, 0.85), 0 0.2vw 0.5vw rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 0 rgba(0, 0, 0, 0.4);
       position: relative;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
     }
 
     /* ════ 1. BROADCAST & VENUE SEGMENT (FAR LEFT END — Matches Scripps Sports width and layout) ════ */
@@ -136,7 +140,6 @@
       border-radius: 50%;
       background: #ff3b30;
       box-shadow: 0 0 0.35vw #ff3b30;
-      animation: venuePulse 1.2s infinite alternate;
       flex-shrink: 0;
     }
     @keyframes venuePulse {
@@ -838,8 +841,8 @@ if (!sessionUser) {
 }
 
 let currentUser = userParam || sessionUser || '';
-// If user param was literally 'default', treat as blank so auto-detection finds the active game
-if (currentUser === 'default') currentUser = '';
+// Treat synthetic Brand Account email or 'default' as blank so it pairs with the real active game
+if (currentUser === 'default' || currentUser.toLowerCase().includes('@pages.plusgoogle.com')) currentUser = '';
 let fbUser = currentUser ? currentUser.replace(/[\.\#\$\[\]]/g, '_') : '';
 
 // URL Customization flags
@@ -960,32 +963,33 @@ let hasActiveStream = false;
 let lastHomeScore = -1;
 let lastAwayScore = -1;
 
-// Immediate Local Storage Hydration (Same Browser Zero Latency)
-try {
-  const localRaw = localStorage.getItem('bball_v3');
-  if (localRaw) {
-    const local = JSON.parse(localRaw);
-    if (local && typeof local === 'object') {
-      if (local.awayAbbr || local.homeAbbr || local.rp1Value || local.rp2Value || (local.awayScore !== undefined && local.awayScore > 0)) {
-        if (local.homeAbbr) local.homeName = local.homeAbbr;
-        if (local.awayAbbr) local.awayName = local.awayAbbr;
-        S = { ...DEFAULT_STATE, ...local };
+// Immediate Local Storage Hydration & storage listener (Server/offline mode only — Firebase RTDB + BroadcastChannel are authoritative in cloud mode)
+if (!useFirebase) {
+  try {
+    const localRaw = localStorage.getItem('bball_v3');
+    if (localRaw) {
+      const local = JSON.parse(localRaw);
+      if (local && typeof local === 'object') {
+        if (local.awayAbbr || local.homeAbbr || local.rp1Value || local.rp2Value || (local.awayScore !== undefined && local.awayScore > 0)) {
+          if (local.homeAbbr) local.homeName = local.homeAbbr;
+          if (local.awayAbbr) local.awayName = local.awayAbbr;
+          S = { ...DEFAULT_STATE, ...local };
+        }
       }
     }
-  }
-} catch(e) {}
+  } catch(e) {}
 
-// Listen for local scoreboard updates across tabs on the same machine
-window.addEventListener('storage', (e) => {
-  if (e.key === 'bball_v3' && e.newValue) {
-    try {
-      const data = JSON.parse(e.newValue);
-      if (data && typeof data === 'object') {
-        applyStateMessage(data);
-      }
-    } catch(err) {}
-  }
-});
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'bball_v3' && e.newValue) {
+      try {
+        const data = JSON.parse(e.newValue);
+        if (data && typeof data === 'object') {
+          applyStateMessage(data);
+        }
+      } catch(err) {}
+    }
+  });
+}
 
 // Fast initial REST fetch: immediately fetch active game data & OCR stream with zero SSL delay
 const targetInitRoom = fbUser || 'isidro_pascua@gmail_com';
@@ -1090,6 +1094,8 @@ function getContrastColor(hexColor) {
   return lum > 140 ? '#0a0d14' : '#ffffff';
 }
 
+let _lastLeftColor = '', _lastRightColor = '';
+
 /* 2. Teams (Names, Colors, Logos, Possession) */
 function renderTeams() {
   // Determine Left Team (Away by default) and Right Team (Home by default)
@@ -1122,22 +1128,27 @@ function renderTeams() {
   const leftLogo  = S[leftTeamKey + 'Logo'] || S[leftTeamKey + 'LogoThumb'] || '';
   const rightLogo = S[rightTeamKey + 'Logo'] || S[rightTeamKey + 'LogoThumb'] || '';
 
-  // Apply Colors to CSS Variables
-  document.documentElement.style.setProperty('--away-color', leftColor);
-  document.documentElement.style.setProperty('--home-color', rightColor);
+  if (leftColor !== _lastLeftColor || rightColor !== _lastRightColor) {
+    _lastLeftColor = leftColor;
+    _lastRightColor = rightColor;
 
-  // Direct element background sync for guaranteed zero-latency seamless matching across all rendering engines
-  const bug = $('scorebug');
-  if (bug) bug.style.background = `linear-gradient(180deg, #101524 0%, #060910 100%)`;
-  const awaySeg = $('awayTeamSeg');
-  if (awaySeg) awaySeg.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), ${leftColor}`;
-  const homeSeg = $('homeTeamSeg');
-  if (homeSeg) homeSeg.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), ${rightColor}`;
-  const clockSeg = $('segClock');
-  if (clockSeg) clockSeg.style.background = `linear-gradient(180deg, #101524 0%, #060910 100%)`;
-  const scoreCapsuleWrap = $('scoreCapsuleWrap');
-  if (scoreCapsuleWrap) {
-    scoreCapsuleWrap.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), linear-gradient(to right, ${leftColor} 0%, ${leftColor} 50%, ${rightColor} 50%, ${rightColor} 100%)`;
+    // Apply Colors to CSS Variables
+    document.documentElement.style.setProperty('--away-color', leftColor);
+    document.documentElement.style.setProperty('--home-color', rightColor);
+
+    // Direct element background sync only when team colors actually change
+    const bug = $('scorebug');
+    if (bug) bug.style.background = `linear-gradient(180deg, #101524 0%, #060910 100%)`;
+    const awaySeg = $('awayTeamSeg');
+    if (awaySeg) awaySeg.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), ${leftColor}`;
+    const homeSeg = $('homeTeamSeg');
+    if (homeSeg) homeSeg.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), ${rightColor}`;
+    const clockSeg = $('segClock');
+    if (clockSeg) clockSeg.style.background = `linear-gradient(180deg, #101524 0%, #060910 100%)`;
+    const scoreCapsuleWrap = $('scoreCapsuleWrap');
+    if (scoreCapsuleWrap) {
+      scoreCapsuleWrap.style.background = `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.02) 48%, rgba(0,0,0,0.18) 100%), linear-gradient(to right, ${leftColor} 0%, ${leftColor} 50%, ${rightColor} 50%, ${rightColor} 100%)`;
+    }
   }
 
   // Team Names: Set both to crisp athletic White matching Freedom on any color background
@@ -1626,6 +1637,7 @@ function setupBroadcastChannels() {
       const bc = new BroadcastChannel(chName);
       bc.onmessage = (e) => {
         if (!e || !e.data) return;
+        if (e.data.user && fbUser && e.data.user !== fbUser) return;
         if (e.data.type === 'state') applyStateMessage(e.data.data);
         else if (e.data.type === 'stream' || e.data.type === 'ocr') applyStreamData(e.data.data || e.data);
         else if (e.data.gameClockStream || e.data.shotClockStream) applyStreamData(e.data);
@@ -1640,6 +1652,7 @@ setupBroadcastChannels();
 // 2. Window PostMessage (for OBS Browser Source / iframe embedding)
 window.addEventListener('message', (e) => {
   if (!e || !e.data) return;
+  if (e.data.user && fbUser && e.data.user !== fbUser) return;
   if (e.data.type === 'state') applyStateMessage(e.data.data);
   else if (e.data.type === 'stream' || e.data.type === 'ocr') applyStreamData(e.data.data || e.data);
   else if (e.data.gameClockStream || e.data.shotClockStream) applyStreamData(e.data);

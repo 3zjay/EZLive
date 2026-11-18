@@ -22,6 +22,8 @@ html, body { background:transparent; overflow:hidden; width:100%; height:100%; }
   border-radius:0.5vw;
   overflow:hidden;
   box-shadow:0 0.4vw 2.5vw rgba(0,0,0,0.8);
+  backface-visibility:hidden;
+  -webkit-backface-visibility:hidden;
 }
 
 /* ─ HOME LOGO (left bookend, same height as bar) ─ */
@@ -185,7 +187,8 @@ if (useFirebase && typeof firebase !== 'undefined' && isFirebaseConfigured) {
 }
 
 const urlParams = new URLSearchParams(window.location.search);
-const currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+let currentUser = urlParams.get('user') || localStorage.getItem('hc_session_user') || 'default';
+if (currentUser.toLowerCase().includes('@pages.plusgoogle.com')) currentUser = 'isidro.pascua@gmail.com';
 const fbUser = currentUser.replace(/[\.\#\$\[\]]/g, '_');
 
 let aiSyncActive = false;
@@ -372,6 +375,7 @@ function applyStateMessage(msgData) {
 const bc = new BroadcastChannel('hc_scoreboard_sync');
 function handlePostOrBcMessage(msg) {
   if (!msg || typeof msg !== 'object') return;
+  if (msg.user && fbUser && fbUser !== 'default' && msg.user !== fbUser) return;
   _lastLocalMsgTime = Date.now();
   if (msg.type === 'state') {
     applyStateMessage(msg.data);

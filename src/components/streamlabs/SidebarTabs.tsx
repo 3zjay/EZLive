@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { ChatMessage, NewsTickerConfig, StreamlabsBanner, BrandKit } from '@/types/streamlabs';
 import { Scene, ScoreboardState, SourceType } from '@/types/broadcast';
+import { resolveScoreboardSessionUser } from '@/services/scoreboardSync';
 
 interface SidebarTabsProps {
   // Chat
@@ -269,10 +270,10 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
     }
   };
 
-  const activeUser =
-    sessionUser ||
-    (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) ||
-    'isidro.pascua@gmail.com';
+  const activeUser = resolveScoreboardSessionUser(
+    sessionUser,
+    typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null
+  );
   const embeddedBoardUrl =
     scoreboardSubMode === 'camera'
       ? `/overlays/camera.html?user=${encodeURIComponent(activeUser)}`

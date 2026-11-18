@@ -14,6 +14,7 @@ import {
 import { getDatabase, ref, get, set, update } from 'firebase/database';
 import { Scene, ScoreboardState, StreamSettings } from '@/types/broadcast';
 import { BrandKit } from '@/types/streamlabs';
+import { resolveScoreboardSessionUser } from '@/services/scoreboardSync';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyCYw1Wg2YMdd3M6GRlA-dThBhjaYG7bys8',
@@ -128,7 +129,12 @@ export function hydrateLocalStorageFromCloudProfile(profile: UserSessionProfile)
     const localKey = `ezlive_operator_profile_${profile.uid}`;
     localStorage.setItem(localKey, JSON.stringify(profile));
     if (profile.email) {
-      localStorage.setItem('hc_session_user', profile.email);
+      const resolvedSessionUser = resolveScoreboardSessionUser(
+        profile.streamSettings?.scoreboardSessionUser,
+        profile.email,
+        localStorage.getItem('hc_session_user')
+      );
+      localStorage.setItem('hc_session_user', resolvedSessionUser);
       localStorage.setItem(`ezlive_operator_profile_${getCloudProfileKey(profile.email)}`, JSON.stringify(profile));
     }
 
@@ -159,11 +165,11 @@ export function hydrateLocalStorageFromCloudProfile(profile: UserSessionProfile)
     const mergedSettings: Partial<StreamSettings> = {
       ...existingSettings,
       ...(profile.streamSettings || {}),
-      scoreboardSessionUser:
-        profile.streamSettings?.scoreboardSessionUser ||
-        profile.email ||
-        existingSettings.scoreboardSessionUser ||
-        'isidro.pascua@gmail.com',
+      scoreboardSessionUser: resolveScoreboardSessionUser(
+        profile.streamSettings?.scoreboardSessionUser,
+        profile.email,
+        existingSettings.scoreboardSessionUser
+      ),
       fbSettings: {
         mode: 'auto',
         userToken: fb?.userToken || existingSettings.fbSettings?.userToken || '',
@@ -725,11 +731,11 @@ export async function syncUserRecord(
     ...localSettingsObj,
     ...(existingLocal.streamSettings || {}),
     ...(existingCloud.streamSettings || {}),
-    scoreboardSessionUser:
-      existingCloud.streamSettings?.scoreboardSessionUser ||
-      user.email ||
-      existingLocal.streamSettings?.scoreboardSessionUser ||
-      'isidro.pascua@gmail.com',
+    scoreboardSessionUser: resolveScoreboardSessionUser(
+      existingCloud.streamSettings?.scoreboardSessionUser,
+      user.email,
+      existingLocal.streamSettings?.scoreboardSessionUser
+    ),
     fbSettings: {
       mode: 'auto',
       broadcastTitle:

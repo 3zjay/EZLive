@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { ScoreboardState } from '@/types/broadcast';
+import { resolveScoreboardSessionUser } from '@/services/scoreboardSync';
 import { ExternalLink } from 'lucide-react';
 
 interface ScoreboardControllerProps {
@@ -18,10 +19,10 @@ export const ScoreboardController: React.FC<ScoreboardControllerProps> = ({
   onToggleOpen,
 }) => {
   const [subMode, setSubMode] = useState<'control' | 'shotclock'>('control');
-  const activeUser =
-    sessionUser ||
-    (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) ||
-    'isidro.pascua@gmail.com';
+  const activeUser = resolveScoreboardSessionUser(
+    sessionUser,
+    typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null
+  );
   const iframeSrc = `/overlays/${subMode}.html?user=${encodeURIComponent(activeUser)}&embed=1`;
 
   return (

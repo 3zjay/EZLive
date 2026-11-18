@@ -3,7 +3,7 @@
 import React, { useRef, useState } from 'react';
 import { Maximize2, Minimize2, Grid, Lock, Camera, Monitor, RefreshCw, RotateCcw, Zap, Sliders, SunMedium, Flashlight, FlipHorizontal, Focus, Sparkles, X } from 'lucide-react';
 import { Scene, Source } from '@/types/broadcast';
-import { scoreboardSync } from '@/services/scoreboardSync';
+import { scoreboardSync, resolveScoreboardSessionUser, isSyntheticBrandEmail } from '@/services/scoreboardSync';
 
 export interface ProCameraCapabilities {
   zoomSupported: boolean;
@@ -254,11 +254,12 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
       const lower = rawUrl.toLowerCase();
       if (lower.includes('scoreboard.hoopculture.ca') || lower.startsWith('/overlays/')) {
         const parsed = new URL(rawUrl, typeof window !== 'undefined' ? window.location.origin : 'https://ezlive.vercel.app');
-        if (!parsed.searchParams.get('user')) {
-          const fallbackUser =
-            (typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null) ||
-            scoreboardSync.getSessionInfo().sessionUser ||
-            'isidro.pascua@gmail.com';
+        const currentUserParam = parsed.searchParams.get('user');
+        if (!currentUserParam || isSyntheticBrandEmail(currentUserParam)) {
+          const fallbackUser = resolveScoreboardSessionUser(
+            typeof window !== 'undefined' ? localStorage.getItem('hc_session_user') : null,
+            scoreboardSync.getSessionInfo().sessionUser
+          );
           parsed.searchParams.set('user', fallbackUser);
         }
         const query = parsed.searchParams.toString();
@@ -294,14 +295,141 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 w-full h-full min-h-0 min-w-0 bg-black flex items-center justify-center overflow-hidden select-none p-1 sm:p-2"
+      className="relative flex-1 w-full h-full min-h-0 min-w-0 bg-black flex flex-col overflow-hidden select-none p-1 sm:p-2 gap-1.5"
       onClick={() => onSelectSource(null)}
     >
+      {/* Dedicated Stage Control Header Bar Above Canvas (0% Watermark Overlap) */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full shrink-0 bg-[#0d0907] border border-[#2a1e14] rounded-lg px-2 py-1 flex items-center justify-between gap-2 overflow-x-auto no-scrollbar z-30"
+      >
+        {/* Left: Program Status & Active Scene Badge */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pointer-events-none">
+          <div
+            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-widest rounded-md shadow flex items-center gap-1.5 ${
+              isStreaming ? 'bg-rose-600 ring-1 ring-rose-400' : 'bg-red-600'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-white" />
+            <span>{isStreaming ? 'ON AIR (RTMP)' : 'PROGRAM'}</span>
+          </div>
+          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-900/90 text-slate-200 text-[10px] sm:text-xs font-bold rounded-md border border-slate-700/80 truncate max-w-[140px] sm:max-w-none">
+            {activeScene.name}
+          </div>
+        </div>
+
+        {/* Right: Viewport Zoom & Native Camera Action Pills */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {hasCamera && proCameraSettings && onUpdateProCamera && (
+            <div className="flex items-center bg-slate-950 border border-slate-700/80 rounded-lg p-0.5 shadow">
+              {[1, 2, 3, 5].map((z) => {
+                const isActive = Math.abs((proCameraSettings.zoom || 1) - z) < 0.25;
+                return (
+                  <button
+                    key={z}
+                    type="button"
+                    onClick={() => onUpdateProCamera({ zoom: z, ...(z === 1 ? { panX: 0, panY: 0 } : {}) })}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-black transition ${
+                      isActive
+                        ? 'bg-[#e8430a] text-white shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                    title={`${z}x Court Zoom`}
+                  >
+                    {z}x
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {proCameraSettings && onUpdateProCamera && (
+            <button
+              type="button"
+              onClick={() => setShowProCamDrawer(!showProCamDrawer)}
+              className={`px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg border transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95 ${
+                showProCamDrawer
+                  ? 'bg-[#e8430a] border-[#ff6b1a] text-white'
+                  : 'bg-slate-900 hover:bg-slate-800 text-sky-300 border-sky-500/40'
+              }`}
+              title="Pro Camera Controls (Multi-Lens, Zoom, Exposure, Torch, White Balance)"
+            >
+              <Camera size={13} />
+              <span>Pro Cam</span>
+              {proCameraSettings.zoom > 1.05 && (
+                <span className="px-1 py-0.2 bg-black/40 rounded text-[9px] font-mono text-amber-300">
+                  {proCameraSettings.zoom.toFixed(1)}x
+                </span>
+              )}
+            </button>
+          )}
+
+          {onFlipCamera && hasCamera && (
+            <button
+              type="button"
+              onClick={onFlipCamera}
+              className="px-2 py-1 sm:px-2.5 sm:py-1 bg-slate-900 hover:bg-slate-800 text-[#ff6b1a] rounded-lg border border-[#ff6b1a]/40 transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
+              title="Flip Front / Rear Camera"
+            >
+              <RotateCcw size={13} />
+              <span className="hidden xs:inline">Flip</span>
+            </button>
+          )}
+
+          {onTriggerInstantReplay && (
+            <button
+              type="button"
+              onClick={onTriggerInstantReplay}
+              className="px-2 py-1 sm:px-2.5 sm:py-1 bg-amber-950/90 hover:bg-amber-900 text-amber-300 rounded-lg border border-amber-500/40 transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
+              title="10s Slow-Mo Instant Replay"
+            >
+              <Zap size={13} className="text-amber-400" />
+              <span className="hidden xs:inline">10s Replay</span>
+            </button>
+          )}
+
+          {onOpenScoreboardControl && (
+            <button
+              type="button"
+              onClick={onOpenScoreboardControl}
+              className="lg:hidden px-2 py-1 sm:px-2.5 sm:py-1 bg-slate-900 hover:bg-slate-800 text-emerald-300 rounded-lg border border-emerald-500/40 transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
+              title="Open Scoreboard & Streamlabs Controls"
+            >
+              <Sliders size={13} />
+              <span className="hidden sm:inline">Score / Tools</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowGrid(!showGrid)}
+            className={`p-1.5 rounded-lg border transition ${
+              showGrid
+                ? 'bg-sky-600 border-sky-400 text-white'
+                : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white'
+            }`}
+            title="Toggle Basketball Court Alignment Grid"
+          >
+            <Grid size={14} />
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition"
+            title="Toggle Fullscreen"
+          >
+            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Centered 16:9 Stage Viewport Wrapper */}
+      <div className="flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden">
       {/* 16:9 Stage Viewport Container — Responsive for Phone, iPad & Desktop */}
       <div
         ref={stageBoxRef}
         className="relative aspect-video w-full max-w-full max-h-full flex items-center justify-center bg-slate-950 shadow-2xl touch-none rounded-lg overflow-hidden border border-[#2a1e14]"
-        style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onTouchStart={handleTouchStart}
@@ -314,7 +442,6 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           width={1280}
           height={720}
           className="w-full h-full object-contain pointer-events-none"
-          style={{ transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}
         />
 
         {/* Interactive Camera / Screen Share Quick-Connect Card when no camera feed is active */}
@@ -323,7 +450,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
             onClick={(e) => e.stopPropagation()}
             className="absolute inset-0 z-40 flex items-center justify-center p-4 pointer-events-auto"
           >
-            <div className="bg-[#120d0a]/95 border border-[#3a2818] rounded-2xl p-4 sm:p-5 max-w-md w-full text-center shadow-2xl backdrop-blur-md space-y-3">
+            <div className="bg-[#120d0a]/95 border border-[#3a2818] rounded-2xl p-4 sm:p-5 max-w-md w-full text-center shadow-2xl space-y-3">
               <div className="w-10 h-10 rounded-xl bg-[#e8430a]/20 border border-[#e8430a]/40 text-[#ff6b1a] flex items-center justify-center mx-auto">
                 <Camera size={20} />
               </div>
@@ -404,8 +531,6 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
                 style={{
                   opacity: isCanvasOverlayActive ? 0 : source.opacity,
                   zIndex: source.zIndex + 10,
-                  transform: 'translateZ(0)',
-                  backfaceVisibility: 'hidden',
                 }}
               >
                 <iframe
@@ -486,136 +611,11 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
           </div>
         )}
 
-        {/* Program Active Scene Badge */}
-        <div className="absolute top-2 left-2 sm:top-3 sm:left-3 flex items-center gap-1.5 sm:gap-2 z-20 pointer-events-none">
-          <div
-            className={`px-2 py-0.5 sm:px-2.5 sm:py-1 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-widest rounded-md shadow flex items-center gap-1 ${
-              isStreaming ? 'bg-rose-600 ring-1 ring-rose-400' : 'bg-red-600'
-            }`}
-          >
-            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-white animate-pulse" />
-            {isStreaming ? 'ON AIR (RTMP)' : 'PROGRAM'}
-          </div>
-          <div className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-slate-900/90 text-slate-200 text-[10px] sm:text-xs font-bold rounded-md border border-slate-700/80 backdrop-blur-sm truncate max-w-[140px] sm:max-w-none">
-            {activeScene.name}
-          </div>
-        </div>
-
-        {/* Viewport Control & Native Camera Action Pills */}
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-center gap-1.5 sm:gap-2 z-30"
-        >
-          {/* Quick Optical / Digital Zoom Pills on Stage (1x, 2x, 3x, 5x) — Available on All Devices */}
-          {hasCamera && proCameraSettings && onUpdateProCamera && (
-            <div className="flex items-center bg-slate-950/90 border border-slate-700/80 rounded-lg p-0.5 backdrop-blur-md shadow">
-              {[1, 2, 3, 5].map((z) => {
-                const isActive = Math.abs((proCameraSettings.zoom || 1) - z) < 0.25;
-                return (
-                  <button
-                    key={z}
-                    type="button"
-                    onClick={() => onUpdateProCamera({ zoom: z, ...(z === 1 ? { panX: 0, panY: 0 } : {}) })}
-                    className={`px-1.5 py-0.5 rounded text-[10px] font-black transition ${
-                      isActive
-                        ? 'bg-[#e8430a] text-white shadow'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                    title={`${z}x Court Zoom`}
-                  >
-                    {z}x
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Pro Camera Settings Drawer Button (Fold 8 Ultra / Multi-Lens / Exposure / Torch / Pan) */}
-          {proCameraSettings && onUpdateProCamera && (
-            <button
-              type="button"
-              onClick={() => setShowProCamDrawer(!showProCamDrawer)}
-              className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg border backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95 ${
-                showProCamDrawer
-                  ? 'bg-[#e8430a] border-[#ff6b1a] text-white'
-                  : 'bg-slate-900/85 hover:bg-slate-800 text-sky-300 border-sky-500/40'
-              }`}
-              title="Pro Camera Controls (Multi-Lens, Zoom, Exposure, Torch, White Balance)"
-            >
-              <Camera size={13} />
-              <span>Pro Cam</span>
-              {proCameraSettings.zoom > 1.05 && (
-                <span className="px-1 py-0.2 bg-black/40 rounded text-[9px] font-mono text-amber-300">
-                  {proCameraSettings.zoom.toFixed(1)}x
-                </span>
-              )}
-            </button>
-          )}
-
-          {onFlipCamera && hasCamera && (
-            <button
-              type="button"
-              onClick={onFlipCamera}
-              className="px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-900/85 hover:bg-slate-800 text-[#ff6b1a] rounded-lg border border-[#ff6b1a]/40 backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
-              title="Flip Front / Rear Camera"
-            >
-              <RotateCcw size={13} />
-              <span className="hidden xs:inline">Flip</span>
-            </button>
-          )}
-
-          {onTriggerInstantReplay && (
-            <button
-              type="button"
-              onClick={onTriggerInstantReplay}
-              className="px-2 py-1 sm:px-2.5 sm:py-1.5 bg-amber-950/85 hover:bg-amber-900 text-amber-300 rounded-lg border border-amber-500/40 backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
-              title="10s Slow-Mo Instant Replay"
-            >
-              <Zap size={13} className="text-amber-400" />
-              <span className="hidden xs:inline">10s Replay</span>
-            </button>
-          )}
-
-          {onOpenScoreboardControl && (
-            <button
-              type="button"
-              onClick={onOpenScoreboardControl}
-              className="xl:hidden px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-900/85 hover:bg-slate-800 text-emerald-300 rounded-lg border border-emerald-500/40 backdrop-blur-sm transition flex items-center gap-1 text-[10px] sm:text-xs font-bold shadow active:scale-95"
-              title="Open Scoreboard & Streamlabs Controls"
-            >
-              <Sliders size={13} />
-              <span className="hidden sm:inline">Score / Tools</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setShowGrid(!showGrid)}
-            className={`p-1.5 rounded-lg border backdrop-blur-sm transition ${
-              showGrid
-                ? 'bg-sky-600 border-sky-400 text-white'
-                : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:text-white'
-            }`}
-            title="Toggle Basketball Court Alignment Grid"
-          >
-            <Grid size={14} />
-          </button>
-
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="p-1.5 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-lg border border-slate-700 backdrop-blur-sm transition"
-            title="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-        </div>
-
         {/* Pro Camera HUD Drawer (Multi-Lens Switcher, Smooth Optical/Digital Zoom, Pan, Exposure, Torch, Color Grade) */}
         {showProCamDrawer && proCameraSettings && onUpdateProCamera && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className="absolute top-12 right-2 sm:right-3 z-40 w-80 sm:w-96 max-h-[82%] overflow-y-auto bg-[#0e0a08]/95 border border-[#3a2818] rounded-2xl p-3.5 text-slate-100 shadow-2xl backdrop-blur-xl space-y-3"
+            className="absolute top-2 right-2 sm:right-3 z-40 w-80 sm:w-96 max-h-[88%] overflow-y-auto bg-[#0e0a08]/95 border border-[#3a2818] rounded-2xl p-3.5 text-slate-100 shadow-2xl space-y-3"
           >
             <div className="flex items-center justify-between border-b border-[#2a1e14] pb-2">
               <div className="flex items-center gap-2">
@@ -906,6 +906,7 @@ const PreviewStageComponent: React.FC<PreviewStageProps> = ({
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
