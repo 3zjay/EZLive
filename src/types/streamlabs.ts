@@ -31,6 +31,8 @@ export interface BrandKit {
   logoPosition: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   logoWidth: number;
   logoHeight: number;
+  logoEnabled?: boolean;
+  logoOpacity?: number;
   primaryColor: string;
   accentColor: string;
   backgroundType: 'dark' | 'gradient' | 'sports' | 'custom';

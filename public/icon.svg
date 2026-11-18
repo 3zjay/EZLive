@@ -33,6 +33,6 @@
   <path d="M 402 160 A 150 150 0 0 0 402 310" fill="none" stroke="#ff6b1a" stroke-width="12" stroke-linecap="round" />
 
   <!-- Brand Typography -->
-  <text x="256" y="420" font-family="'Barlow Condensed', 'Anton', sans-serif" font-weight="900" font-size="40" fill="#f2ede8" text-anchor="middle" letter-spacing="6">EZ LIVE STUDIO</text>
-  <text x="256" y="458" font-family="'Barlow', sans-serif" font-weight="700" font-size="20" fill="#ff6b1a" text-anchor="middle" letter-spacing="4">BY HOOP CULTURE</text>
+  <text x="256" y="420" font-family="'Barlow Condensed', 'Anton', sans-serif" font-weight="900" font-size="40" fill="#f2ede8" text-anchor="middle" letter-spacing="6">HOOP CULTURE</text>
+  <text x="256" y="458" font-family="'Barlow', sans-serif" font-weight="700" font-size="20" fill="#ff6b1a" text-anchor="middle" letter-spacing="4">LIVE STUDIO</text>
 </svg>

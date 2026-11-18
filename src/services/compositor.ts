@@ -65,12 +65,14 @@ export class VideoCompositor {
   };
   public activeBanner: StreamlabsBanner | null = null;
   public brandKit: BrandKit = {
-    logoUrl: '',
+    logoUrl: '/hoop-culture-logo2.png',
     logoPosition: 'top-right',
-    logoWidth: 180,
-    logoHeight: 60,
+    logoWidth: 140,
+    logoHeight: 90,
+    logoEnabled: true,
+    logoOpacity: 0.92,
     primaryColor: '#e8430a',
-    accentColor: '#f59e0b',
+    accentColor: '#ff6b1a',
     backgroundType: 'dark',
   };
 
@@ -476,7 +478,7 @@ export class VideoCompositor {
     }
 
     // 6. Streamlabs Overlay Layer: Brand Kit Logo Watermark
-    if (this.brandKit.logoUrl) {
+    if (this.brandKit.logoEnabled !== false && this.brandKit.logoUrl) {
       this.drawBrandLogo();
     }
 
@@ -2390,35 +2392,59 @@ export class VideoCompositor {
 
   // --- Brand Kit Logo Watermark ---
   private drawBrandLogo() {
-    let img = this.imageCache.get(this.brandKit.logoUrl);
+    if (this.brandKit.logoEnabled === false || !this.brandKit.logoUrl) return;
+
+    const rawUrl = this.brandKit.logoUrl.trim();
+    if (!rawUrl) return;
+
+    const normalizedPath = rawUrl.split('?')[0].toLowerCase();
+    const logoUrl =
+      normalizedPath === '/icon.svg' ||
+      normalizedPath === 'icon.svg' ||
+      normalizedPath.startsWith('/ezlive')
+        ? '/hoop-culture-logo2.png'
+        : rawUrl;
+
+    let img = this.imageCache.get(logoUrl);
     if (!img) {
       img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = this.brandKit.logoUrl;
-      this.imageCache.set(this.brandKit.logoUrl, img);
+      if (!logoUrl.startsWith('data:') && !logoUrl.startsWith('blob:')) {
+        img.crossOrigin = 'anonymous';
+      }
+      img.src = logoUrl;
+      this.imageCache.set(logoUrl, img);
     }
-    if (!img.complete || img.naturalWidth === 0) return;
+    if (!img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) return;
 
     const { ctx, width, height } = this;
-    const w = this.brandKit.logoWidth || 180;
-    const h = this.brandKit.logoHeight || 60;
+    const maxW = this.brandKit.logoWidth || 140;
+    const maxH = this.brandKit.logoHeight || 90;
+    const aspect = img.naturalWidth / Math.max(1, img.naturalHeight);
+
+    let drawW = maxW;
+    let drawH = drawW / aspect;
+    if (drawH > maxH) {
+      drawH = maxH;
+      drawW = drawH * aspect;
+    }
+
     let x = 40;
     let y = 40;
 
     if (this.brandKit.logoPosition === 'top-right') {
-      x = width - w - 40;
-      y = 40;
+      x = width - drawW - 40;
+      y = 52;
     } else if (this.brandKit.logoPosition === 'bottom-left') {
       x = 40;
-      y = height - h - 70;
+      y = height - drawH - 70;
     } else if (this.brandKit.logoPosition === 'bottom-right') {
-      x = width - w - 40;
-      y = height - h - 70;
+      x = width - drawW - 40;
+      y = height - drawH - 70;
     }
 
     ctx.save();
-    ctx.globalAlpha = 0.9;
-    ctx.drawImage(img, x, y, w, h);
+    ctx.globalAlpha = Math.max(0, Math.min(1, this.brandKit.logoOpacity ?? 0.92));
+    ctx.drawImage(img, x, y, drawW, drawH);
     ctx.restore();
   }
 

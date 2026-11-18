@@ -1,13 +1,19 @@
 {
-  "name": "EZLiveStudio by HoopCulture",
-  "short_name": "EZLiveStudio",
-  "description": "Live Court Broadcast Studio by HoopCulture. Tablet-first OBS & Streamlabs broadcasting.",
+  "name": "Hoop Culture Live Studio",
+  "short_name": "Hoop Culture Live",
+  "description": "Hoop Culture Live Studio. Tablet-first courtside OBS & Streamlabs broadcasting.",
   "start_url": "/studio",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#080605",
   "theme_color": "#080605",
   "icons": [
+    {
+      "src": "/hoop-culture-logo2.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icon.svg",
       "sizes": "any",

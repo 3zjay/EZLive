@@ -60,18 +60,21 @@ export const TopBar: React.FC<TopBarProps> = ({
     <header className="h-16 bg-slate-950/95 border-b border-slate-800 px-4 flex items-center justify-between text-white select-none z-30">
       {/* Brand & Studio Title */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-600 shadow-lg shadow-orange-950/40 font-black text-lg tracking-tighter">
-          HC
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/hoop-culture-logo2.png"
+          alt="Hoop Culture"
+          className="w-9 h-9 object-contain"
+        />
         <div>
           <div className="text-sm font-extrabold tracking-tight flex items-center gap-2">
-            <span>EZLIVE STUDIO</span>
+            <span>HOOP CULTURE</span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
               1080p 60FPS
             </span>
           </div>
           <div className="text-[11px] text-slate-400 flex items-center gap-2">
-            <span>Hoop Culture Web OBS</span>
+            <span>Live Broadcast Studio</span>
             <span>•</span>
             <span className="text-emerald-400 font-mono font-medium">{fps} FPS</span>
           </div>

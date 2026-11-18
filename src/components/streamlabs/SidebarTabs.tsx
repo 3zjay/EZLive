@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   MessageSquare,
   Scroll,
@@ -20,6 +20,8 @@ import {
   ArrowUp,
   ArrowDown,
   Zap,
+  Upload,
+  RotateCcw,
 } from 'lucide-react';
 import { ChatMessage, NewsTickerConfig, StreamlabsBanner, BrandKit } from '@/types/streamlabs';
 import { Scene, ScoreboardState, SourceType } from '@/types/broadcast';
@@ -72,6 +74,29 @@ interface SidebarTabsProps {
   onClose?: () => void;
 }
 
+const DEFAULT_HOOP_CULTURE_LOGO = '/hoop-culture-logo2.png';
+const DEFAULT_PRIMARY_COLOR = '#e8430a';
+const DEFAULT_ACCENT_COLOR = '#ff6b1a';
+
+function normalizeBrandLogoUrl(url?: string): string {
+  const raw = (url || '').trim();
+  if (!raw) return '';
+  const pathOnly = raw.split('?')[0].toLowerCase();
+  if (pathOnly === '/icon.svg' || pathOnly === 'icon.svg' || pathOnly.startsWith('/ezlive')) {
+    return DEFAULT_HOOP_CULTURE_LOGO;
+  }
+  return raw;
+}
+
+function normalizeHexColor(value: string | undefined, fallback: string): string {
+  const trimmed = (value || '').trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toLowerCase();
+  }
+  return fallback;
+}
+
 export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   chatMessages,
   highlightedChat,
@@ -110,6 +135,115 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
   const [chatPlatform, setChatPlatform] = useState<'youtube' | 'facebook'>('youtube');
   const [bannerTitle, setBannerTitle] = useState('HOOP CULTURE CHAMPIONSHIPS');
   const [bannerSubtitle, setBannerSubtitle] = useState('LIVE FROM MAIN GYM COURT');
+  const [isProcessingLogo, setIsProcessingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState<string | null>(null);
+  const [failedPreviewSrc, setFailedPreviewSrc] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const isLogoEnabled = brandKit.logoEnabled !== false;
+  const effectiveLogoUrl = normalizeBrandLogoUrl(brandKit.logoUrl);
+  const logoOpacity = Math.min(1, Math.max(0.2, brandKit.logoOpacity ?? 0.92));
+  const logoWidth = Math.min(280, Math.max(60, brandKit.logoWidth || 140));
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/') && !/\.(png|jpe?g|webp|gif|svg|avif)$/i.test(file.name)) {
+      setLogoUploadError('Please select a valid image file (PNG, JPG, WebP, or SVG).');
+      return;
+    }
+
+    setLogoUploadError(null);
+    setFailedPreviewSrc(null);
+    setIsProcessingLogo(true);
+
+    const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const rawDataUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!rawDataUrl) {
+        setIsProcessingLogo(false);
+        setLogoUploadError('Could not read the selected image file.');
+        return;
+      }
+
+      const img = new window.Image();
+      img.onload = () => {
+        try {
+          const naturalW = img.naturalWidth || (isSvg ? 500 : 0);
+          const naturalH = img.naturalHeight || (isSvg ? 500 : 0);
+
+          if (!naturalW || !naturalH) {
+            if (isSvg) {
+              onUpdateBrandKit({
+                ...brandKit,
+                logoUrl: rawDataUrl,
+                logoEnabled: true,
+              });
+              setIsProcessingLogo(false);
+              return;
+            }
+            setIsProcessingLogo(false);
+            setLogoUploadError('Could not determine uploaded image dimensions.');
+            return;
+          }
+
+          const maxSide = 500;
+          const longestSide = Math.max(naturalW, naturalH);
+          const scale = isSvg ? maxSide / longestSide : Math.min(1, maxSide / longestSide);
+          const targetW = Math.max(1, Math.round(naturalW * scale));
+          const targetH = Math.max(1, Math.round(naturalH * scale));
+
+          const offscreen = document.createElement('canvas');
+          offscreen.width = targetW;
+          offscreen.height = targetH;
+          const offCtx = offscreen.getContext('2d');
+          if (!offCtx) {
+            throw new Error('Offscreen canvas 2D context unavailable');
+          }
+
+          offCtx.clearRect(0, 0, targetW, targetH);
+          offCtx.drawImage(img, 0, 0, targetW, targetH);
+          const pngDataUrl = offscreen.toDataURL('image/png');
+
+          onUpdateBrandKit({
+            ...brandKit,
+            logoUrl: pngDataUrl,
+            logoEnabled: true,
+          });
+        } catch {
+          if (isSvg) {
+            onUpdateBrandKit({
+              ...brandKit,
+              logoUrl: rawDataUrl,
+              logoEnabled: true,
+            });
+          } else {
+            setLogoUploadError('Failed to process image. Try a PNG, JPG, or WebP file.');
+          }
+        } finally {
+          setIsProcessingLogo(false);
+        }
+      };
+
+      img.onerror = () => {
+        setIsProcessingLogo(false);
+        setLogoUploadError('Failed to decode the selected image.');
+      };
+
+      img.src = rawDataUrl;
+    };
+
+    reader.onerror = () => {
+      setIsProcessingLogo(false);
+      setLogoUploadError('Failed to read the selected file.');
+    };
+
+    reader.readAsDataURL(file);
+  };
 
   const activeScene = scenes.find((s) => s.id === activeSceneId) || scenes[0];
   const sortedSources = [...(activeScene?.sources || [])].sort((a, b) => b.zIndex - a.zIndex);
@@ -446,21 +580,240 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
 
         {/* 3. BRAND KIT & THEMES */}
         {activeTab === 'brand' && (
-          <div className="space-y-4">
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
-              <div className="font-bold text-slate-100 text-xs">Logo Watermark</div>
+          <div className="space-y-3">
+            {/* Live Preview + Show/Hide Watermark */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="font-extrabold text-slate-100 text-xs">Hoop Culture Brand Kit</div>
+                  <div className="text-[10px] text-slate-400">Live Broadcast Logo Watermark</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdateBrandKit({
+                      ...brandKit,
+                      logoEnabled: !isLogoEnabled,
+                    })
+                  }
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[10px] flex items-center gap-1.5 border transition ${
+                    isLogoEnabled
+                      ? 'bg-[#e8430a]/20 border-[#e8430a]/60 text-[#ff6b1a] hover:bg-[#e8430a]/30'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {isLogoEnabled ? <Eye size={12} /> : <EyeOff size={12} />}
+                  <span>{isLogoEnabled ? 'Show Watermark' : 'Watermark Hidden'}</span>
+                </button>
+              </div>
+
+              {/* Obsidian Court Backdrop Preview */}
+              <div className="relative h-28 rounded-xl bg-[#080605] border border-[#2a1e14] flex items-center justify-center p-3 overflow-hidden">
+                <div
+                  className="pointer-events-none absolute inset-0 opacity-20"
+                  style={{
+                    backgroundImage:
+                      'radial-gradient(circle at 50% 50%, rgba(232, 67, 10, 0.28), transparent 70%)',
+                  }}
+                />
+                {effectiveLogoUrl && failedPreviewSrc !== effectiveLogoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={effectiveLogoUrl}
+                    alt="Active Brand Logo Preview"
+                    onError={() => setFailedPreviewSrc(effectiveLogoUrl)}
+                    className="relative z-10 max-h-20 max-w-full object-contain transition-opacity duration-150"
+                    style={{ opacity: isLogoEnabled ? logoOpacity : 0.18 }}
+                  />
+                ) : (
+                  <span className="relative z-10 text-[11px] font-semibold text-slate-500">
+                    {effectiveLogoUrl ? 'Unable to load preview image' : 'No watermark logo selected'}
+                  </span>
+                )}
+
+                {!isLogoEnabled && (
+                  <span className="absolute top-2 left-2 z-20 px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-700 text-[9px] font-extrabold uppercase tracking-wider text-slate-300">
+                    Hidden on Stream
+                  </span>
+                )}
+
+                <span className="absolute bottom-1.5 right-2 z-20 text-[9px] font-mono text-slate-400">
+                  {brandKit.logoPosition} · {logoWidth}px · {Math.round(logoOpacity * 100)}%
+                </span>
+              </div>
+
+              {/* Upload Custom Brand Logo */}
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 mb-1">Logo URL or Path</label>
                 <input
-                  type="text"
-                  value={brandKit.logoUrl}
-                  onChange={(e) => onUpdateBrandKit({ ...brandKit, logoUrl: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none font-mono"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoFileUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  disabled={isProcessingLogo}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-[#e8430a] to-[#ff6b1a] hover:brightness-110 disabled:opacity-60 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow transition"
+                >
+                  <Upload size={13} />
+                  <span>{isProcessingLogo ? 'Optimizing Brand Logo...' : 'Upload Custom Brand Logo'}</span>
+                </button>
+                <p className="text-[10px] text-slate-500 mt-1 text-center">
+                  Auto-scales to 500px max PNG preserving transparency &amp; aspect ratio
+                </p>
+                {logoUploadError && (
+                  <p className="text-[10px] text-rose-400 font-semibold mt-1 text-center">{logoUploadError}</p>
+                )}
+              </div>
+
+              {/* 1-Click Presets */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">
+                  Quick Brand Presets
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoUploadError(null);
+                      setFailedPreviewSrc(null);
+                      onUpdateBrandKit({
+                        ...brandKit,
+                        logoUrl: '/hoop-culture-logo2.png',
+                        logoEnabled: true,
+                      });
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg font-bold text-[10px] border transition text-center leading-tight ${
+                      isLogoEnabled && effectiveLogoUrl === '/hoop-culture-logo2.png'
+                        ? 'bg-[#e8430a] border-[#ff6b1a] text-white shadow'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    Hoop Culture Official
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLogoUploadError(null);
+                      setFailedPreviewSrc(null);
+                      onUpdateBrandKit({
+                        ...brandKit,
+                        logoUrl: '/hoop-culture-logo.jpg',
+                        logoEnabled: true,
+                      });
+                    }}
+                    className={`py-1.5 px-1.5 rounded-lg font-bold text-[10px] border transition text-center leading-tight ${
+                      isLogoEnabled && effectiveLogoUrl === '/hoop-culture-logo.jpg'
+                        ? 'bg-[#e8430a] border-[#ff6b1a] text-white shadow'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    Hoop Culture Emblem
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onUpdateBrandKit({
+                        ...brandKit,
+                        logoEnabled: false,
+                      })
+                    }
+                    className={`py-1.5 px-1.5 rounded-lg font-bold text-[10px] border transition text-center leading-tight ${
+                      !isLogoEnabled
+                        ? 'bg-rose-600 border-rose-400 text-white shadow'
+                        : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white hover:border-slate-700'
+                    }`}
+                  >
+                    Hide Logo
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Logo URL / Path Fallback */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1">
+                  Custom Logo URL or Path
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={brandKit.logoUrl}
+                    placeholder="/hoop-culture-logo2.png or https://..."
+                    onChange={(e) => {
+                      setFailedPreviewSrc(null);
+                      onUpdateBrandKit({ ...brandKit, logoUrl: e.target.value });
+                    }}
+                    className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#ff6b1a] font-mono"
+                  />
+                  {brandKit.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFailedPreviewSrc(null);
+                        onUpdateBrandKit({ ...brandKit, logoUrl: '' });
+                      }}
+                      title="Clear Logo URL"
+                      className="p-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-white transition"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Watermark Size, Opacity & Position */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-3">
+              <div>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                  <span className="font-bold">Watermark Size</span>
+                  <span className="font-mono text-[#ff6b1a]">{logoWidth}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={60}
+                  max={280}
+                  step={4}
+                  value={logoWidth}
+                  onChange={(e) => {
+                    const nextWidth = parseInt(e.target.value, 10);
+                    onUpdateBrandKit({
+                      ...brandKit,
+                      logoWidth: nextWidth,
+                      logoHeight: Math.round(nextWidth * 0.65),
+                    });
+                  }}
+                  className="w-full accent-[#e8430a]"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 mb-1">Position on Canvas</label>
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                  <span className="font-bold">Watermark Opacity</span>
+                  <span className="font-mono text-[#ff6b1a]">{Math.round(logoOpacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.2}
+                  max={1}
+                  step={0.02}
+                  value={logoOpacity}
+                  onChange={(e) =>
+                    onUpdateBrandKit({
+                      ...brandKit,
+                      logoOpacity: parseFloat(e.target.value),
+                    })
+                  }
+                  className="w-full accent-[#e8430a]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 mb-1.5">
+                  Position on Canvas
+                </label>
                 <div className="grid grid-cols-2 gap-1.5">
                   {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const).map((pos) => (
                     <button
@@ -469,7 +822,7 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
                       onClick={() => onUpdateBrandKit({ ...brandKit, logoPosition: pos })}
                       className={`py-1.5 px-2 rounded-lg font-bold text-[10px] capitalize transition border ${
                         brandKit.logoPosition === pos
-                          ? 'bg-sky-600 border-sky-400 text-white shadow'
+                          ? 'bg-[#e8430a] border-[#ff6b1a] text-white shadow'
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                       }`}
                     >
@@ -480,26 +833,64 @@ export const SidebarTabs: React.FC<SidebarTabsProps> = ({
               </div>
             </div>
 
-            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
-              <div className="font-bold text-slate-100 text-xs">Brand Colors</div>
+            {/* Brand Colors */}
+            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="font-bold text-slate-100 text-xs">Brand Colors</div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdateBrandKit({
+                      ...brandKit,
+                      primaryColor: DEFAULT_PRIMARY_COLOR,
+                      accentColor: DEFAULT_ACCENT_COLOR,
+                    })
+                  }
+                  className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[10px] font-bold text-[#ff6b1a] flex items-center gap-1 transition"
+                >
+                  <RotateCcw size={11} />
+                  <span>Hoop Culture Default Colors</span>
+                </button>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">Primary Color</label>
-                  <input
-                    type="text"
-                    value={brandKit.primaryColor}
-                    onChange={(e) => onUpdateBrandKit({ ...brandKit, primaryColor: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      aria-label="Primary Brand Color Swatch"
+                      value={normalizeHexColor(brandKit.primaryColor, DEFAULT_PRIMARY_COLOR)}
+                      onChange={(e) => onUpdateBrandKit({ ...brandKit, primaryColor: e.target.value })}
+                      className="h-7 w-8 p-0.5 rounded bg-slate-900 border border-slate-700 cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      aria-label="Primary Brand Color Hex"
+                      value={brandKit.primaryColor}
+                      onChange={(e) => onUpdateBrandKit({ ...brandKit, primaryColor: e.target.value })}
+                      className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] text-slate-400 mb-1">Accent Color</label>
-                  <input
-                    type="text"
-                    value={brandKit.accentColor}
-                    onChange={(e) => onUpdateBrandKit({ ...brandKit, accentColor: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono"
-                  />
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="color"
+                      aria-label="Accent Brand Color Swatch"
+                      value={normalizeHexColor(brandKit.accentColor, DEFAULT_ACCENT_COLOR)}
+                      onChange={(e) => onUpdateBrandKit({ ...brandKit, accentColor: e.target.value })}
+                      className="h-7 w-8 p-0.5 rounded bg-slate-900 border border-slate-700 cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      aria-label="Accent Brand Color Hex"
+                      value={brandKit.accentColor}
+                      onChange={(e) => onUpdateBrandKit({ ...brandKit, accentColor: e.target.value })}
+                      className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-white font-mono"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

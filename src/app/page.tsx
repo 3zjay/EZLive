@@ -31,7 +31,7 @@ const ECOSYSTEM_LINKS = [
   { name: 'Stats Engine', url: 'https://engine.hoopculture.ca/', label: 'engine.hoopculture.ca' },
   { name: 'Media Lab', url: 'https://media.hoopculture.ca/', label: 'media.hoopculture.ca' },
   { name: 'Live Scoreboard', url: 'https://scoreboard.hoopculture.ca/', label: 'scoreboard.hoopculture.ca' },
-  { name: 'EZLive Studio', url: 'https://ezlive.vercel.app/', label: 'ezlive.vercel.app', active: true },
+  { name: 'Hoop Culture Live Studio', url: 'https://ezlive.vercel.app/', label: 'ezlive.vercel.app', active: true },
 ];
 
 const COURTS = [
@@ -128,18 +128,21 @@ export default function LandingPage() {
       {/* Main Navigation */}
       <header className="max-w-7xl mx-auto px-4 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#ff6b1a] via-[#e8430a] to-[#c8841a] flex items-center justify-center shadow-lg shadow-[#e8430a]/20 font-black text-xl text-white">
-            HC
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/hoop-culture-logo2.png"
+            alt="Hoop Culture"
+            className="w-10 h-10 object-contain drop-shadow-md"
+          />
           <div>
             <div className="text-xl font-black tracking-tight leading-none text-white flex items-center gap-2">
-              <span>EZLiveStudio</span>
+              <span>Hoop Culture Live Studio</span>
               <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-[#e8430a]/20 text-[#ff6b1a] border border-[#e8430a]/30">
                 PRO 1080p • v{APP_VERSION}
               </span>
             </div>
             <div className="text-[11px] font-bold tracking-widest text-[#a09080] uppercase mt-0.5">
-              BY HOOP CULTURE™
+              OFFICIAL BROADCAST ENGINE™
             </div>
           </div>
         </div>
@@ -418,11 +421,14 @@ export default function LandingPage() {
       <footer className="border-t border-[#2a1e14] bg-[#100d0a] py-12 px-4 text-xs text-[#a09080]">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#e8430a] text-white flex items-center justify-center font-black">
-              HC
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/hoop-culture-logo2.png"
+              alt="Hoop Culture"
+              className="w-9 h-9 object-contain"
+            />
             <div>
-              <div className="font-black text-white text-sm">EZLiveStudio by HoopCulture™</div>
+              <div className="font-black text-white text-sm">Hoop Culture Live Studio™</div>
               <div className="text-[11px] text-[#a09080]">Powering basketball broadcasting worldwide • ezlive.vercel.app</div>
             </div>
           </div>
@@ -445,9 +451,12 @@ export default function LandingPage() {
       {isAuthModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#140f0c] border border-[#3a2818] rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-[#e8430a] text-white flex items-center justify-center mx-auto mb-3 shadow-lg shadow-[#e8430a]/30 font-black text-xl">
-              HC
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/hoop-culture-logo2.png"
+              alt="Hoop Culture"
+              className="h-14 w-auto object-contain mx-auto mb-3 drop-shadow-lg"
+            />
             <h3 className="text-lg font-black text-[#f2ede8] uppercase tracking-wide">
               Operator Sign In
             </h3>

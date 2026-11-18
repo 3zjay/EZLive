@@ -82,19 +82,43 @@ const DEFAULT_SETTINGS: StreamSettings = {
     selectedPageName: '',
     selectedPageToken: '',
     broadcastTitle: 'Hoop Culture Live Broadcast',
-    broadcastDescription: 'Streaming live directly from EZLiveStudio by HoopCulture',
+    broadcastDescription: 'Streaming live from Hoop Culture Live Studio',
   },
 };
 
 const INITIAL_CHAT_MESSAGES: ChatMessage[] = [
   {
     id: 'msg-welcome',
-    sender: 'EZLive Studio',
+    sender: 'Hoop Culture Live',
     platform: 'studio',
     message: 'Broadcast studio ready. Facebook live comments will appear here.',
     timestamp: 'Just now',
   },
 ];
+
+const DEFAULT_BRAND_KIT: BrandKit = {
+  logoUrl: '/hoop-culture-logo2.png',
+  logoPosition: 'top-right',
+  logoWidth: 140,
+  logoHeight: 90,
+  logoEnabled: true,
+  logoOpacity: 0.92,
+  primaryColor: '#e8430a',
+  accentColor: '#ff6b1a',
+  backgroundType: 'dark',
+};
+
+function normalizeBrandKit(kit?: unknown): BrandKit {
+  const obj = kit && typeof kit === 'object' && !Array.isArray(kit) ? (kit as Partial<BrandKit>) : {};
+  const merged: BrandKit = {
+    ...DEFAULT_BRAND_KIT,
+    ...obj,
+  };
+  if (!merged.logoUrl || merged.logoUrl === '/icon.svg') {
+    merged.logoUrl = '/hoop-culture-logo2.png';
+  }
+  return merged;
+}
 
 const COURT_OPTIONS = [
   'Court 1 — Championship Hardwood',
@@ -537,15 +561,28 @@ export default function StudioPage() {
     fontSize: 20,
   });
   const [activeBanner, setActiveBanner] = useState<StreamlabsBanner | null>(null);
-  const [brandKit, setBrandKit] = useState<BrandKit>({
-    logoUrl: '/icon.svg',
-    logoPosition: 'top-right',
-    logoWidth: 180,
-    logoHeight: 60,
-    primaryColor: '#e8430a',
-    accentColor: '#ff6b1a',
-    backgroundType: 'dark',
+  const [brandKit, setBrandKit] = useState<BrandKit>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('ezlive_brandkit_v1');
+        if (saved) {
+          return normalizeBrandKit(JSON.parse(saved));
+        }
+      } catch {}
+    }
+    return DEFAULT_BRAND_KIT;
   });
+
+  const handleUpdateBrandKit = useCallback(
+    (nextKit: BrandKit) => {
+      setBrandKit(nextKit);
+      try {
+        localStorage.setItem('ezlive_brandkit_v1', JSON.stringify(nextKit));
+      } catch {}
+      saveSessionState({ brandKit: nextKit }).catch(() => {});
+    },
+    [saveSessionState]
+  );
 
   // State: Hardware & Status
   const [hasCamera, setHasCamera] = useState(false);
@@ -763,7 +800,12 @@ export default function StudioPage() {
     });
 
     if (profile.brandKit) {
-      setBrandKit((prev) => ({ ...prev, ...profile.brandKit }));
+      setBrandKit((prev) =>
+        normalizeBrandKit({
+          ...prev,
+          ...profile.brandKit,
+        })
+      );
     }
   }, [profile]);
 
@@ -1573,7 +1615,7 @@ export default function StudioPage() {
           zIndex: newZ,
           visible: true,
           locked: false,
-          url: '/icon.svg',
+          url: '/hoop-culture-logo2.png',
           fit: 'contain',
         };
         break;
@@ -1920,7 +1962,7 @@ export default function StudioPage() {
             pageAccessToken: config.facebookPageToken,
             userAccessToken: token,
             title: config.title || 'Hoop Culture Live Broadcast',
-            description: config.description || 'Streaming live via EZLive Broadcast Studio',
+            description: config.description || 'Streaming live from Hoop Culture Live Studio',
           }),
         });
 
@@ -1959,7 +2001,7 @@ export default function StudioPage() {
             groupId: config.facebookGroupId,
             userAccessToken: token,
             title: config.title || 'Hoop Culture Live Broadcast',
-            description: config.description || 'Streaming live via EZLive Broadcast Studio',
+            description: config.description || 'Streaming live from Hoop Culture Live Studio',
           }),
         });
 
@@ -2266,7 +2308,7 @@ export default function StudioPage() {
                 activeBanner={activeBanner}
                 onToggleBanner={setActiveBanner}
                 brandKit={brandKit}
-                onUpdateBrandKit={setBrandKit}
+                onUpdateBrandKit={handleUpdateBrandKit}
                 scenes={scenes}
                 activeSceneId={targetEditingSceneId}
                 selectedSourceId={selectedSourceId}
@@ -2485,9 +2527,8 @@ export default function StudioPage() {
       {isAuthModalOpen && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#140f0c] border border-[#3a2818] rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
-            <div className="w-12 h-12 rounded-2xl bg-[#e8430a] text-white flex items-center justify-center mx-auto mb-3 shadow-lg shadow-[#e8430a]/30 font-black text-xl">
-              HC
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/hoop-culture-logo2.png" alt="Hoop Culture" className="h-14 w-auto object-contain mx-auto mb-3 drop-shadow-lg" />
             <h3 className="text-lg font-black text-[#f2ede8] uppercase tracking-wide">
               Operator Sign In
             </h3>

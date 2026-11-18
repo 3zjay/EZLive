@@ -3,17 +3,17 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
 export const metadata: Metadata = {
-  title: "EZLiveStudio by HoopCulture | Live Court Broadcast Engine",
+  title: "Hoop Culture Live Studio | Official Broadcast Engine",
   description: "Cross-platform tablet broadcasting studio for basketball gyms. Live scoreboard integration, multi-court sessions, Facebook Live streaming, and instant game recordings.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "EZLiveStudio",
+    title: "Hoop Culture Live",
   },
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/hoop-culture-logo2.png",
+    apple: "/hoop-culture-logo2.png",
   },
 };
 

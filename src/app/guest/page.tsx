@@ -33,12 +33,15 @@ export default function GuestJoinPage() {
     <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-4 font-sans select-none">
       <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center space-y-5">
         {/* Header */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500 font-black text-slate-950 flex items-center justify-center text-base">
-            S
-          </div>
+        <div className="flex items-center gap-2.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/hoop-culture-logo2.png"
+            alt="Hoop Culture"
+            className="h-9 w-auto object-contain"
+          />
           <span className="font-extrabold text-sm tracking-wide uppercase">
-            Streamlabs Guest Greenroom
+            Hoop Culture Guest Greenroom
           </span>
         </div>
 

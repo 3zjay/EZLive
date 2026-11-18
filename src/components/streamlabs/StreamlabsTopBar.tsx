@@ -145,15 +145,18 @@ export const StreamlabsTopBar: React.FC<StreamlabsTopBarProps> = ({
       {/* LEFT: Brand Identity & Active Court Switcher */}
       <div className="flex items-center gap-2 shrink-0">
         <Link href="/" className="flex items-center gap-1.5 group shrink-0">
-          <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-[#ff6b1a] via-[#e8430a] to-[#c8841a] shadow-md shadow-[#e8430a]/20 font-black text-white text-xs sm:text-sm">
-            HC
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/hoop-culture-logo2.png"
+            alt="Hoop Culture"
+            className="w-8 h-8 sm:w-9 sm:h-9 object-contain drop-shadow"
+          />
           <div className="hidden xs:block sm:block">
             <div className="text-[11px] sm:text-xs font-black tracking-tight flex items-center gap-1 leading-none">
-              <span>EZLive</span>
-              <span className="hidden md:inline">Studio</span>
+              <span>Hoop Culture</span>
+              <span className="hidden md:inline text-[#ff6b1a]">Live Studio</span>
               <span
-                title={`EZLiveStudio v1.2.0 (Build 12) • ${isNativeAndroid ? 'On-Device Android Native RTMP' : 'Web Video Engine'}`}
+                title={`Hoop Culture Live Studio v1.2.0 (Build 12) • ${isNativeAndroid ? 'On-Device Android Native RTMP' : 'Web Video Engine'}`}
                 className={`text-[8px] sm:text-[9px] font-bold px-1 py-0.2 rounded border ${
                   isNativeAndroid
                     ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
